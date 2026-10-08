@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] || exit 0; cd \"$CLAUDE_PROJECT_DIR\" || exit 1; if command -v just >/dev/null 2>&1; then just install; else uvx --from rust-just just install; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

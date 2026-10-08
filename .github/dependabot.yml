@@ -1,0 +1,52 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    # Required by the zizmor `dependabot-cooldown` audit: do not propose a
+    # release that has been out for less than a week.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    # Explicit, so a second ecosystem below does not add an undeclared
+    # `github_actions` label; .github/labels.yml declares every label applied.
+    labels: ["dependencies"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    # Must equal `[tool.uv] exclude-newer` in pyproject.toml ("14 days"): a
+    # shorter cooldown proposes versions `uv lock` refuses, a longer one leaves
+    # the lock behind the window. Change both together, or neither. Equal, they
+    # almost never disagree: uv judges each file's upload time, the cooldown the
+    # release date, so a late-uploaded wheel or a boundary-day release can still
+    # fail the Dependabot job. Security updates skip this cooldown but not
+    # exclude-newer.
+    cooldown:
+      default-days: 14
+    # Minor and patch updates arrive as one PR; each major stays a PR of its own.
+    groups:
+      python-minor-patch:
+        update-types: ["minor", "patch"]
+    # Explicit, so Dependabot adds no `python` or `uv` label that
+    # .github/labels.yml does not declare.
+    labels: ["dependencies"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    # Match the github-actions cooldown for hooks resolved from Git tags.
+    cooldown:
+      default-days: 7
+    groups:
+      hooks:
+        patterns: ["*"]
+    labels: ["dependencies"]
+    open-pull-requests-limit: 3

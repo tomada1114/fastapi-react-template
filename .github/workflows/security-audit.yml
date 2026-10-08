@@ -1,0 +1,51 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "57 3 * * 1"
+  workflow_dispatch:
+  # Exercised on a pull request only when this workflow itself changes.
+  pull_request:
+    paths: [.github/workflows/security-audit.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  # Superseded PR runs are cancelled. Scheduled and dispatched scans each get
+  # their own group (run_id), so neither replaces the other while pending and
+  # every one finishes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# To bump: read the linux_x64 line of the release's
+# gitleaks_<version>_checksums.txt on github.com/gitleaks/gitleaks/releases
+# and update both values together.
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+jobs:
+  gitleaks:
+    name: Secret Scan (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks (checksum verified)
+        run: |
+          set -euo pipefail
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLo "${RUNNER_TEMP}/${tarball}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tarball}"
+          cd "${RUNNER_TEMP}"
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "${tarball}" gitleaks
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Scan full git history
+        run: gitleaks git --redact --verbose .

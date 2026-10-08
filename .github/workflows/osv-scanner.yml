@@ -1,0 +1,40 @@
+name: OSV-Scanner
+
+on:
+  push:
+    branches: [main]
+    paths: [uv.lock, .github/workflows/osv-scanner.yml]
+  pull_request:
+    paths: [uv.lock, .github/workflows/osv-scanner.yml]
+  schedule:
+    - cron: "37 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Only superseded PR runs are cancelled. Outside a pull request the group is
+  # the commit SHA, so a push to main is never cancelled or replaced by a newer
+  # push; a scheduled or dispatched scan of the same SHA shares that group, so a
+  # third run there can still replace one that is pending.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scan:
+    name: Scan uv.lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # This sub-action runs a Docker image pinned by tag, not digest — a
+      # residual gap shared with Google's reusable workflow.
+      # Exits non-zero when any locked package has a known vulnerability.
+      - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        with:
+          scan-args: |-
+            --lockfile=uv.lock

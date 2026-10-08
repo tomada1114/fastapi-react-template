@@ -1,0 +1,105 @@
+"""A process-local to-do repository, the default store and the tests' fake."""
+
+from __future__ import annotations
+
+import threading
+from typing import TYPE_CHECKING
+
+from my_app.core.errors import TodoNotFoundError
+from my_app.core.models import Todo
+
+if TYPE_CHECKING:
+    from my_app.core.models import TodoDraft
+
+
+class InMemoryTodoRepository:
+    """Keep to-dos in a dict for the life of the process.
+
+    FastAPI runs synchronous endpoints in a thread pool, so every access takes
+    a lock: two concurrent creates must never receive the same id.
+    """
+
+    def __init__(self) -> None:
+        """Start empty, with ids counting up from 1."""
+        self._todos: dict[int, Todo] = {}
+        self._last_id = 0
+        self._lock = threading.Lock()
+
+    def add(self, draft: TodoDraft) -> Todo:
+        """Store a draft under the next id.
+
+        Args:
+            draft: The validated to-do to store.
+
+        Returns:
+            The stored to-do. The counter never goes back, so a deleted id is
+            never reused.
+        """
+        with self._lock:
+            self._last_id += 1
+            todo = Todo(
+                id=self._last_id, title=draft.title, created_at=draft.created_at
+            )
+            self._todos[todo.id] = todo
+            return todo
+
+    def get(self, todo_id: int) -> Todo:
+        """Fetch one to-do.
+
+        Args:
+            todo_id: The to-do to fetch.
+
+        Returns:
+            The stored to-do.
+
+        Raises:
+            TodoNotFoundError: If no to-do has this id.
+        """
+        with self._lock:
+            return self._require(todo_id)
+
+    def list_all(self) -> list[Todo]:
+        """Fetch every to-do.
+
+        Returns:
+            The to-dos in ascending id order.
+        """
+        with self._lock:
+            return [self._todos[todo_id] for todo_id in sorted(self._todos)]
+
+    def update(self, todo: Todo) -> Todo:
+        """Replace the stored to-do that has ``todo.id``.
+
+        Args:
+            todo: The new value.
+
+        Returns:
+            ``todo``, now stored.
+
+        Raises:
+            TodoNotFoundError: If no to-do has this id.
+        """
+        with self._lock:
+            self._require(todo.id)
+            self._todos[todo.id] = todo
+            return todo
+
+    def delete(self, todo_id: int) -> None:
+        """Remove one to-do.
+
+        Args:
+            todo_id: The to-do to remove.
+
+        Raises:
+            TodoNotFoundError: If no to-do has this id.
+        """
+        with self._lock:
+            self._require(todo_id)
+            del self._todos[todo_id]
+
+    def _require(self, todo_id: int) -> Todo:
+        """Return the stored to-do or raise; the caller must hold the lock."""
+        try:
+            return self._todos[todo_id]
+        except KeyError:
+            raise TodoNotFoundError(todo_id) from None

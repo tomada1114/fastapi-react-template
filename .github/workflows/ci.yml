@@ -1,0 +1,226 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to a pull request cancels its older run. Each push to main
+  # gets a group of its own (its SHA), so none is cancelled, even while pending.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      # Both groups must finish successfully; recipe commands remain verbatim.
+      - name: Run independent checks
+        run: |
+          set -euo pipefail
+          (
+            PYTHONDONTWRITEBYTECODE=1 uv run --locked pytest -n auto -p no:cacheprovider .agents/skills/*/scripts/tests
+          ) &
+          skills_pid=$!
+          (
+            uv run --locked python scripts/sync_agents.py --check
+            uv run --locked ruff check .
+            uv run --locked ruff format --check .
+            uv run --locked mypy
+            uv run --locked pre-commit run shellcheck --all-files
+          ) &
+          lint_pid=$!
+          status=0
+          wait "$skills_pid" || status=$?
+          wait "$lint_pid" || status=$?
+          exit "$status"
+
+  # Skill scripts promise to run on the system python3; 3.9 is macOS's
+  # /usr/bin/python3. Stdlib only, so no project environment. Not a required
+  # check: a failure leaves the PR UNSTABLE, which automated merges stop on.
+  skill-scripts-py39:
+    name: Skill Scripts (Python 3.9)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Skill script tests under Python 3.9
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          UV_PYTHON_DOWNLOADS: automatic
+        run: |
+          uv run --no-project --python 3.9 python --version
+          status=0
+          for dir in .agents/skills/*/scripts/tests; do
+            echo "== $dir"
+            uv run --no-project --python 3.9 python -m unittest discover -s "$dir" -t "$dir" -p 'test_*.py' || status=1
+          done
+          exit "$status"
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Run tests and enforce coverage
+        run: uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
+
+  spell-check:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: Spell check
+        run: uv run --locked pre-commit run typos --all-files
+
+  zizmor:
+    name: Workflow Security Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group dev --locked
+
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUST_LOG: zizmor=info
+        run: uv run --locked pre-commit run zizmor --all-files --verbose
+
+  # <!-- template-only -->
+  # Bootstraps a scratch clone of the commit under test as a sample app, so the
+  # bootstrap cannot rot unnoticed. scripts/bootstrap.py removes this job from the
+  # app it creates, so it is deliberately not a required check.
+  bootstrap-smoke:
+    name: Template Bootstrap Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history, so the bootstrap finds the template's first commit and
+          # records this commit in .template-origin.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+
+      # The bootstrap needs a git work tree (its clean-tree check, `git ls-files`).
+      - name: Bootstrap a scratch clone with sample values
+        run: |
+          git clone --quiet "$GITHUB_WORKSPACE" "$RUNNER_TEMP/app"
+          cd "$RUNNER_TEMP/app"
+          uv run --locked python scripts/bootstrap.py todo-api \
+            --author "Jane Doe" --github-user jdoe --github-repository jdoe/todo-api \
+            --description "Todo API" --contact-url https://github.com/jdoe
+
+      - name: Assert no placeholder survived
+        run: |
+          cd "$RUNNER_TEMP/app"
+          # Stage everything (ignored files stay out) so git grep sees new files.
+          git add --all
+          # .template-origin names the template repository on purpose. The
+          # tokens never occur inside ordinary words, so any case is a leftover;
+          # the display placeholders are matched as whole words, as the
+          # template's sites spell them.
+          status=0
+          if git grep --cached -n -I -i -E 'my\-app|my_app|uv\-template|your\-username|you@example\.com' -- . ':!.template-origin'; then
+            echo "::error::the bootstrap left a placeholder token on the lines above"; status=1
+          fi
+          if git grep --cached -n -I -i -w -E 'My\ App|Your\ Name|A\ short\ description\ of\ the\ project\.|A\ short\ description\ of\ what\ this\ application\ does\.' -- . ':!.template-origin'; then
+            echo "::error::the bootstrap left a display placeholder on the lines above"; status=1
+          fi
+          for path in TEMPLATE.md scripts/bootstrap.py tests/test_bootstrap.py src/my_app \
+            .agents/skills/starting-an-app/references/bootstrap.md \
+            .claude/skills/starting-an-app/references/bootstrap.md; do
+            if [ -e "$path" ]; then echo "::error::$path survived the bootstrap"; status=1; fi
+          done
+          grep -qx 'ENV_PREFIX = "TODO_API_"' src/todo_api/settings.py || { echo "::error::env prefix not renamed"; status=1; }
+          grep -qE '^commit: [0-9a-f]{40}$' .template-origin || { echo "::error::.template-origin lacks the template commit"; status=1; }
+          if grep -rn -e 'template-only' -e 'Template Bootstrap Smoke' .github .agents .claude AGENTS.md README.md; then
+            echo "::error::template-only material survived"; status=1
+          fi
+          exit "$status"
+
+      - name: Assert the Product check fails on the unfilled section
+        run: |
+          cd "$RUNNER_TEMP/app"
+          if uv run --locked pytest -q tests/test_product_section.py >"$RUNNER_TEMP/product.log" 2>&1; then
+            cat "$RUNNER_TEMP/product.log"
+            echo "::error::tests/test_product_section.py passed on an app whose Product section is still TODO"
+            exit 1
+          fi
+          if ! grep -qF 'TODO: left in the Product section' "$RUNNER_TEMP/product.log"; then
+            cat "$RUNNER_TEMP/product.log"
+            echo "::error::tests/test_product_section.py failed, but not for the unfilled Product section"
+            exit 1
+          fi
+
+      - name: Fill the Product section
+        run: |
+          cd "$RUNNER_TEMP/app"
+          sed -i '/^## Product$/,/^## [A-Z]/ s/TODO: /Filled in by the smoke job: /' AGENTS.md
+          if sed -n '/^## Product$/,/^## [A-Z]/p' AGENTS.md | grep -F 'TODO:'; then
+            echo "::error::a TODO: survived in the Product section"
+            exit 1
+          fi
+
+      - name: just verify
+        run: |
+          cd "$RUNNER_TEMP/app"
+          uvx --from rust-just==1.47.1 just verify
+  # <!-- /template-only -->

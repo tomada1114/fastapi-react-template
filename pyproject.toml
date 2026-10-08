@@ -1,0 +1,318 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "my-app"
+# Static build metadata required to install the package; never bumped.
+version = "0.1.0"
+description = "A short description of the project."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "typer>=0.27.2",
+    "uvicorn>=0.53.0",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Your Name" }]
+keywords = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+]
+
+[project.optional-dependencies]
+# The OpenRouter LLM adapter (src/my_app/adapters/openrouter.py). Without it the
+# app runs with the LLM closed; see the integrating-llm skill.
+ai = ["httpx>=0.28"]
+
+[project.scripts]
+my-app = "my_app.cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/your-username/uv-template"
+Repository = "https://github.com/your-username/uv-template"
+Issues = "https://github.com/your-username/uv-template/issues"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "httpx2>=2.13",
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
+    "pytest>=8.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.6",
+    "pyyaml>=6.0",
+    "ruff>=0.16.8",
+]
+
+# --------------------------------------------------------------------------- #
+#  uv
+# --------------------------------------------------------------------------- #
+
+[tool.uv]
+# A relative `exclude-newer` needs uv 0.9.17 or later ("Add support for
+# relative durations in `exclude-newer`", uv changelogs/0.9.x.md), and uv.lock
+# records it the way 0.11.8 and later write it ("Use a sentinel timestamp for
+# relative `exclude-newer` ... values in lockfiles", changelogs/0.11.x.md), so an
+# older uv could rewrite the lock and fail `uv lock --check`.
+required-version = ">=0.11.8"
+# `uv lock` and `uv sync` ignore any release younger than 14 days. It must equal
+# the `uv` entry's `cooldown.default-days` in .github/dependabot.yml, so
+# Dependabot almost never proposes a version this window refuses to lock.
+exclude-newer = "14 days"
+
+# --------------------------------------------------------------------------- #
+#  Build
+# --------------------------------------------------------------------------- #
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/my_app"]
+
+# --------------------------------------------------------------------------- #
+#  Ruff – linter & formatter
+# --------------------------------------------------------------------------- #
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests", "scripts"]
+# The generated skills mirror is linted through its source, .agents/skills.
+extend-exclude = [".claude/skills"]
+
+# Skill scripts run under whatever `python3` the host provides, which may be
+# older than the project's own 3.14 floor: the floor is 3.9, macOS's
+# /usr/bin/python3 (CI's `Skill Scripts (Python 3.9)` job runs them there). Pin them below the project
+# target-version so neither the formatter nor version-specific lint rules
+# introduce syntax (e.g. PEP 758 unparenthesized `except`) that would be a
+# SyntaxError there. `**` so a skill's bundled `scripts/tests/` is pinned too:
+# those tests import the scripts and run under the same interpreters.
+[tool.ruff.per-file-target-version]
+".agents/skills/*/scripts/**/*.py" = "py39"
+# pre-commit runs the secret gate with its own interpreter (`language: python`),
+# and pre-commit supports Python 3.10+.
+"scripts/check_staged.py" = "py310"
+
+[tool.ruff.lint]
+select = [
+    # --- Core ---
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    # --- Modern Python ---
+    "UP",   # pyupgrade
+    # --- Bug prevention ---
+    "B",    # flake8-bugbear
+    "S",    # flake8-bandit (security)
+    "A",    # flake8-builtins
+    "ISC",  # flake8-implicit-str-concat
+    "ICN",  # flake8-import-conventions
+    # --- Code quality ---
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "PIE",  # flake8-pie
+    "RET",  # flake8-return
+    "ARG",  # flake8-unused-arguments
+    "ERA",  # eradicate (commented-out code)
+    "PL",   # pylint
+    # --- Performance ---
+    "PERF", # perflint
+    "FURB", # refurb
+    # --- Type checking ---
+    "TC",   # flake8-type-checking
+    # --- Style ---
+    "COM",  # flake8-commas
+    "PTH",  # flake8-use-pathlib
+    "SLF",  # flake8-self
+    "T20",  # flake8-print
+    "LOG",  # flake8-logging
+    # --- Documentation ---
+    "D",    # pydocstyle
+    # --- Testing ---
+    "PT",   # flake8-pytest-style
+    # --- Naming ---
+    "N",    # pep8-naming
+    # --- Error handling ---
+    "TRY",  # tryceratops
+    "EM",   # flake8-errmsg
+    # --- Datetime safety ---
+    "DTZ",  # flake8-datetimez
+    # --- Exception hygiene ---
+    "RSE",  # flake8-raise
+    # --- pygrep hooks ---
+    "PGH",  # pygrep-hooks
+    # --- Ruff-specific ---
+    "RUF",  # ruff-specific rules
+    # --- Layer boundaries ---
+    "TID251", # banned-api: keeps the core framework-free (see banned-api below)
+]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "COM812", # missing trailing comma — conflicts with formatter
+    "ISC001", # implicit string concatenation — conflicts with formatter
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# Pydantic, FastAPI, and Typer read annotations at run time, so the types they
+# name must stay real imports rather than move under `if TYPE_CHECKING:`.
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic_settings.BaseSettings",
+]
+runtime-evaluated-decorators = [
+    "fastapi.APIRouter.get",
+    "fastapi.APIRouter.post",
+    "fastapi.APIRouter.put",
+    "fastapi.APIRouter.patch",
+    "fastapi.APIRouter.delete",
+    "fastapi.FastAPI.get",
+    "fastapi.FastAPI.post",
+    "fastapi.FastAPI.put",
+    "fastapi.FastAPI.patch",
+    "fastapi.FastAPI.delete",
+    "fastapi.FastAPI.exception_handler",
+    "typer.Typer.command",
+    "typer.Typer.callback",
+]
+
+# The core (src/my_app/core) must stay framework- and I/O-free so every entry
+# point and adapter can share it. ALLOWED_STDLIB in tests/core/test_imports.py
+# is the authoritative import rule; these editor-time checks are a fast subset.
+# These modules are banned everywhere, then allowed back below only in the
+# layers that exist to use them.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"fastapi".msg = "the core is framework-free; use fastapi only in my_app.api"
+"typer".msg = "the core is framework-free; use typer only in my_app.cli"
+"uvicorn".msg = "the core is framework-free; use uvicorn only in my_app.cli"
+"sqlite3".msg = "the core is I/O-free; use sqlite3 only in my_app.adapters"
+"httpx".msg = "the core is I/O-free; use httpx only in an adapter or a test"
+
+[tool.ruff.lint.per-file-ignores]
+# The outer layers exist to use the frameworks and drivers the core may not.
+"src/my_app/api/**" = ["TID251"]     # FastAPI is the HTTP entry point
+"src/my_app/cli/**" = ["TID251"]     # Typer and uvicorn are the CLI entry point
+"src/my_app/adapters/**" = ["TID251"] # adapters wrap sqlite3 and other I/O
+"tests/**" = [
+    "TID251",  # tests drive the API (TestClient/httpx) and the CLI (CliRunner)
+    "S101",    # assert is fine in tests
+    "ARG001",  # unused arguments (fixtures)
+    "PLR2004", # magic numbers in tests
+    "T20",     # print in tests
+    "D1",      # missing docstrings — test names are self-documenting
+]
+"scripts/**" = [
+    "D1",  # missing docstrings — scripts are not a public API
+    "T20", # print is the expected output channel for CLI scripts
+]
+# Skill scripts belong here; authoring-skills' "Scripts bundled inside a skill"
+# section records ownership and deliberate per-change porting to other templates.
+# They are stdlib-only CLI tools run with the system `python3` and tested with
+# unittest, never part of the package's public API. These scoped waivers do not
+# affect src/, scripts/ or tests/.
+".agents/skills/**/scripts/**" = [
+    "D1",      # missing docstrings — CLI helpers, not a public API
+    "T20",     # print is the CLI's output channel
+    "S603",    # subprocess with an argv list built from fixed commands (gh, git)
+    "S607",    # `gh`/`git` resolved from PATH on purpose, like a shell would
+    "PLW1510", # subprocess.run callers check returncode themselves
+    "B904",    # re-raised SystemExit carries the user-facing message on its own
+    "E402",    # sys.path set up before a sibling-script import
+    "PLR0911", # long dispatch functions mirror the documented exit codes
+    "PLR0912", # dispatch branches mirror documented CLI outcomes
+    "PLR0915", # sequential CLI steps retain the documented workflow
+    "PLR2004", # exit codes and limits are documented in each script's header
+    "PLW0603", # module-level CLI state set once from argv
+    "RUF001",  # deliberate typographic characters in user-facing output
+    "TC003",   # runtime imports kept simple in stdlib-only scripts
+    "DTZ011",  # an issue's age in local days is approximate by design
+]
+".agents/skills/**/scripts/tests/**" = [
+    "D",       # test names are self-documenting
+    "PT",      # unittest.TestCase style: the tests run without pytest
+    "S108",    # fixture paths under /tmp are never written
+    "SLF001",  # tests reach a script's private helpers on purpose
+    "N802",    # unittest's setUp/tearDown-style method names
+    "PLC0415", # imports inside a test keep a fixture's module load local
+    "PLR0913", # fake command runners expose independent response and exit fixtures
+    "PLW2901", # fixture loops deliberately rebind values for each scenario
+    "RUF005", # list concatenation keeps command argv fixtures explicit
+    "RUF059",  # unpacked-but-unused results document the call's shape
+    "SIM117", # nested contexts preserve the upstream unittest fixture layout
+]
+
+[tool.ruff.lint.isort]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# --------------------------------------------------------------------------- #
+#  mypy – strict type checking
+# --------------------------------------------------------------------------- #
+
+[tool.mypy]
+# One target list for local verification, CI and the non-shell pre-commit entry.
+# Authored production modules only; skill unittest fixtures keep their own runner.
+files = ["src", "scripts", "tests", ".agents/skills/*/scripts/*.py"]
+python_version = "3.14"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+show_error_codes = true
+enable_error_code = ["ignore-without-code", "redundant-cast", "truthy-bool"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+
+# --------------------------------------------------------------------------- #
+#  pytest
+# --------------------------------------------------------------------------- #
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--strict-config",
+]
+# Any warning fails the run, so a deprecation surfaces here before the upgrade
+# that removes the deprecated path. Silence one only by a narrow entry with a
+# reason comment and a follow-up issue (changing-gates).
+filterwarnings = ["error"]
+
+# --------------------------------------------------------------------------- #
+#  coverage
+# --------------------------------------------------------------------------- #
+
+[tool.coverage.run]
+branch = true
+# Single-sources the measured package: `--cov` alone then needs no name, so
+# the justfile / CI / CONTRIBUTING commands survive the bootstrap rename.
+source = ["src"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+show_missing = true

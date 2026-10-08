@@ -1,0 +1,28 @@
+name: Dependency Review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Runs only on pull requests: a newer push to the same PR cancels the
+  # superseded run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # Dev-group packages are not license-gated; only runtime ones are.
+          fail-on-scopes: runtime
+          allow-licenses: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC, PSF-2.0, Python-2.0, Python-2.0.1, MPL-2.0, Unlicense, 0BSD
+          # GitHub's SBOM misreads typing-extensions' PSF-2.0 license as a
+          # compound expression that includes GPL-1.0-or-later.
+          allow-dependencies-licenses: pkg:pypi/typing-extensions
