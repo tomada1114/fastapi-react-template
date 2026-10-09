@@ -85,6 +85,14 @@ def test_json_logs_include_context_access_fields_and_traceback(configured_loggin
     assert "RuntimeError: test failure" in record["exception"]
 
 
+def test_json_log_preserves_explicit_exception_classification(configured_logging):
+    _, stream = configured_logging
+    logging.getLogger("my_app.api.errors").error(
+        "Unhandled exception", extra={"exception_type": "builtins.ValueError"}
+    )
+    assert json.loads(stream.getvalue())["exception_type"] == "builtins.ValueError"
+
+
 def test_outside_request_and_text_format_include_none_identity(configured_logging):
     logger, _ = configured_logging
     configure_logging("INFO", "text")

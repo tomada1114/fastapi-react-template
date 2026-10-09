@@ -283,6 +283,9 @@ async def _handle_unexpected_error(_: Request, error: Exception) -> JSONResponse
     logger.error(
         "Unhandled exception",
         exc_info=(RuntimeError, safe_error, error.__traceback__),
-        extra={"request_id": request_id_var.get()},
+        extra={
+            "request_id": request_id_var.get(),
+            "exception_type": f"{type(error).__module__}.{type(error).__qualname__}",
+        },
     )
     return _problem_response(500, "An unexpected error occurred", "internal_error")

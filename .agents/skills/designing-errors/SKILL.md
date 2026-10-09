@@ -169,6 +169,8 @@ not logged with `logging.exception()`. An
 unexpected error keeps its stack and exception type. The API handler logs on
 `my_app.api.errors` with a sanitized exception that omits the original message
 and cause chain, because a driver can put SQL parameters or credentials there;
+the structured `exception_type` field preserves the original module-qualified
+type for monitoring handlers and JSON consumers.
 Starlette re-raises after responding, so the server may also log it. Code that catches
 one to add context logs with `logging.exception()` and re-raises.
 The outer request-ID middleware keeps context active through this 500 handler,

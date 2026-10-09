@@ -23,7 +23,7 @@ just dev   # migrate backend/var/dev.db, then serve the API on http://127.0.0.1:
 # without Just, from backend/:
 #   mkdir -p var
 #   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked alembic upgrade head
-#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked uvicorn my_app.api.app:create_app --factory --reload
+#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked uvicorn my_app.api.app:create_app --factory --reload --no-access-log
 ```
 
 With the server running, from another terminal:
@@ -92,7 +92,7 @@ unprefixed keys are ignored.
 | Variable | Default | Effect |
 |---|---|---|
 | `MY_APP_LOG_LEVEL` | `INFO` | Case-insensitive `DEBUG`, `INFO`, `WARNING`, or `ERROR`; blank keeps the default. |
-| `MY_APP_LOG_FORMAT` | `text` | `text` or one JSON object per line with timestamp, level, logger, message, request ID, access fields, and an exception traceback when present; blank keeps text. |
+| `MY_APP_LOG_FORMAT` | `text` | `text` or one JSON object per line with timestamp, level, logger, message, request ID, access fields, and exception type/traceback when present; blank keeps text. |
 | `MY_APP_CORS_ORIGINS` | empty (CORS disabled) | Comma-separated HTTP(S) origins, e.g. `http://localhost:5173,https://app.example.com`. Spaces and empty items are removed, hosts use lowercase/punycode, default ports are removed, and duplicates kept once. Paths, queries, fragments, user info, invalid ports, trailing slashes, wildcards, and origins without an HTTP(S) scheme are rejected at startup. JSON requests from listed origins are allowed without credentials. |
 | `MY_APP_DATABASE_URL` | unset (`just dev`: `sqlite+aiosqlite:///./var/dev.db`) | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite+aiosqlite:///<path>` stores them in a SQLite file at `<path>`, relative to the working directory (an absolute path adds a fourth slash: `sqlite+aiosqlite:////var/lib/todos.db`). `postgresql+asyncpg://<user>:<password>@<host>/<database>` names a PostgreSQL database; its driver, asyncpg, is not installed yet. Anything else is rejected at startup, naming the fix: a URL without the async driver (`sqlite:` or `postgresql:` alone), an in-memory SQLite database (`:memory:`), and a path ending in `/`. |
 

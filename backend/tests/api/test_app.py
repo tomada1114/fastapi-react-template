@@ -534,11 +534,12 @@ def test_http_exception_keeps_headers_and_respects_body_rules(
         }
 
 
+@pytest.mark.parametrize("error_type", [RuntimeError, ValueError, TypeError])
 def test_unhandled_exception_returns_500_problem_without_leaking(
-    make_container, caplog
+    make_container, caplog, error_type
 ):
     app = create_app(container=make_container())
-    error = RuntimeError("db password=hunter2")
+    error = error_type("db password=hunter2")
 
     @app.get("/unexpected")
     async def unexpected() -> None:
@@ -567,6 +568,7 @@ def test_unhandled_exception_returns_500_problem_without_leaking(
     assert len(records) == 1
     assert records[0].getMessage() == "Unhandled exception"
     assert records[0].request_id == response.headers["X-Request-ID"]
+    assert records[0].exception_type == f"builtins.{error_type.__qualname__}"
     assert records[0].exc_info is not None
     assert records[0].exc_info[1] is not error
     assert records[0].exc_info[2] is not None

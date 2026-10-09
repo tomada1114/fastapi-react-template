@@ -41,7 +41,7 @@ class JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "request_id": getattr(record, "request_id", None),
         }
-        for name in ("method", "path", "status", "duration_ms"):
+        for name in ("method", "path", "status", "duration_ms", "exception_type"):
             if hasattr(record, name):
                 data[name] = getattr(record, name)
         if record.exc_info:
