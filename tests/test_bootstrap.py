@@ -264,12 +264,12 @@ def test_bootstrap_sample_values_leave_no_placeholder_anywhere(sample_app):
 
 
 def test_bootstrap_sample_values_rename_package_and_env_prefix(sample_app):
-    assert not (sample_app / "src" / "my_app").exists()
-    settings = (sample_app / "src" / "todo_api" / "settings.py").read_text(
+    assert not (sample_app / "backend" / "src" / "my_app").exists()
+    settings = (sample_app / "backend" / "src" / "todo_api" / "settings.py").read_text(
         encoding="utf-8"
     )
     assert 'ENV_PREFIX = "TODO_API_"' in settings
-    pyproject = (sample_app / "pyproject.toml").read_text(encoding="utf-8")
+    pyproject = (sample_app / "backend" / "pyproject.toml").read_text(encoding="utf-8")
     project = tomllib.loads(pyproject)
     assert project["project"]["name"] == "todo-api"
     assert "scripts" not in project["project"]
@@ -288,7 +288,7 @@ def test_bootstrap_display_name_reaches_its_sites(clone):
     assert (
         (clone / "README.md").read_text(encoding="utf-8").startswith("# Todo Service\n")
     )
-    app = (clone / "src/todo_api/api/app.py").read_text(encoding="utf-8")
+    app = (clone / "backend/src/todo_api/api/app.py").read_text(encoding="utf-8")
     assert 'APP_TITLE = "Todo Service"' in app
     devcontainer = (clone / ".devcontainer/devcontainer.json").read_text(
         encoding="utf-8"
@@ -314,7 +314,9 @@ def test_bootstrap_repository_name_alone_takes_the_github_user_as_owner(clone):
 def test_bootstrap_quoted_metadata_stays_valid_toml(clone):
     _run(clone, author="Jane O'Doe", description="Todo API — for teams")
 
-    project = tomllib.loads((clone / "pyproject.toml").read_text(encoding="utf-8"))
+    project = tomllib.loads(
+        (clone / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    )
     assert project["project"]["authors"] == [{"name": "Jane O'Doe"}]
     assert project["project"]["description"] == "Todo API — for teams"
 
@@ -348,6 +350,7 @@ def test_bootstrap_writes_no_email_address(sample_app):
     texts = _text_files(sample_app)
     metadata = (
         "pyproject.toml",
+        "backend/pyproject.toml",
         "LICENSE",
         "README.md",
         "SECURITY.md",
@@ -610,7 +613,7 @@ def test_bootstrap_outside_the_git_root_is_refused(clone):
     with pytest.raises(
         bootstrap.BootstrapError, match=r"from the root of the git work tree"
     ):
-        _run(clone / "src")
+        _run(clone / "backend")
 
 
 def test_bootstrap_outside_any_git_repository_is_refused(tmp_path):
@@ -621,8 +624,10 @@ def test_bootstrap_outside_any_git_repository_is_refused(tmp_path):
 
 
 def test_bootstrap_existing_destination_package_is_refused(clone):
-    (clone / "src" / "todo_api").mkdir()
-    (clone / "src" / "todo_api" / "__init__.py").write_text("", encoding="utf-8")
+    (clone / "backend" / "src" / "todo_api").mkdir()
+    (clone / "backend" / "src" / "todo_api" / "__init__.py").write_text(
+        "", encoding="utf-8"
+    )
     _git(clone, "add", "--all")
     _git(clone, "commit", "--quiet", "--message", "collide")
 
@@ -768,7 +773,8 @@ def _fail_after(calls: int, original: Callable[..., object]) -> Callable[..., ob
     [
         pytest.param(("rename", 0, "nothing yet"), id="rename-fails"),
         pytest.param(
-            ("write_bytes", 5, "renamed src/my_app to src/todo_api"), id="write-fails"
+            ("write_bytes", 5, "renamed backend/src/my_app to backend/src/todo_api"),
+            id="write-fails",
         ),
     ],
 )
@@ -853,7 +859,7 @@ def assert_smoke_contract(workflow: str) -> None:
     deletion_loop = re.search(r"for path in (.*?); do", smoke, re.DOTALL)
     assert deletion_loop is not None
     paths = deletion_loop.group(1).replace("\\\n", " ").split()
-    assert set(paths) == {*bootstrap.KEEPABLE_FILES, "src/my_app"}, (
+    assert set(paths) == {*bootstrap.KEEPABLE_FILES, "backend/src/my_app"}, (
         "smoke deletion list drifted"
     )
 

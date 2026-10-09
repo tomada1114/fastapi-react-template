@@ -101,3 +101,13 @@ repos:
         types: [python]
         pass_filenames: false
         stages: [pre-commit]
+      # The app has its own mypy configuration (backend/pyproject.toml) and
+      # `tests` package, so it is checked by a second run from backend/.
+      - id: mypy-backend
+        name: mypy (backend)
+        entry: uv run --locked --directory backend mypy
+        language: system
+        files: ^backend/
+        types: [python]
+        pass_filenames: false
+        stages: [pre-commit]

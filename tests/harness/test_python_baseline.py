@@ -13,12 +13,26 @@ from tests.harness._workflows import jobs, read_workflow, steps, workflow_files
 from tests.harness._yaml import as_mapping, block_text, scalar
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+ROOT_PYPROJECT = "pyproject.toml"
+BACKEND_PYPROJECT = "backend/pyproject.toml"
+# The fixtures' two configuration files, on the 3.14 baseline.
+ROOT_FIXTURE = '[tool.mypy]\npython_version = "3.14"\n'
+BACKEND_FIXTURE = '[project]\nrequires-python = ">=3.14"\nclassifiers = ["Programming Language :: Python :: 3.14"]\n[tool.mypy]\npython_version = "3.14"\n'
 
 
 def python_baseline_findings(root: Path) -> list[str]:
-    """Report conflicting baseline versions while allowing inferred tool targets."""
-    config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    project = config["project"]
+    """Report conflicting baseline versions while allowing inferred tool targets.
+
+    The floor is the app's: ``requires-python`` and the classifiers live in
+    ``backend/pyproject.toml``, the workspace member. Both that file and the
+    root workspace configuration state a mypy ``python_version``, and either
+    may pin a Ruff ``target-version``.
+    """
+    configs = {
+        relative: tomllib.loads((root / relative).read_text(encoding="utf-8"))
+        for relative in (ROOT_PYPROJECT, BACKEND_PYPROJECT)
+    }
+    project = configs[BACKEND_PYPROJECT]["project"]
     floor = re.fullmatch(r">=(\d+\.\d+)(?:\.0)?", project["requires-python"])
     assert floor is not None, "requires-python must state a readable minimum version"
     expected = floor[1]
@@ -26,8 +40,9 @@ def python_baseline_findings(root: Path) -> list[str]:
         ".python-version": (root / ".python-version")
         .read_text(encoding="utf-8")
         .strip(),
-        "mypy": config["tool"]["mypy"]["python_version"],
     }
+    for relative, config in configs.items():
+        versions[f"{relative} mypy"] = config["tool"]["mypy"]["python_version"]
     classifiers = [
         value.rsplit(" :: ", 1)[1]
         for value in project.get("classifiers", [])
@@ -37,11 +52,12 @@ def python_baseline_findings(root: Path) -> list[str]:
     versions.update(
         {f"classifier {index}": value for index, value in enumerate(classifiers)}
     )
-    target = config.get("tool", {}).get("ruff", {}).get("target-version")
-    if target is not None:
-        match = re.fullmatch(r"py(\d)(\d+)", target)
-        assert match is not None, "Ruff target version is unreadable"
-        versions["ruff"] = f"{match[1]}.{match[2]}"
+    for relative, config in configs.items():
+        target = config.get("tool", {}).get("ruff", {}).get("target-version")
+        if target is not None:
+            match = re.fullmatch(r"py(\d)(\d+)", target)
+            assert match is not None, f"{relative}: Ruff target version is unreadable"
+            versions[f"{relative} ruff"] = f"{match[1]}.{match[2]}"
     container = root / ".devcontainer/devcontainer.json"
     if container.is_file():
         image = json.loads(container.read_text(encoding="utf-8"))["image"]
@@ -95,15 +111,40 @@ def test_python_baseline_repository_versions_agree() -> None:
     assert python_baseline_findings(REPO_ROOT) == []
 
 
+def test_python_baseline_matching_fixture_passes(tmp_path: Path) -> None:
+    files = {
+        ".python-version": "3.14\n",
+        ROOT_PYPROJECT: ROOT_FIXTURE + '[tool.ruff]\ntarget-version = "py314"\n',
+        BACKEND_PYPROJECT: BACKEND_FIXTURE,
+    }
+    for relative, text in files.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    assert python_baseline_findings(tmp_path) == []
+
+
 @pytest.mark.parametrize(
-    "site", ["interpreter", "floor", "classifier", "mypy", "container", "ruff", "ci"]
+    "site",
+    [
+        "interpreter",
+        "floor",
+        "classifier",
+        "mypy",
+        "root-mypy",
+        "container",
+        "ruff",
+        "backend-ruff",
+        "ci",
+    ],
 )
 def test_python_baseline_mismatched_version_is_rejected(
     tmp_path: Path, site: str
 ) -> None:
     files = {
         ".python-version": "3.14\n",
-        "pyproject.toml": '[project]\nrequires-python = ">=3.14"\nclassifiers = ["Programming Language :: Python :: 3.14"]\n[tool.mypy]\npython_version = "3.14"\n',
+        ROOT_PYPROJECT: ROOT_FIXTURE,
+        BACKEND_PYPROJECT: BACKEND_FIXTURE,
         ".devcontainer/devcontainer.json": '{"image":"mcr.microsoft.com/devcontainers/python:3.14"}',
         ".github/workflows/ci.yml": "jobs:\n  lint:\n    steps:\n      - uses: astral-sh/setup-uv@pin\n",
     }
@@ -115,15 +156,19 @@ def test_python_baseline_mismatched_version_is_rejected(
             "classifier": "Python :: 3.14",
             "mypy": 'python_version = "3.14"',
         }[site]
-        files["pyproject.toml"] = files["pyproject.toml"].replace(
+        files[BACKEND_PYPROJECT] = files[BACKEND_PYPROJECT].replace(
             old, old.replace("3.14", "3.13")
         )
+    elif site == "root-mypy":
+        files[ROOT_PYPROJECT] = files[ROOT_PYPROJECT].replace("3.14", "3.13")
     elif site == "container":
         files[".devcontainer/devcontainer.json"] = files[
             ".devcontainer/devcontainer.json"
         ].replace("3.14", "3.13")
     elif site == "ruff":
-        files["pyproject.toml"] += '[tool.ruff]\ntarget-version = "py313"\n'
+        files[ROOT_PYPROJECT] += '[tool.ruff]\ntarget-version = "py313"\n'
+    elif site == "backend-ruff":
+        files[BACKEND_PYPROJECT] += '[tool.ruff]\ntarget-version = "py313"\n'
     else:
         files[".github/workflows/ci.yml"] += (
             '        with:\n          python-version: "3.13"\n'
@@ -150,7 +195,8 @@ def test_python_baseline_project_interpreter_override_is_rejected(
 ) -> None:
     files = {
         ".python-version": "3.14\n",
-        "pyproject.toml": '[project]\nrequires-python = ">=3.14"\nclassifiers = ["Programming Language :: Python :: 3.14"]\n[tool.mypy]\npython_version = "3.14"\n',
+        ROOT_PYPROJECT: ROOT_FIXTURE,
+        BACKEND_PYPROJECT: BACKEND_FIXTURE,
         ".github/workflows/ci.yml": override
         if override.startswith("jobs:")
         else override + "jobs: {}\n",
