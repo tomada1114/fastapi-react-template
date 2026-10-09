@@ -38,9 +38,9 @@ imports only itself and the deterministic standard-library modules allowed by
 - Enforced by: the AST call check in `backend/tests/core/test_imports.py`, which rejects
   bare calls to `open`, `input`, `print`, `breakpoint`, `exec`, `eval`, `compile`, and
   `__import__`; `now`, `utcnow`, or `today` on a receiver name or attribute ending in
-  `datetime` or `date`; and `uuid1`, `uuid4`, `uuid6`, or `uuid7`, bare or on a `uuid`
-  receiver (the `UUID` type is allowed; ids come from `IdFactory`). It also rejects
-  `date.fromtimestamp` on recognizable `date` receivers, `datetime.fromtimestamp` on
+  `datetime` or `date`; and `uuid1`, `uuid4`, `uuid6`, `uuid7`, `uuid8`, or `getnode`,
+  bare or on a `uuid` receiver (`UUID` and `uuid5` are allowed; ids come from `IdFactory`).
+  It also rejects `date.fromtimestamp` on recognizable `date` receivers, `datetime.fromtimestamp` on
   recognizable `datetime` receivers without an explicit timezone, and any attribute
   call to `astimezone` without an explicit timezone. Positional or keyword `tz`
   arguments count as explicit unless they are literal `None`. This is a structural
