@@ -46,6 +46,13 @@ A `dependabot/uv/...` PR moves Python dependencies. Review it as closely as an A
   existing extra's lower bound is reviewed like a required one's: `uv.lock` pins both.
   A new entry, a removed one, a new or removed extra, or anything under `[tool.*]` —
   `exclude-newer` included — goes to "Stop and ask".
+- No gate installs an extra: CI syncs `--group dev` and `just install` `--all-groups`,
+  and `uv sync` includes an extra only when asked (`--extra <EXTRA>`, "Include optional
+  dependencies from the specified extra name"; `uv sync --help`, observed 2026-10-09).
+  So green CI says nothing about a package that only an extra brings in. Before
+  approving a bump of one, run the backend suite with that extra on a checkout of the PR
+  head, `uv run --locked --extra <name> --directory backend pytest`, and hold the PR if
+  it fails.
 - In `uv.lock`, what matters is that no `[[package]]` appears that the base did not
   lock: that is a new package, transitive or not — "Stop and ask", with
   `managing-dependencies`' review record. These changes are expected and fine:
