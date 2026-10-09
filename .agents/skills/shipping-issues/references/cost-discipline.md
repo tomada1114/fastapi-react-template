@@ -29,8 +29,8 @@ reconstruct a priority a label already carries; if a label looks wrong, fix the 
 ## Review: the pull request's own
 
 The review is the pull request's: the Codex GitHub integration reviews a PR when it
-opens, and its result arrives within minutes (2–7 minutes on this repository's PRs #159,
-#160 and #170, observed 2026-10-07). No local pass runs before the PR — no review
+opens, and its result arrives within minutes (2–7 minutes on uv-template's PRs tomada1114/uv-template#159,
+tomada1114/uv-template#160 and tomada1114/uv-template#170, observed 2026-10-07). No local pass runs before the PR — no review
 brief, no `/code-review` — because a second reviewer reading the same diff first costs a
 spawn per branch and a full read of the diff, for findings the PR's review returns
 anyway. What the run spends instead is a wait

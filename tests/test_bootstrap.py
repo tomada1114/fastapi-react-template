@@ -52,7 +52,8 @@ SKILL_REFERENCE = "skills/starting-an-app/references/bootstrap.md"
 # developer's own configuration: hooks, signing, default branch, identity.
 # Auto maintenance is off too: a commit otherwise leaves a detached
 # `git maintenance run --auto` behind, which can repack the session-scoped
-# template's objects while a later local clone is copying them (#175).
+# template's objects while a later local clone is copying them
+# (tomada1114/uv-template#175).
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": os.devnull,
     "GIT_CONFIG_NOSYSTEM": "1",
@@ -431,7 +432,9 @@ def test_resolve_names_rejects_an_unusable_contact_url(url):
             id="dot-git",
         ),
         pytest.param(
-            {"description": "Like uv-template"}, r"placeholder 'uv-template'", id="ph"
+            {"description": "Like fastapi-react-template"},
+            r"placeholder 'fastapi-react-template'",
+            id="ph",
         ),
         pytest.param(
             {"author": "you@example.com"}, r"email address", id="placeholder-email"

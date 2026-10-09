@@ -178,7 +178,7 @@ jobs:
           # the display placeholders are matched as whole words, as the
           # template's sites spell them.
           status=0
-          if git grep --cached -n -I -i -E 'my\-app|my_app|uv\-template|your\-username|you@example\.com' -- . ':!.template-origin'; then
+          if git grep --cached -n -I -i -E 'my\-app|my_app|fastapi\-react\-template|your\-username|you@example\.com' -- . ':!.template-origin'; then
             echo "::error::the bootstrap left a placeholder token on the lines above"; status=1
           fi
           if git grep --cached -n -I -i -w -E 'My\ App|Your\ Name|A\ short\ description\ of\ the\ project\.|A\ short\ description\ of\ what\ this\ application\ does\.' -- . ':!.template-origin'; then

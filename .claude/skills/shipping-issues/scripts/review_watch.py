@@ -8,16 +8,16 @@ posts one issue comment carrying the marker
 row holds the review's status (`🔄 **Running**`, then `✅ **Completed**`, each
 with a `<relative-time datetime=...>`), the 7-character short commit it
 reviewed, and its trigger ("PR opened"). Running to Completed took about
-2.5 minutes on PRs #170 and #171 (observed 2026-10-07). Findings arrive as a
+2.5 minutes on PRs tomada1114/uv-template#170 and tomada1114/uv-template#171 (observed 2026-10-07). Findings arrive as a
 COMMENTED review from the bot (`commit_id` = the reviewed commit) with inline
 comments, each starting with a priority badge (`![P1 Badge]`, P0, P2, ...) and
 a bold title. A clean review leaves no review and no inline comment; the bot
 reacts 👍 on the PR, which this script reports as corroboration only.
 
-Codex may review the PR again after a push: PRs #184 and #190 ended on a row
+Codex may review the PR again after a push: PRs tomada1114/uv-template#184 and tomada1114/uv-template#190 ended on a row
 naming a fix-push head (observed 2026-10-08). The summary keeps one row,
 rewritten for the latest review (a `Manual request` row replaced the opening
-one on PRs #154 and #156), so each review is a round: every completed row
+one on PRs tomada1114/uv-template#154 and tomada1114/uv-template#156), so each review is a round: every completed row
 this script sees is remembered in <runstate>/review/<pr>-rounds.json (an older
 <pr>-opening.json is still read), and every COMMENTED bot review, posted only
 once its review completes, is a round too. Rounds are numbered in the order
@@ -236,7 +236,7 @@ def trusted(item: GitHubItem, bot: str) -> bool:
     A `[bot]` login belongs to a GitHub App alone: a person's login holds only
     letters, digits and hyphens, so it cannot be spoofed. The account type is
     not enough on its own and not always right — the reactions API reports the
-    Codex app's 👍 with type "User" (observed on PR #170, 2026-10-07) — so a
+    Codex app's 👍 with type "User" (observed on PR tomada1114/uv-template#170, 2026-10-07) — so a
     `[bot]` login is trusted on the login, and any other login needs type Bot.
     """
     user = item.get("user")

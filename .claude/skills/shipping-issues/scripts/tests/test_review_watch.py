@@ -5,7 +5,8 @@ Run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
      (from the shipping-issues skill directory)
 
 The fixtures copy the shapes the Codex GitHub integration actually posted on
-this repository's PRs #159, #160, #170 and #171 (read 2026-10-07): the
+uv-template's PRs tomada1114/uv-template#159, tomada1114/uv-template#160, tomada1114/uv-template#170 and
+tomada1114/uv-template#171 (read 2026-10-07): the
 edited-in-place summary comment (`🔄 **Running** since ...`, then
 `✅ **Completed** ...`), a COMMENTED review, its inline comments with a
 priority badge, and the 👍 reaction a clean review leaves.
@@ -166,7 +167,7 @@ def inline(
 
 def reaction(content="+1", author=None):
     # The reactions API reports the Codex app's reaction with type "User"
-    # (observed on PR #170): the `[bot]` login is what identifies it.
+    # (observed on PR tomada1114/uv-template#170): the `[bot]` login is what identifies it.
     return {"content": content, "user": author or user(kind="User")}
 
 
@@ -753,8 +754,8 @@ class ReadPrTest(unittest.TestCase):
 
 
 class LaterReviewTest(unittest.TestCase):
-    """The summary keeps ONE row, rewritten for the latest review: on PRs #154
-    and #156 (read 2026-10-07) a `@codex review` comment left a single
+    """The summary keeps ONE row, rewritten for the latest review: on PRs
+    tomada1114/uv-template#154 and tomada1114/uv-template#156 (read 2026-10-07) a `@codex review` comment left a single
     `Manual request` row. So the watch remembers the opening review it saw
     settle, and a later, unsolicited review cannot replace that verdict."""
 
@@ -910,7 +911,7 @@ def round_inline(cid, title, rid, sha, *, priority="P2"):
 
 class RoundsTest(unittest.TestCase):
     """Codex may review a PR again after a fix push (a `New commits` row on
-    PRs #184 and #190, observed 2026-10-08). Each settled review is a round,
+    PRs tomada1114/uv-template#184 and tomada1114/uv-template#190, observed 2026-10-08). Each settled review is a round,
     numbered in the order it completed; finding numbers only ever append."""
 
     def setUp(self):
@@ -1136,7 +1137,8 @@ class AfterPushTest(unittest.TestCase):
         self.assertEqual(saved["await"]["sha"], FIXED)
 
     def test_the_default_grace_outlasts_the_slowest_observed_start(self):
-        # A push-started review began 2 min 13 s after the push on PR #184;
+        # A push-started review began 2 min 13 s after the push on PR
+        # tomada1114/uv-template#184;
         # 200 s in, the default 300 s grace is still waiting for one.
         self.seed_wait(FIXED, seconds_ago=200)
 

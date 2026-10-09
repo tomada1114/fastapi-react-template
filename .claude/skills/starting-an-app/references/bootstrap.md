@@ -29,8 +29,8 @@ uv run --locked python scripts/bootstrap.py todo-api \
 | `name` (positional) | yes | `my-app` (distribution, console script, README text), `my_app` (the package, renamed `src/my_app` → `src/todo_api`), `MY_APP_` (the settings' environment prefix, `TODO_API_`) | lower-case letters and digits in words joined by single hyphens, starting with a letter, at most 40 characters |
 | `--author` | yes | `Your Name` in `pyproject.toml` (TOML-quoted) and `LICENSE` | one line, at most 100 characters |
 | `--description` | yes | the two "A short description …" sentences (`pyproject.toml`, README) | one line, at most 200 characters |
-| `--github-user` | yes | the owner in `your-username/uv-template` | a GitHub user or organization name |
-| `--github-repository` | no | the repository in `your-username/uv-template` | `NAME` or `OWNER/NAME`; the owner must equal `--github-user`; defaults to the slug |
+| `--github-user` | yes | the owner in `your-username/fastapi-react-template` | a GitHub user or organization name |
+| `--github-repository` | no | the repository in `your-username/fastapi-react-template` | `NAME` or `OWNER/NAME`; the owner must equal `--github-user`; defaults to the slug |
 | `--display-name` | no | `My App` (README's title, the API's OpenAPI title, the devcontainer) | one line, at most 60 characters; defaults to the slug |
 | `--contact-url` | no | the contact sentences in `SECURITY.md` and `CODE_OF_CONDUCT.md` | a public `https://` URL without credentials, such as a profile page |
 | `--keep-bootstrap` | no | — | keeps `TEMPLATE.md`, the script, its test, and this page, untouched, for debugging; the kept test exercises the template, so `just verify` fails until they are deleted |
@@ -63,7 +63,7 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
   `pydantic_settings`, `uvicorn`, `httpx`, `httpx2`, `starlette`, `pytest`, `ruff`, `mypy`),
   which the app's own module would shadow; every `scripts/*.py` stem; any Python
   keyword; and any standard-library module (`sys.stdlib_module_names`);
-- a value containing a placeholder token (`my-app`, `my_app`, `uv-template`,
+- a value containing a placeholder token (`my-app`, `my_app`, `fastapi-react-template`,
   `your-username`, `you@example.com`, any case), or equal to a placeholder phrase
   (`My App`, `Your Name`, any case), which the leftover scan would report. A value that
   only contains such a phrase inside other words ("Sync my apps") is fine;

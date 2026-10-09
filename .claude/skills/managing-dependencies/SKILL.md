@@ -107,7 +107,7 @@ procedure that depends on someone remembering it does not hold. A relative windo
 no date to move, and the floor still bounds what a hand-run command resolves.
 
 <!-- template-only -->
-Decided in the template's issue #92, option D, when the fixed cutoff date was 77 days
+Decided in uv-template's issue tomada1114/uv-template#92, option D, when the fixed cutoff date was 77 days
 old.
 <!-- /template-only -->
 

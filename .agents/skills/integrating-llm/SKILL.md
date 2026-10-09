@@ -97,7 +97,7 @@ timeout=DEFAULT_LLM_TIMEOUT_SECONDS)`.
 - Routes stay synchronous; a call can hold one of FastAPI's thread-pool slots for up
   to its `timeout`.
 - A route that bills is the app's to protect: access control and rate limiting are
-  not shipped. The sibling nextjs-app-template's issue #115 is the pattern to adapt.
+  not shipped. The sibling nextjs-app-template's issue tomada1114/nextjs-app-template#115 is the pattern to adapt.
 - The route declares the statuses its errors become in `responses=`
   (`building-api-routes`).
 
