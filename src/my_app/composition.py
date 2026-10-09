@@ -1,7 +1,7 @@
 """The composition root: the one place adapters are wired into services.
 
-Both entry points get their services from ``build_container`` and from
-nowhere else, so swapping a repository is a change to this module only.
+The API gets its services from ``build_container`` and from nowhere else,
+so swapping a repository is a change to this module only.
 """
 
 from __future__ import annotations

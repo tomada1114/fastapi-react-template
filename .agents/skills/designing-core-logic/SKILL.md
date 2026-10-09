@@ -15,14 +15,13 @@ description: >
 **Owns:** the layers beneath the entry points — what belongs in `core/`, how a port and
 its adapters are shaped and tested, how configuration is read, and how
 `composition.py` wires adapters into services. **Does not own:** the layer map
-(AGENTS.md's "Architecture"); removing an entry point (`building-api-routes`,
-`designing-clis`); the `AppError` hierarchy and its mappings (`designing-errors`);
-exposing a service over HTTP (`building-api-routes`) or as a command
-(`designing-clis`); module-level Python style (`writing-python`).
+(AGENTS.md's "Architecture"); removing the API (`building-api-routes`); the
+`AppError` hierarchy and its mapping (`designing-errors`); exposing a service over
+HTTP (`building-api-routes`); module-level Python style (`writing-python`).
 
 ## The direction dependencies point
 
-`api/` and `cli/` call services from `core/`, which they receive only from
+`api/` calls services from `core/`, which it receives only from
 `composition.build_container`; `adapters/` implement the ports `core/` declares; `core/`
 imports only itself and the deterministic standard-library modules allowed by
 `ALLOWED_STDLIB` in `tests/core/test_imports.py`.
@@ -57,10 +56,10 @@ allows. The check runs on every construction — an adapter rebuilding a row,
 value. A value that does not have its identity yet is its own type: `TodoDraft` has no
 `id`, `Todo` has one, and both run `_check_invariants`.
 
-A rule lives once, in the core, as a function both entry points reach through a
+A rule lives once, in the core, as a function every entry point reaches through a
 service. `normalize_title` strips and length-checks a title; the API's request model
-and the CLI's argument leave the title as a plain `str`, so every entry point rejects
-the same input with the same message.
+leaves the title as a plain `str`, so every entry point rejects the same input with
+the same message.
 
 ## Services are the use cases
 
@@ -144,7 +143,7 @@ the vendor's own `OPENROUTER_API_KEY`, read through a `validation_alias`
 `composition.py` is the only module that constructs adapters and services.
 `build_container(settings, clock=utc_now)` picks adapters from the settings
 (`_build_repository`) and returns a frozen `Container` with one field per service; the
-API stores it on `app.state` and the CLI on `ctx.obj`. A new service is a new
+API stores it on `app.state`. A new service is a new
 `Container` field built in `build_container`; a new adapter choice is a branch in the
 function that picks it, driven by a setting.
 
@@ -171,10 +170,9 @@ forwards exception details to registered context managers on exit and preserves 
 suppression decision. Direct `close()` exits without an active exception. Cleanup
 failures propagate while remaining callbacks still run.
 
-The API builds services in its factory and closes that container in its lifespan;
-the CLI's lazy accessor registers cleanup on the root context. A supplied container
-(`container=` or `obj=`) stays caller-owned: close it explicitly or use it as a context
-manager. Current adapters acquire resources per call and register nothing here.
+The API builds services in its factory and closes that container in its lifespan. A
+supplied container (`container=`) stays caller-owned: close it explicitly or use it as
+a context manager. Current adapters acquire resources per call and register nothing here.
 
 ## Adding a use case
 
@@ -185,7 +183,7 @@ manager. Current adapters acquire resources per call and register nothing here.
    contract-suite test that every adapter must pass.
 4. Tests in `tests/core/` through the service's public methods, happy and error paths.
 5. Expose it in each entry point the project keeps. **REQUIRED:** `building-api-routes`
-   for a route, if the API exists; `designing-clis` for a command, if the CLI exists.
+   for a route, if the API exists.
 
 ## Adding a port and its adapters
 

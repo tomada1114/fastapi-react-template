@@ -2,11 +2,11 @@
 name: updating-docs
 description: >
   Decides whether a change owes a documentation update and which surface it lands on:
-  README.md (quickstart, CLI and HTTP tables, exit codes, configuration), CONTRIBUTING.md,
+  README.md (quickstart, HTTP table, error statuses, configuration), CONTRIBUTING.md,
   AGENTS.md, a skill, docs/architecture/, or a docstring - plus what belongs in prose,
   GitHub Markdown alerts, and examples that must work with the current code. Use when
   deciding whether a pull request needs a document changed, when one change must move
-  two files at once, or when a command, setting, or behavior a document describes
+  two files at once, or when a route, setting, or behavior a document describes
   changed.
 ---
 
@@ -15,13 +15,13 @@ description: >
 **Owns:** whether a change owes a documentation update, which surface it lands on, and
 how documentation prose is written. **Does not own:** how a skill is authored and
 mirrored (`authoring-skills`); an ADR or the roadmap (`recording-architecture-decisions`,
-`steering-the-roadmap`); what a docstring says (`writing-python`); the error and
-exit-code tables' content (`designing-errors`).
+`steering-the-roadmap`); what a docstring says (`writing-python`); the error status
+table's content (`designing-errors`).
 
 ## Decide on what a reader can observe
 
 Documentation impact follows what a reader can observe, not which directory the edit
-began in. A command, an HTTP route, a status code, an exit code, a `MY_APP_*` setting, a
+began in. An HTTP route, a status code, a `MY_APP_*` setting, a
 `just` recipe, or a step of setup changing is observable. An internal refactor or a
 test-only change needs no documentation change — say so in the pull request rather than
 leaving the reader to guess. Deciding that nothing is owed is a legitimate outcome.
@@ -35,7 +35,7 @@ Each surface has one job; do not let one grow a second copy of another's content
 
 | File | Holds | Changes when |
 |---|---|---|
-| `README.md` | What the application does, the quickstart, the CLI and HTTP table, error statuses and exit codes, the configuration table, dropping an entry point | A command, route, status, exit code, or setting it documents changes |
+| `README.md` | What the application does, the quickstart, the HTTP table, error statuses, the configuration table, the architecture | A route, status, or setting it documents changes |
 | `CONTRIBUTING.md` | Prerequisites, setup, the development commands, the pull request process, commit messages | Setup, the toolchain, or the pull request process changes |
 | `AGENTS.md` | What every agent task needs: the quick reference, the "Validating a change" table, the architecture, the Skills table, the approval rules, the enforcement layers | One of those facts changes |
 | `.agents/skills/<name>/` | One kind of change's conventions, loaded on demand | Those conventions change (`authoring-skills`) |
@@ -62,9 +62,9 @@ reader of the diff catches it.
 | A skill added, renamed, or deleted | Its row in AGENTS.md's Skills table | `tests/harness/test_skills.py` (`just check-harness`) |
 | A `just` recipe added, renamed, or removed | Its line in AGENTS.md's "Quick Reference", in the block for who runs it; `CONTRIBUTING.md` if it lists the recipe | `tests/harness/test_just_recipes.py` when a document it reads still names a renamed or removed one (its docstring lists them; not an ADR, the roadmap, `docs/product/`, or `.devcontainer/`); review for an added one |
 | A gate, or the narrowest check for one kind of change | Its row in AGENTS.md's "Validating a change" | review |
-| A CLI command or an HTTP route | `README.md`'s command table | review |
+| An HTTP route | `README.md`'s HTTP table | review |
 | A `MY_APP_*` setting | `README.md`'s configuration table | review |
-| An `AppError` mapping or an exit code | `README.md`'s error text and exit-code table | `tests/cli/test_errors.py` pins the codes |
+| An `AppError` mapping | `README.md`'s error text | review |
 | A label in `.github/labels.yml` | `.github/workflows/pr-label.yml`'s mapping, if it names it | `tests/harness/test_labels.py` |
 | A required CI job | `.github/rulesets/main.json` | `tests/harness/test_ruleset_contexts.py`; `tests/test_apply_ruleset.py` pins the list |
 

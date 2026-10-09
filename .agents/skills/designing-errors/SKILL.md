@@ -1,37 +1,33 @@
 ---
 name: designing-errors
 description: >
-  Covers the AppError hierarchy in src/my_app/core/errors.py and how each entry point
-  reports it: when a failure earns a subclass, what its message and attributes carry,
-  translating a driver error in an adapter, the HTTP status _status_for in api/app.py
-  gives it with an ErrorResponse body (404, 422, the LLM errors' 503, 429, 504, and
-  502, 400 fallback), and the CLI exit codes
-  of ExitCode in cli/errors.py (0, 1, 2, 3). Use when adding a failure mode, choosing a
-  status or exit code, seeing an unexpected 500 or traceback, or deciding whether to
-  log an error.
+  Covers the AppError hierarchy in src/my_app/core/errors.py and how the API reports
+  it: when a failure earns a subclass, what its message and attributes carry,
+  translating a driver error in an adapter, and the HTTP status _status_for in
+  api/app.py gives it with an ErrorResponse body (404, 422, the LLM errors' 503, 429,
+  504, and 502, 400 fallback). Use when adding a failure mode, choosing a status,
+  seeing an unexpected 500 or traceback, or deciding whether to log an error.
 ---
 
 # Designing Errors
 
-**Owns:** what counts as a domain error, the `AppError` hierarchy, and the two tables
-that turn one into an HTTP status and into a CLI exit code. **Does not own:** where the
-rule that raises an error lives (`designing-core-logic`); the shape of a route and its
-`responses=` declaration (`building-api-routes`); wrapping a command in `exit_on_domain_error`
-(`designing-clis`); `raise ... from`, the `EM` message variable, and logging calls in
-general (`writing-python`).
+**Owns:** what counts as a domain error, the `AppError` hierarchy, and the table that
+turns one into an HTTP status. **Does not own:** where the rule that raises an error
+lives (`designing-core-logic`); the shape of a route and its `responses=` declaration
+(`building-api-routes`); `raise ... from`, the `EM` message variable, and logging calls
+in general (`writing-python`).
 
 ## Two kinds of failure
 
 - **Expected:** the user's input or the state of their data breaks a domain rule — an
-  unknown id, an invalid title. It is raised as an `AppError` subclass, and each entry
-  point turns it into its own vocabulary in exactly one place. It is reported, not
-  logged, and never shows a traceback.
+  unknown id, an invalid title. It is raised as an `AppError` subclass, and the API
+  turns it into an HTTP status in exactly one place. It is reported, not logged, and
+  never shows a traceback.
 - **A bug:** anything else — a naive `datetime` from a clock, a driver error nobody
   translated. It is a builtin exception or left to propagate, and it keeps its
   traceback: the API answers a plain-text `500 Internal Server Error` while the
   traceback goes to the server's log (observed with starlette 1.3.1 and fastapi
-  0.139.2, 2026-10-06), and the CLI prints Python's traceback. Never catch `Exception`
-  to dress a bug up as a domain error.
+  0.139.2, 2026-10-06). Never catch `Exception` to dress a bug up as a domain error.
 
 `core/models.py` draws the line in one function: `_check_invariants` raises
 `InvalidTodoError` for a bad title but a plain `ValueError` for a naive `created_at`,
@@ -48,10 +44,10 @@ caller needs data it carries. Otherwise raise an existing class with a new messa
 - Pass exactly the constructor's arguments to `super().__init__`, so pickling (process
   pools, task queues) rebuilds an equal error. `tests/core/test_errors.py` checks the
   round trip only for the subclasses listed in its parametrized tests, so each new one
-  is added there (step 6 below).
-- `str(error)` is the user-facing sentence, and both entry points show it verbatim — the
-  API as `detail`, the CLI after `Error: `. It must be safe to hand a client: never a
-  credential, a SQL statement, a server path, or a stack detail.
+  is added there (step 5 below).
+- `str(error)` is the user-facing sentence, and the API shows it verbatim as `detail`.
+  It must be safe to hand a client: never a credential, a SQL statement, a server path,
+  or a stack detail.
 
 `TodoNotFoundError` has all three properties. Excerpts in this skill drop docstrings
 where marked; the real code keeps them, because ruff's `D` rules require them.
@@ -139,43 +135,21 @@ return status
 Each case assigns and one `return` follows the `match`, which keeps ruff's `PLR0911`
 return-count limit from capping how many errors get a status.
 
-## The CLI mapping
-
-`cli/errors.py` owns every exit code, as `ExitCode(IntEnum)`:
-
-| Code | Member | Cause | Produced by |
-|---|---|---|---|
-| 0 | `OK` | success | the command returning normally |
-| 1 | `DOMAIN_ERROR` | any `AppError` | `exit_on_domain_error()` |
-| 2 | `USAGE_ERROR` | a missing or malformed argument | Typer itself |
-| 3 | `CONFIG_ERROR` | a `MY_APP_*` variable that does not validate | `load_settings()` |
-
-Every `AppError` is exit 1; the CLI tells subclasses apart only by their message. Exit
-1 and exit 3 are this package's own: one line on stderr starting `Error: `, nothing on
-stdout, no traceback, ending in `raise typer.Exit(code=ExitCode.<member>) from error`.
-Exit 2 is Typer's own usage output instead — several lines on stderr: the usage line, a
-`--help` hint, and a boxed error message (observed with typer 0.27.0, 2026-10-06).
-
-Scripts branch on these numbers, so an existing code is never renumbered. A new cause
-that scripts must separate becomes a new `ExitCode` member, added together with
-`tests/cli/test_errors.py`'s pinned dictionary and the README's exit-code table.
-
 ## Configuration errors
 
 An invalid setting is not an `AppError`: Pydantic raises `ValidationError` when
-`Settings()` is built. The CLI's `load_settings()` maps it to exit 3 with one line
-naming each variable. The API does not map it: `create_app()` without settings, as
+`Settings()` is built. The API does not map it: `create_app()` without settings, as
 uvicorn's `--factory` calls it for `just dev`, fails to start with the traceback.
 Validate a new setting in a `field_validator`, so it fails at startup rather than on
 the first request (`designing-core-logic`). The deliberate exception is
 `LlmConfigurationError`, an `AppError`: a missing or rejected LLM key is found when the
 LLM is built or called, not by `Settings()`, and the API answers it 503 like any closed
-feature. The CLI keeps exit 1 for it, not 3, on purpose (`integrating-llm`).
+feature (`integrating-llm`).
 
 ## Logging
 
-An `AppError` is expected, so it is mapped at the entry-point boundary — an HTTP status,
-or an exit code plus one line on stderr — and not logged with `logging.exception()`. An
+An `AppError` is expected, so it is mapped at the API boundary to an HTTP status, and
+not logged with `logging.exception()`. An
 unexpected error keeps its traceback; code that catches one to add context logs it with
 `logging.exception()` and re-raises.
 
@@ -188,10 +162,7 @@ unexpected error keeps its traceback; code that catches one to add context logs 
    name it in the `Raises:` section of the port or service method.
 4. If the project has the API: give it a status by the steps in "The HTTP mapping",
    with a mapping test. **REQUIRED:** `building-api-routes`.
-5. If the project has the CLI: no mapping to add; assert `ExitCode.DOMAIN_ERROR`, an
-   empty stdout, and the stderr line in a `CliRunner` test. **REQUIRED:**
-   `designing-clis`.
-6. Required, not optional: add a `pytest.param` for it to both parametrized tests in
+5. Required, not optional: add a `pytest.param` for it to both parametrized tests in
    `tests/core/test_errors.py` (it is an `AppError`; its pickle round trip keeps type,
    message, and args), plus a test for any attribute it carries.
-7. Update the README where it describes the API's error statuses or the exit codes.
+6. Update the README where it describes the API's error statuses.

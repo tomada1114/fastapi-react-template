@@ -15,9 +15,8 @@ description: >
 it asserts, how it fakes the world, and what to reject in review. **Does not own:** which
 file and directory a test lives in, the fixtures' homes, and the coverage floor
 (`placing-tests`); the order of work that puts the test first (`tdd`); the mechanics of
-each entry point's seam (`building-api-routes`, `designing-clis`,
-`designing-core-logic`); the error classes a test asserts against (`designing-errors`);
-a script's tests (`writing-repo-scripts`).
+each seam (`building-api-routes`, `designing-core-logic`); the error classes a test
+asserts against (`designing-errors`); a script's tests (`writing-repo-scripts`).
 
 ## Naming and shape
 
@@ -38,11 +37,9 @@ a script's tests (`writing-repo-scripts`).
   Wanting to reach a private helper means the module is the wrong shape, not that the
   test needs an exception.
 - Cover the happy path **and** the error path of every public function.
-- Each entry point has one seam, and its skill owns the mechanics:
+- Each layer has one seam, and its skill owns the mechanics:
   - a route — **REQUIRED:** `building-api-routes` ("Testing a route": the `client`
     fixture);
-  - a command — **REQUIRED:** `designing-clis` ("Testing a command": `CliRunner` with
-    `obj=` a container);
   - a service, a port, or an adapter — **REQUIRED:** `designing-core-logic` (the one
     repository contract suite, the in-memory fake, and containers built through the
     composition root rather than wired by hand).
@@ -81,9 +78,8 @@ checked.
   a transaction rolled back.
 - Test recovery: after an error, is the object still consistent and usable? Repeat a
   successful operation after the failed one.
-- An `AppError` crossing an entry point is asserted as that entry point reports it —
-  the status and exact body, or the exit code and the stderr line. **BACKGROUND:**
-  `designing-errors`.
+- An `AppError` crossing the API is asserted as the API reports it — the status and
+  exact body. **BACKGROUND:** `designing-errors`.
 
 ## Parametrize instead of copying
 

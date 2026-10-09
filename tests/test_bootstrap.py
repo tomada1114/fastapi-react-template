@@ -272,7 +272,7 @@ def test_bootstrap_sample_values_rename_package_and_env_prefix(sample_app):
     pyproject = (sample_app / "pyproject.toml").read_text(encoding="utf-8")
     project = tomllib.loads(pyproject)
     assert project["project"]["name"] == "todo-api"
-    assert project["project"]["scripts"] == {"todo-api": "todo_api.cli.main:app"}
+    assert "scripts" not in project["project"]
     assert (
         project["project"]["urls"]["Issues"]
         == "https://github.com/jdoe/todo-api/issues"

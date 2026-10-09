@@ -76,11 +76,11 @@ def create_app(
 def _status_for(error: AppError) -> HTTPStatus:
     """Choose the HTTP status a domain error becomes.
 
-    The one place the mapping lives, as ``cli.errors`` is for exit codes. Any
-    ``AppError`` without a case here is still the client's problem, not the
-    server's, so a new subclass is a 400 until it gets its own case — never
-    an unhandled 500. An LLM failure is not the client's: an unconfigured
-    LLM is 503 (closed), and the provider's own failures are 429, 504, or 502.
+    The one place the mapping lives. Any ``AppError`` without a case here is
+    still the client's problem, not the server's, so a new subclass is a 400
+    until it gets its own case — never an unhandled 500. An LLM failure is not
+    the client's: an unconfigured LLM is 503 (closed), and the provider's own
+    failures are 429, 504, or 502.
 
     Args:
         error: The domain error a service raised.

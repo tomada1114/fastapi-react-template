@@ -90,8 +90,8 @@ once"). For example, a summarizing service's constructor would take
 timeout=DEFAULT_LLM_TIMEOUT_SECONDS)`.
 
 - With `OPENROUTER_API_KEY` set but the `ai` extra missing, `build_llm` raises
-  `LlmConfigurationError` when the container is built — at app or CLI startup,
-  outside the request and command error mapping — so it surfaces as a startup failure
+  `LlmConfigurationError` when the container is built — at app startup,
+  outside the request error mapping — so it surfaces as a startup failure
   with that message. That is intended (fail fast); install the extra or unset the key.
 
 - Routes stay synchronous; a call can hold one of FastAPI's thread-pool slots for up
@@ -153,7 +153,8 @@ OPENROUTER_API_KEY=... uv run --locked --extra ai python -c "from my_app.composi
 
 `tests/test_composition.py` pins the closed default: a fresh interpreter imports the
 app, builds it with no key, and finds neither `httpx` nor the OpenRouter adapter
-loaded; another hides `httpx` and runs the CLI.
+loaded; another hides `httpx`, builds the app, and drives the to-do service through
+`build_container`, with `ClosedLlm` as the model.
 
 ## Adding a provider
 

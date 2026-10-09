@@ -26,7 +26,7 @@ uv run --locked python scripts/bootstrap.py todo-api \
 
 | Flag | Required | Replaces | Rules |
 |---|---|---|---|
-| `name` (positional) | yes | `my-app` (distribution, console script, README text), `my_app` (the package, renamed `src/my_app` → `src/todo_api`), `MY_APP_` (the settings' environment prefix, `TODO_API_`) | lower-case letters and digits in words joined by single hyphens, starting with a letter, at most 40 characters |
+| `name` (positional) | yes | `my-app` (distribution, README text), `my_app` (the package, renamed `src/my_app` → `src/todo_api`), `MY_APP_` (the settings' environment prefix, `TODO_API_`) | lower-case letters and digits in words joined by single hyphens, starting with a letter, at most 40 characters |
 | `--author` | yes | `Your Name` in `pyproject.toml` (TOML-quoted) and `LICENSE` | one line, at most 100 characters |
 | `--description` | yes | the two "A short description …" sentences (`pyproject.toml`, README) | one line, at most 200 characters |
 | `--github-user` | yes | the owner in `your-username/fastapi-react-template` | a GitHub user or organization name |

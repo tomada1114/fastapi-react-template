@@ -27,7 +27,6 @@ _LLM_MODULES = '("httpx", "my_app.adapters.openrouter")'
 # hides httpx, as an install without the extra has none.
 _PROBE_WITH_EXTRA = (
     "import sys\n"
-    "import my_app.cli.main\n"
     "from my_app.api.app import create_app\n"
     "from my_app.composition import build_llm\n"
     "from my_app.settings import Settings\n"
@@ -38,16 +37,15 @@ _PROBE_WITH_EXTRA = (
 _PROBE_WITHOUT_EXTRA = (
     "import sys\n"
     "sys.modules['httpx'] = None\n"
-    "from typer.testing import CliRunner\n"
-    "from my_app.cli.main import app\n"
     "from my_app.api.app import create_app\n"
-    "from my_app.composition import build_llm\n"
+    "from my_app.composition import build_container, build_llm\n"
     "from my_app.settings import Settings\n"
     "create_app(Settings())\n"
     "llm = build_llm(Settings())\n"
-    "added = CliRunner().invoke(app, ['todo', 'add', 'x'])\n"
-    "listed = CliRunner().invoke(app, ['todo', 'list'])\n"
-    "print(type(llm).__name__, added.exit_code, listed.exit_code)\n"
+    "with build_container(Settings()) as container:\n"
+    "    container.todos.create('x')\n"
+    "    count = len(container.todos.list_todos())\n"
+    "print(type(llm).__name__, count)\n"
 )
 
 
@@ -141,7 +139,7 @@ def test_app_with_extra_and_no_key_loads_no_llm_code():
 
 
 def test_app_without_extra_imports_and_runs_with_the_llm_closed():
-    assert _run_probe(_PROBE_WITHOUT_EXTRA) == "ClosedLlm 0 0"
+    assert _run_probe(_PROBE_WITHOUT_EXTRA) == "ClosedLlm 1"
 
 
 def test_pyproject_httpx_is_only_in_the_ai_extra():

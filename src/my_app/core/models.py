@@ -17,8 +17,8 @@ MAX_TITLE_LENGTH = 200
 def normalize_title(raw_title: str) -> str:
     """Strip a title and enforce its length rule.
 
-    The rule lives here, not in an API model or a CLI argument, so every entry
-    point rejects the same titles with the same message.
+    The rule lives here, not in an API request model, so every entry point
+    rejects the same titles with the same message.
 
     Args:
         raw_title: The title as the user typed it.

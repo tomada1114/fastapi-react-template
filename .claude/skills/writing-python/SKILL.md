@@ -2,8 +2,8 @@
 name: writing-python
 description: >
   Covers how one module, class, or function is written in any layer of src/my_app/ or
-  in scripts/: a commented Any, TYPE_CHECKING imports and the annotations Pydantic,
-  FastAPI, and Typer read at run time, frozen dataclass versus Pydantic versus
+  in scripts/: a commented Any, TYPE_CHECKING imports and the annotations Pydantic
+  and FastAPI read at run time, frozen dataclass versus Pydantic versus
   TypedDict versus Protocol, enums and named constants, docstrings, EAFP, context
   managers, match, logger calls, and a justified noqa. Use when writing or reviewing
   Python code, or fixing a ruff or mypy finding. Whether to log an error at all is
@@ -13,12 +13,12 @@ description: >
 # Writing Python
 
 **Owns:** how one module, class, or function is written, in any layer of `src/my_app/`
-and in `scripts/`, including two rules other skills point here for: one-line command
-and route docstrings, and never shadowing a builtin. **Does not own:** which layer code
+and in `scripts/`, including two rules other skills point here for: one-line route
+docstrings, and never shadowing a builtin. **Does not own:** which layer code
 belongs in, and the shape of models, ports, services, and adapters
 (`designing-core-logic`); the `AppError` hierarchy, how an entry point reports it, and
-whether an error is logged (`designing-errors`); a route (`building-api-routes`); a
-command (`designing-clis`); how a test is written (`writing-tests`); the contract a
+whether an error is logged (`designing-errors`); a route (`building-api-routes`); how
+a test is written (`writing-tests`); the contract a
 repository script keeps — imports, `main()`, `ERR_*` reports (`writing-repo-scripts`).
 
 ## Gates first
@@ -29,11 +29,11 @@ Two of them carry a policy on top:
 
 - mypy's `ignore-without-code` error code makes a `# type: ignore` name its error code.
   The reason written beside it, like the reason on a `noqa` or a per-file ignore, is
-  AGENTS.md's policy ("Security and human approval"); no tool checks it. `cli/serve.py`
-  shows the shape:
+  AGENTS.md's policy ("Security and human approval"); no tool checks it.
+  `composition.py` shows the shape:
 
   ```python
-  import uvicorn  # noqa: PLC0415 - keeps `my-app todo` from importing uvicorn
+  from my_app.adapters.openrouter import (  # noqa: PLC0415 - httpx comes only with the optional `ai` extra
   ```
 
 - Ruff's bandit rules (`S`) stay on; a `noqa` for one argues that specific check.
@@ -41,9 +41,9 @@ Two of them carry a policy on top:
 ## Imports a framework reads at run time stay real
 
 With postponed annotations, a name used only in an annotation belongs under
-`if TYPE_CHECKING:`, and ruff's `TC` rules move it there. Pydantic models, FastAPI
-routes, and Typer commands read their annotations at run time, so the types they name
-must stay real imports. `pyproject.toml`'s `[tool.ruff.lint.flake8-type-checking]`
+`if TYPE_CHECKING:`, and ruff's `TC` rules move it there. Pydantic models and FastAPI
+routes read their annotations at run time, so the types they name must stay real
+imports. `pyproject.toml`'s `[tool.ruff.lint.flake8-type-checking]`
 lists those base classes and decorators so ruff leaves them alone; a new framework hook
 that reads annotations is added to that list, never silenced with a `noqa`. A FastAPI
 dependency function has no decorator for that list to name — `building-api-routes`
@@ -74,7 +74,7 @@ if TYPE_CHECKING:
 - **`TypedDict`** for a dict whose keys are fixed, such as a JSON shape you do not own.
   No module needs one yet.
 - **`enum.Enum`** for a closed set instead of loose string constants; `IntEnum` when the
-  members are also numbers, as `cli.errors.ExitCode` is for `typer.Exit`. Inside a
+  members are also numbers, as the standard library's `HTTPStatus` is. Inside a
   Pydantic model a `Literal` field does that job on the wire (`HealthResponse.status`).
 - **`Any`** only with a comment saying why nothing narrower fits, as in
   `api/routers/todos.py`:
@@ -83,15 +83,15 @@ if TYPE_CHECKING:
 ## Names and constants
 
 - A literal that carries meaning is an `UPPER_SNAKE_CASE` module constant in the module
-  that owns the meaning (`MAX_TITLE_LENGTH`, `DEFAULT_PORT`, `ENV_PREFIX`); another
-  module imports it rather than repeating the value.
+  that owns the meaning (`MAX_TITLE_LENGTH`, `OPENROUTER_API_KEY_ENV`, `ENV_PREFIX`);
+  another module imports it rather than repeating the value.
 - A boolean is named `is_`, `has_`, `can_`, or `should_` (`Todo.is_completed`). A wire
   format may spell it differently; the schema owns that mapping.
 - A private helper is `_name`, an internal module `_name.py`; `__name` only to avoid a
   clash in a subclass hierarchy.
-- **Never shadow a builtin.** A command or route whose natural name is a builtin gets a
-  descriptive function name and its public name separately: `@app.command("list")`
-  over `def list_todos(...)`.
+- **Never shadow a builtin.** A function whose natural name is a builtin gets a
+  descriptive name instead: the route that lists to-dos is `def list_todos(...)` under
+  `@router.get("")`, never `def list(...)`.
 
 ## Functions, modules, and docstrings
 
@@ -102,8 +102,8 @@ if TYPE_CHECKING:
   `create_app(settings=None, *, container=None)`.
 - A Google-style docstring says why, not what the signature says. "A factory rather
   than a module-level `app` so each test gets a fresh store" belongs there.
-- **A Typer command's or a FastAPI route's docstring is one plain-text line,** because
-  it is published as `--help` or OpenAPI text. Its reasoning goes in a comment or the
+- **A FastAPI route's docstring is one plain-text line,** because it is published as
+  OpenAPI text. Its reasoning goes in a comment or the
   module docstring.
 
 ## Idioms
@@ -119,11 +119,12 @@ if TYPE_CHECKING:
   ```
 
   `from None` drops a cause that adds nothing; `from error` keeps one that does, as
-  `cli/errors.py` does when it turns an `AppError` into `typer.Exit`.
+  `composition.build_llm` does when it turns a missing `httpx` into
+  `LlmConfigurationError`.
 - **A context manager for every resource.** When an object's own `with` does not
   release it, compose `contextlib.closing`: `SqliteTodoRepository._transaction` closes
   the connection that `sqlite3.Connection`'s context manager only commits. A reusable
-  boundary is a `@contextmanager` function (`cli.errors.exit_on_domain_error`).
+  boundary is a `@contextmanager` function (`SqliteTodoRepository._transaction`).
 - **`match`/`case`** for dispatch on type or shape (`_status_for` in `api/app.py`).
 - **The walrus operator** where it removes a repeated expression:
   `if (path := settings.sqlite_path) is not None:` in `composition.py`.
@@ -150,7 +151,7 @@ if TYPE_CHECKING:
 - SQL uses `?` parameters only, with the statement a module constant spelled out in
   full (`adapters/sqlite.py`'s `_SELECT_ONE` and siblings).
 - A subprocess takes a fixed argv list, never `shell=True`; its `# noqa: S603` names why
-  the argv is safe (`tests/cli/test_serve.py`).
+  the argv is safe (`tests/test_composition.py`).
 
 ## Performance
 

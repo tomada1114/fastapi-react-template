@@ -20,37 +20,39 @@ a route calls (`designing-core-logic`); trying a route against a live server
 
 ## A project without the API
 
-This skill describes the HTTP entry point only. Dropping the API is a deletion, never a
-core change:
+This skill describes the HTTP entry point, the only one the template ships. Dropping it
+is a deletion, never a core change, and leaves the core as a library with no entry
+point of its own:
 
-- delete `src/my_app/api/`, `src/my_app/cli/serve.py` and its `app.command()(serve)`
-  line in `src/my_app/cli/main.py`, `tests/api/`, and `tests/cli/test_serve.py`;
+- delete `src/my_app/api/` and `tests/api/`, and the `create_app` lines of the probes in
+  `tests/test_composition.py`;
 - remove the `fastapi` and `uvicorn` runtime dependencies and the `httpx2` dev
   dependency `TestClient` runs on (and the `httpx` one too, unless you keep the LLM
   layer, whose adapter tests use it), then run `uv lock`;
-- remove the `just dev` recipe and the lines that name it (README's Development block,
-  AGENTS.md's Quick Reference and the paragraph under it; `just check-harness` fails
-  while one remains), and in `pyproject.toml`'s ruff config the `fastapi.*` entries and
-  the `src/my_app/api/**` per-file-ignore;
-- update AGENTS.md's Overview and Architecture tree and bullets to describe only
-  the remaining entry point; in the paragraph after Quick Reference, remove the
-  server instructions that require the deleted API;
-- update README: remove Quickstart's `my-app serve`, curl, API docs and HTTP
-  column, all HTTP status/`detail` prose, LLM-backed route guidance, and the API
-  server Configuration note; rewrite Architecture for the remaining CLI and
-  remove the pointer to this deleted skill;
+- remove the `just dev` recipe and the lines that name it (README's Quickstart and
+  Development block, AGENTS.md's Quick Reference and the paragraph under it;
+  `just check-harness` fails while one remains), and in `pyproject.toml`'s ruff config
+  the `fastapi` and `uvicorn` entries and the `src/my_app/api/**` per-file-ignore;
+- update AGENTS.md's Overview and Architecture tree and bullets to describe the core
+  alone; in the paragraph after Quick Reference, remove the server instructions that
+  require the deleted API;
+- update README: remove Quickstart's `just dev`, curl, API docs and HTTP table, all
+  HTTP status/`detail` prose, LLM-backed route guidance, and the server Configuration
+  note; rewrite Architecture for the core alone and remove the pointer to this deleted
+  skill;
+- replace the HTTP request in `.github/ISSUE_TEMPLATE/bug_report.yml`'s reproduction
+  placeholder with a call into the core;
 - delete `.agents/skills/building-api-routes/`, remove its row from AGENTS.md's Skills
   table, and run `just agents-sync`.
 
 Then prune what sibling skills say about the API:
 
 - `designing-errors`: "The HTTP mapping", step 4 of "Adding a failure mode", and the
-  API half of "Two kinds of failure" and "Configuration errors";
-- `designing-core-logic`: the `building-api-routes` pointer in "Adding a use case" and
-  the FastAPI thread-pool reason under "Services are the use cases";
+  API's part of "Two kinds of failure", "Configuration errors", and "Logging";
+- `designing-core-logic`: the `building-api-routes` pointers and the FastAPI
+  thread-pool reason under "Services are the use cases";
 - `running-the-app`: "Running a server of your own" and the server tier of "Evidence,
-  cheapest first";
-- `designing-clis`: "`serve` and imports";
+  cheapest first", which leaves a test as its only tier;
 - `writing-python`: the examples that quote `api/` files;
 - `writing-tests`, `placing-tests`, `tdd`, and `updating-docs`: their mentions of the
   `client` fixture, `tests/api/`, a route, or an HTTP status.
@@ -77,8 +79,8 @@ It includes each router and registers the `AppError` handler.
   `from my_app.api.routers import ...` line and included with `app.include_router`.
 - The API never constructs an adapter or a service: they come only from
   `composition.build_container` (`designing-core-logic`).
-- `just dev` serves it through `uvicorn my_app.api.app:create_app --factory`, and
-  `my-app serve` through `cli/serve.py`.
+- `just dev` serves it through `uvicorn my_app.api.app:create_app --factory`; an
+  agent's own server runs the same command on a free port (`running-the-app`).
 
 ## Dependencies hand routes their services
 
@@ -175,7 +177,7 @@ Take reading one item by id, `GET /<resource>/{id}`, as the worked case:
    `designing-errors`.
 4. Test it (below): 200 with the body a create returned, 404 with the exact `detail`, a
    non-integer id in the parametrized 422 test, and its 404 in the OpenAPI test.
-5. Add the route to the README's CLI/HTTP table.
+5. Add the route to the README's HTTP table.
 
 ## Testing a route
 

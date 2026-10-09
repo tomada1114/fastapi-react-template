@@ -6,7 +6,7 @@ description: >
   uv run --locked pytest that it fails for the right reason (not an ImportError during
   collection), the smallest change that turns it green, refactoring with the tests on,
   the regression test a bug fix starts from, and landing test and code in one commit.
-  Use when adding a function, a route, a command, or a domain rule, or when fixing a
+  Use when adding a function, a route, or a domain rule, or when fixing a
   bug, or when a test written after the code only restates it.
 ---
 
@@ -34,9 +34,8 @@ Decide this before the test, because the layer decides which surface the test dr
 - **A decision** — a rule, a calculation, a state transition — goes in `core/`, tested
   by calling the service or model directly with the in-memory fake and `fixed_clock`.
   **REQUIRED:** `designing-core-logic`.
-- **A route or a command** only translates between its protocol and a service; what
-  belongs in one, and what moves down into the core, is **REQUIRED:**
-  `building-api-routes` or `designing-clis`.
+- **A route** only translates between HTTP and a service; what belongs in one, and
+  what moves down into the core, is **REQUIRED:** `building-api-routes`.
 - **A storage detail** is an adapter. **REQUIRED:** `designing-core-logic`.
 - **A repository script** under `scripts/` is tested through its `main()` and its public
   functions. **REQUIRED:** `writing-repo-scripts`.
@@ -96,8 +95,8 @@ The regression test comes before the fix, and it reproduces the bug through the
 interface the caller hit — not through a helper the bug happened to pass through.
 
 1. Write the test the way the caller met the bug: a `TestClient` request for a wrong
-   response, a `CliRunner` invocation for wrong output or a wrong exit code, the service
-   called directly for a wrong value. Name it after the behavior, not the report.
+   response, the service called directly for a wrong value. Name it after the
+   behavior, not the report.
 2. Prove it fails with the bug's own symptom — the wrong status, the wrong text, the
    wrong value — not with any error at all.
 3. Then green and refactor as above. The regression test stays.
