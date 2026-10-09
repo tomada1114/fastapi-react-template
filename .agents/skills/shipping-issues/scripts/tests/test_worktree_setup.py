@@ -621,6 +621,127 @@ class WorktreeSetupTest(unittest.TestCase):
         )
         self.assertFalse(anything_ran)
 
+    # --- lockfiles come from the target tree, not the main checkout ---------
+
+    def _repo_with_lockfiles_only_on_branch(self, repo: Path) -> None:
+        """main lacks both lockfiles; branch `next` adds them. The main checkout
+        stays on main, so its working tree has neither file."""
+        make_repo(repo)
+        git(repo, "checkout", "-qb", "next")
+        commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+        git(repo, "checkout", "-q", "main")
+
+    def _repo_with_lockfiles_only_in_main_checkout(self, repo: Path) -> None:
+        """main's tip (checked out) has both lockfiles; main~1 has neither."""
+        make_repo(repo)
+        commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+
+    def test_lockfiles_on_base_but_not_in_main_checkout_are_installed(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            self._repo_with_lockfiles_only_on_branch(repo)
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            record = td / "calls.txt"
+            write_stub(bin_dir, "uv", record, append=True)
+            write_stub(bin_dir, "pnpm", record, append=True)
+            args = issue_args("15", root)
+            args[args.index("--base") + 1] = "next"
+
+            proc = run_script(args, repo, extra_path=str(bin_dir))
+            main_checkout_has_lockfile = (repo / "pnpm-lock.yaml").exists()
+
+        self.assertFalse(main_checkout_has_lockfile)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            deps_lines(proc.stdout),
+            [
+                "deps: uv sync --all-groups --locked",
+                "deps: pnpm install --frozen-lockfile",
+            ],
+        )
+
+    def test_lockfiles_in_main_checkout_but_not_on_base_are_not_installed(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            self._repo_with_lockfiles_only_in_main_checkout(repo)
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            record = td / "calls.txt"
+            write_stub(bin_dir, "uv", record, append=True)
+            write_stub(bin_dir, "pnpm", record, append=True)
+            args = issue_args("16", root)
+            args[args.index("--base") + 1] = "main~1"
+
+            proc = run_script(args, repo, extra_path=str(bin_dir))
+            anything_ran = record.exists()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(deps_lines(proc.stdout), ["deps: none"])
+        self.assertFalse(anything_ran)
+
+    def test_dry_run_reads_lockfiles_from_the_base_ref(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            self._repo_with_lockfiles_only_on_branch(repo)
+            root = td / "worktrees"
+            args = issue_args("17", root)
+            args[args.index("--base") + 1] = "next"
+
+            proc = run_script([*args, "--dry-run"], repo)
+            wt = root / "17"
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        dry = [ln for ln in proc.stdout.splitlines() if ln.startswith("DRY: (cd ")]
+        self.assertEqual(
+            dry,
+            [
+                f"DRY: (cd {wt} && uv sync --all-groups --locked)",
+                f"DRY: (cd {wt} && pnpm install --frozen-lockfile)",
+            ],
+        )
+
+    def test_dry_run_ignores_lockfiles_the_base_ref_lacks(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            self._repo_with_lockfiles_only_in_main_checkout(repo)
+            root = td / "worktrees"
+            args = issue_args("18", root)
+            args[args.index("--base") + 1] = "main~1"
+
+            proc = run_script([*args, "--dry-run"], repo)
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("DRY: (cd ", proc.stdout)
+        self.assertIn("DRY: deps: none\n", proc.stdout)
+
+    def test_dry_run_on_an_existing_branch_reads_that_branch(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            self._repo_with_lockfiles_only_on_branch(repo)
+            root = td / "worktrees"
+            # `--branch next` exists, so the worktree checks it out and --base
+            # (main, which has no lockfile) is not what it would contain.
+            args = issue_args("19", root)
+            args[args.index("--branch") + 1] = "next"
+
+            proc = run_script([*args, "--dry-run"], repo)
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("pnpm install --frozen-lockfile)\n", proc.stdout)
+
     def test_missing_shared_pre_commit_hook_warns_and_installs_nothing(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)

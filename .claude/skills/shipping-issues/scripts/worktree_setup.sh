@@ -7,7 +7,8 @@
 # node_modules, so the project's verification command fails before it reads a
 # line of code. This script installs dependencies with
 # `uv sync --all-groups --locked` when uv.lock exists, then
-# `pnpm install --frozen-lockfile` when pnpm-lock.yaml exists (the installs
+# `pnpm install --frozen-lockfile` when pnpm-lock.yaml exists — each judged
+# from the new worktree's own files, not the main checkout's (the installs
 # `just install` runs) — it never copies a secret or personal-permission file
 # (.env*, .envrc, *.local, settings.local.json) or the main checkout's .venv or
 # node_modules — checks that the shared pre-commit hook is installed,
@@ -220,14 +221,19 @@ is_registered_worktree() {
 }
 
 # --- dependency-manager detection ---------------------------------------
-# This is purely a function of repo_root's file listing, so (unlike the
-# per-worktree steps below) it's computed once, not once per spec. This
-# template provisions uv (uv.lock) and pnpm (pnpm-lock.yaml), each on its own
-# lockfile; another JavaScript lockfile selects nothing.
-has_uv=0
-has_pnpm=0
-[[ -f "$repo_root/uv.lock" ]] && has_uv=1
-[[ -f "$repo_root/pnpm-lock.yaml" ]] && has_pnpm=1
+# This template provisions uv (uv.lock) and pnpm (pnpm-lock.yaml), each on its
+# own lockfile; another JavaScript lockfile selects nothing. A lockfile is
+# looked for in the tree the worktree holds — never the main checkout, which
+# may sit on another commit than --base (an un-pulled main, a feature branch).
+# A real run reads the created worktree; a dry run, which creates nothing, reads
+# the ref `git worktree add` would check out (checkout_ref, set per spec).
+has_lockfile() { # $1=file name at the tree's root
+  if [[ $DRY -eq 1 ]]; then
+    git -C "$repo_root" cat-file -e "$checkout_ref:$1" 2>/dev/null
+  else
+    [[ -f "$worktree_path/$1" ]]
+  fi
+}
 
 # A pre-commit config means commits are meant to run its hooks. The hook files
 # themselves live in the shared hooks directory, so they are checked, not
@@ -309,6 +315,13 @@ provision_one() {
   fi
 
   # --- 3. create the worktree ---------------------------------------------
+  # The ref the worktree checks out: an existing branch as it stands, else a
+  # new branch at the base.
+  if branch_exists "$p_branch"; then
+    checkout_ref="$p_branch"
+  else
+    checkout_ref="$p_base"
+  fi
   if [[ $DRY -eq 1 ]]; then
     echo "DRY: mkdir -p $p_root"
     if branch_exists "$p_branch"; then
@@ -341,7 +354,9 @@ provision_one() {
   # --- 4. install dependencies --------------------------------------------
   # In order, uv then pnpm; the first failure blocks, so a failed uv sync
   # never goes on to the pnpm install.
-  local deps_failed=0
+  local deps_failed=0 has_uv=0 has_pnpm=0
+  has_lockfile uv.lock && has_uv=1
+  has_lockfile pnpm-lock.yaml && has_pnpm=1
   if [[ $has_uv -eq 1 ]]; then
     do_install uv sync --all-groups --locked || deps_failed=1
   fi

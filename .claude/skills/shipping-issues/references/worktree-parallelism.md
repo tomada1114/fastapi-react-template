@@ -146,7 +146,9 @@ knowingly red baseline has to show its work.
   `pnpm-lock.yaml` exists, `node_modules` with `pnpm install --frozen-lockfile` — the
   installs `just install` runs. Each prints a `deps:` line; a failed one prints
   `deps: FAILED: <cmd> (exit=<rc>)` and blocks the worktree, never moving on to the next.
-  uv's shared cache and pnpm's store keep both fast after the first worktree.
+  Each lockfile is looked for in the worktree's own tree (with `--dry-run`, in the ref it
+  would check out), never in the main checkout, which can sit on another commit than
+  `--base`. uv's shared cache and pnpm's store keep both fast after the first worktree.
 - **Neither `.venv` nor `node_modules` is ever copied.** `pyvenv.cfg` and the `bin/`
   shims hold absolute paths, and pnpm builds `node_modules` from symlinks into
   `node_modules/.pnpm` and hard links into its store
