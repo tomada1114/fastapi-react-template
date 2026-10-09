@@ -32,12 +32,14 @@ class Clock(Protocol):
 class TodoRepository(Protocol):
     """Stores to-dos and assigns their ids.
 
-    Every implementation must pass the shared contract suite in
+    Every method is a coroutine, so an adapter can await its driver without
+    blocking the event loop the API serves requests on. Every implementation
+    must pass the shared contract suite in
     ``tests/adapters/test_repository_contract.py``. Runtime-checkable so that
     suite can also assert an adapter has every method, not only mypy.
     """
 
-    def add(self, draft: TodoDraft) -> Todo:
+    async def add(self, draft: TodoDraft) -> Todo:
         """Store a draft under a new id.
 
         Args:
@@ -48,7 +50,7 @@ class TodoRepository(Protocol):
             delete, so a stale id can never name a different to-do.
         """
 
-    def get(self, todo_id: int) -> Todo:
+    async def get(self, todo_id: int) -> Todo:
         """Fetch one to-do.
 
         Args:
@@ -61,14 +63,14 @@ class TodoRepository(Protocol):
             TodoNotFoundError: If no to-do has this id.
         """
 
-    def list_all(self) -> list[Todo]:
+    async def list_all(self) -> list[Todo]:
         """Fetch every to-do.
 
         Returns:
             The to-dos in ascending id order, which is creation order.
         """
 
-    def update(self, todo: Todo) -> Todo:
+    async def update(self, todo: Todo) -> Todo:
         """Replace the stored to-do that has ``todo.id``.
 
         Args:
@@ -81,7 +83,7 @@ class TodoRepository(Protocol):
             TodoNotFoundError: If no to-do has this id.
         """
 
-    def delete(self, todo_id: int) -> None:
+    async def delete(self, todo_id: int) -> None:
         """Remove one to-do.
 
         Args:

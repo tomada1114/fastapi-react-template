@@ -74,24 +74,22 @@ Excerpts in this skill drop docstrings where marked; the real code keeps them, b
 ruff's `D` rules require them.
 
 ```python
-def create(self, raw_title: str) -> Todo:
+async def create(self, raw_title: str) -> Todo:
     # ... docstring elided
     draft = TodoDraft(title=normalize_title(raw_title), created_at=self._clock())
-    return self._repository.add(draft)
+    return await self._repository.add(draft)
 ```
 
-Services are synchronous. FastAPI runs a synchronous route in its thread pool, so a
-service and its adapters may be called from several threads at once; that is why
-`InMemoryTodoRepository` takes a lock and `SqliteTodoRepository` opens a connection per
-call.
+The repository path is async end to end: port methods, service methods, and routes are
+`async def`, awaiting the layer below; a rule, a calculation, and the `Clock` stay `def`.
 
 ## Ports describe what the core needs from outside
 
-A port is a `typing.Protocol` in `core/ports.py`, typed with core models only. An
-adapter satisfies it by shape and never imports or subclasses it. The port's docstrings
-are the contract — what is returned, in what order, and what is raised — and
-`TodoRepository` is `@runtime_checkable` so the contract suite can also assert that an
-adapter has every method.
+A port is a `typing.Protocol` in `core/ports.py`, typed with core models only, its I/O
+methods `async def`. An adapter satisfies it by shape and never imports or subclasses
+it. The port's docstrings are the contract — what is returned, in what order, and what
+is raised — and `TodoRepository` is `@runtime_checkable` so the contract suite can also
+assert that an adapter has every method.
 
 ## Time and other outside inputs are injected
 
@@ -110,14 +108,16 @@ the same kind rather than a direct call.
 - An adapter in `adapters/` wraps one storage or I/O technology, holds no domain rule,
   and translates its driver's failures into the domain errors the port promises
   (`designing-errors`).
-- It is safe to call from several threads; see "Services are the use cases".
+- It never blocks the event loop. `InMemoryTodoRepository` never awaits inside a
+  read-modify-write, so it needs no lock; `SqliteTodoRepository` runs each `sqlite3` call
+  in `asyncio.to_thread`, one connection per call, as `sqlite3` binds one to its thread.
 - Its queries are module constants spelled out in full, never assembled at run time
   (`adapters/sqlite.py`).
 - Every implementation of a port runs the one shared contract suite. A new repository
   joins `backend/tests/adapters/test_repository_contract.py` by adding a `pytest.param`
   to `REPOSITORY_FACTORIES`; behavior only it has (the SQLite file outliving the object,
   persistence details) goes in `backend/tests/adapters/test_<adapter>.py`. Concurrent adds
-  must assign unique ids in every repository.
+  must assign unique ids in every repository (200 `add` calls in one task group).
 - The in-memory adapter doubles as the core's fake: `backend/tests/core/test_services.py`
   builds a service over `InMemoryTodoRepository()` and `fixed_clock` instead of mocking
   the port.
@@ -149,9 +149,10 @@ function that picks it, driven by a setting.
 ```python
 def build_container(settings: Settings, clock: Clock = utc_now) -> Container:
     # ... docstring elided
-    with ExitStack() as resources:
-        todos = TodoService(_build_repository(settings, resources), clock)
-        return Container(todos=todos, _resources=resources.pop_all())
+    resources = AsyncExitStack()
+    repository = _build_repository(settings, resources)
+    todos = TodoService(repository, clock)
+    return Container(todos=todos, _resources=resources)
 ```
 
 Tests build containers through the same function: the `make_container` fixture in
@@ -160,24 +161,24 @@ storage by default, and `backend/tests/test_composition.py` covers the wiring it
 
 ## An adapter that holds a resource
 
-`build_container` owns an `ExitStack` and passes it to adapter builders. Register a
-resource immediately with `resources.enter_context(adapter)` or
-`resources.callback(adapter.close)`; never close an adapter in a service. A failed
-build closes the stack before propagating the error. A successful build transfers it
-to the frozen `Container`, whose `close()` is idempotent and whose context manager
-forwards exception details to registered context managers on exit and preserves their
-suppression decision. Direct `close()` exits without an active exception. Cleanup
-failures propagate while remaining callbacks still run.
-
-The API builds services in its factory and closes that container in its lifespan. A
-supplied container (`container=`) stays caller-owned: close it explicitly or use it as
-a context manager. Current adapters acquire resources per call and register nothing here.
+`build_container` owns an `AsyncExitStack` and passes it to adapter builders: register
+cleanup with `resources.push_async_callback(adapter.aclose)`, and never close an adapter
+in a service. It stays a plain `def` (a bad setting must fail in `create_app`), so a
+build that raises runs no callback: register only an object that opens nothing when
+constructed, as its docstring says. The stack moves to the frozen `Container`: its
+`aclose()` is idempotent, `async with container:` forwards exception details to
+registered context managers and keeps their suppression decision, and a failing callback
+propagates after the rest run. The API's lifespan awaits `aclose()` on a container its
+factory built; a supplied `container=` stays caller-owned. Each `TestClient` context
+runs the app on its own loop, so never reuse a container holding a loop-bound resource
+across two of them. Current adapters register nothing here.
 
 ## Adding a use case
 
 1. A rule the operation needs goes in the model or a core function, with its
    `InvalidTodoError`-style domain error. **REQUIRED:** `designing-errors`.
-2. A method on the service, calling ports only, with `Args:`, `Returns:`, and `Raises:`.
+2. An `async def` method on the service, awaiting ports only, with `Args:`,
+   `Returns:`, and `Raises:`.
 3. A port method if storage must do something new, implemented in every adapter, and a
    contract-suite test that every adapter must pass.
 4. Tests in `backend/tests/core/` through the service's public methods, happy and error paths.
@@ -188,10 +189,10 @@ a context manager. Current adapters acquire resources per call and register noth
 
 For a new outside dependency — another store, a remote service, a source of randomness:
 
-1. A `Protocol` in `core/ports.py`, typed with core models only, whose docstrings state
-   what each method returns and raises.
+1. A `Protocol` in `core/ports.py`, typed with core models only, its I/O methods
+   `async def`, whose docstrings state what each method returns and raises.
 2. One adapter per technology in `adapters/`, satisfying the port by shape, translating
-   its driver's failures into the domain errors the port names, and safe across threads.
+   its driver's failures into the domain errors the port names, never blocking the loop.
 3. A contract suite for the port in `backend/tests/adapters/test_<port>_contract.py`,
    written once and parametrized over every implementation the way
    `REPOSITORY_FACTORIES` is, plus `backend/tests/adapters/test_<adapter>.py` for what

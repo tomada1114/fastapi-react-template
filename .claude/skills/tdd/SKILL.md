@@ -50,6 +50,17 @@ Decide this before the test, because the layer decides which surface the test dr
   against what the code returns, which is the failure this order exists to prevent.
 - One behavior per cycle. A batch of tests followed by a batch of code leaves no single
   red to attribute to a single change.
+- A test of the async path is itself `async def`, in a module marked
+  `pytestmark = pytest.mark.anyio` (`writing-tests`' "Async tests"):
+
+  ```python
+  async def test_complete_open_todo_marks_it_completed(service):
+      todo = await service.create("buy milk")
+
+      completed = await service.complete(todo.id)
+
+      assert completed.is_completed is True
+  ```
 
 ## Prove it fails, for the right reason
 
@@ -64,6 +75,8 @@ failure. Red alone is not the proof; the reason is.
 | `NotImplementedError` from a stub, or an `AttributeError`/`TypeError` naming the function or argument not yet written | yes, for code that does not exist yet |
 | `ImportError` and `Interrupted: 1 error during collection` | no — the run never reached the test |
 | A syntax error, a typo in the test, `fixture '<name>' not found` | no — fix the test and run again |
+| `async def functions are not natively supported` | no — the module lacks the `anyio` marker, so the test never ran |
+| `TypeError: '<type>' object can't be awaited` | yes, while the code under test is still a plain `def` the test now awaits |
 | Green | no — the test does not cover the change; rewrite it |
 
 A name the test imports but the module does not define yet fails collection before any

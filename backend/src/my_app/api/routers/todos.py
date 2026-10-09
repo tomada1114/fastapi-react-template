@@ -34,24 +34,24 @@ router = APIRouter(prefix="/todos", tags=["todos"])
 
 
 @router.get("")
-def list_todos(service: TodoServiceDep) -> list[TodoResponse]:
+async def list_todos(service: TodoServiceDep) -> list[TodoResponse]:
     """List every to-do, oldest first; an empty store returns `[]`."""
-    return [TodoResponse.from_domain(todo) for todo in service.list_todos()]
+    return [TodoResponse.from_domain(todo) for todo in await service.list_todos()]
 
 
 @router.post("", status_code=HTTPStatus.CREATED, responses=_INVALID_TITLE)
-def create_todo(body: TodoCreateRequest, service: TodoServiceDep) -> TodoResponse:
+async def create_todo(body: TodoCreateRequest, service: TodoServiceDep) -> TodoResponse:
     """Create a to-do from a title."""
-    return TodoResponse.from_domain(service.create(body.title))
+    return TodoResponse.from_domain(await service.create(body.title))
 
 
 @router.post("/{todo_id}/complete", responses=_NOT_FOUND)
-def complete_todo(todo_id: int, service: TodoServiceDep) -> TodoResponse:
+async def complete_todo(todo_id: int, service: TodoServiceDep) -> TodoResponse:
     """Mark a to-do as completed."""
-    return TodoResponse.from_domain(service.complete(todo_id))
+    return TodoResponse.from_domain(await service.complete(todo_id))
 
 
 @router.delete("/{todo_id}", status_code=HTTPStatus.NO_CONTENT, responses=_NOT_FOUND)
-def delete_todo(todo_id: int, service: TodoServiceDep) -> None:
+async def delete_todo(todo_id: int, service: TodoServiceDep) -> None:
     """Delete a to-do."""
-    service.delete(todo_id)
+    await service.delete(todo_id)
