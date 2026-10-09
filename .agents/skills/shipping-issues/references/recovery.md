@@ -203,7 +203,9 @@ later runs skip the probe:
 
 Then fall back to serial and say so in the step 10 report. Record `yes` the same way
 after a batch provisions cleanly — that is what lets the next run's plan skip the gate
-entirely.
+entirely. A recorded `no` holds only while the profile matches: once a lockfile, a
+build-config file, or `preflight.sh`'s detection logic changes, it returns to `unknown`
+and the next run probes again, while a recorded `yes` carries over.
 
 ## A worktree that will not go away
 

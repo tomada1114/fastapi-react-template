@@ -467,6 +467,27 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(rewritten["logic_version"], "5")
         self.assertEqual(calls, [])
 
+    def test_a_logic_version_4_cache_with_no_viability_recalculates_as_unknown(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_text("fixture\n", encoding="utf-8")
+            cache = repo / ".cache-outside-git" / "cache.json"
+
+            run_script(["--profile-cache", str(cache)], repo)
+            run_script(
+                ["--profile-cache", str(cache), "--set-worktree-viable", "no"], repo
+            )
+            blob = json.loads(cache.read_text(encoding="utf-8"))
+            blob["logic_version"] = "4"
+            cache.write_text(json.dumps(blob), encoding="utf-8")
+            after, _ = run_script(["--profile-cache", str(cache)], repo)
+
+        self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+        self.assertIn("worktree_viable: unknown\n", after.stdout)
+
     def test_hooks_pre_commit_config(self):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
@@ -538,8 +559,8 @@ class PreflightTest(unittest.TestCase):
 
     def test_recorded_worktree_viability_survives_an_invalidation(self):
         # worktree_viable is measured by running a gate in a real worktree, not
-        # derived from a config file, so a lockfile bump must not discard it —
-        # that value cost a whole dependency install to learn.
+        # derived from a config file, so a lockfile bump must not discard a
+        # `yes` — that value cost a whole dependency install to learn.
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
             make_repo(repo, origin=True)
@@ -548,12 +569,59 @@ class PreflightTest(unittest.TestCase):
 
             run_script(["--profile-cache", str(cache)], repo)
             run_script(
-                ["--profile-cache", str(cache), "--set-worktree-viable", "no"], repo
+                ["--profile-cache", str(cache), "--set-worktree-viable", "yes"], repo
             )
             (repo / "uv.lock").write_text("v2 — different lockfile", encoding="utf-8")
             after, _ = run_script(["--profile-cache", str(cache)], repo)
 
         self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+        self.assertIn("worktree_viable: yes\n", after.stdout)
+
+    def test_a_dependency_input_change_resets_a_recorded_no_to_unknown(self):
+        # A `no` may be the very failure the changed input fixes (a baseline red
+        # for want of node_modules before pnpm provisioning existed), and plan.py
+        # forces serial on `no`, so carrying it would never re-probe the repo.
+        for name in (
+            "uv.lock",
+            "pnpm-lock.yaml",
+            "package.json",
+            "pnpm-workspace.yaml",
+            ".node-version",
+        ):
+            with self.subTest(changed=name), tempfile.TemporaryDirectory() as td:
+                repo = Path(td)
+                make_repo(repo, origin=True)
+                (repo / "uv.lock").write_text("v1\n", encoding="utf-8")
+                (repo / name).write_text("v1\n", encoding="utf-8")
+                cache = repo / ".cache-outside-git" / "cache.json"
+
+                run_script(["--profile-cache", str(cache)], repo)
+                run_script(
+                    ["--profile-cache", str(cache), "--set-worktree-viable", "no"],
+                    repo,
+                )
+                (repo / name).write_text("v2\n", encoding="utf-8")
+                after, _ = run_script(["--profile-cache", str(cache)], repo)
+                rewritten = json.loads(cache.read_text(encoding="utf-8"))
+
+                self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+                self.assertIn("worktree_viable: unknown\n", after.stdout)
+                self.assertEqual(rewritten["worktree_viable"], "unknown")
+
+    def test_a_recorded_no_on_the_current_profile_is_honored(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_text("v1\n", encoding="utf-8")
+            cache = repo / ".cache-outside-git" / "cache.json"
+
+            run_script(["--profile-cache", str(cache)], repo)
+            run_script(
+                ["--profile-cache", str(cache), "--set-worktree-viable", "no"], repo
+            )
+            after, _ = run_script(["--profile-cache", str(cache)], repo)
+
+        self.assertIn("profile_cache: HIT\n", after.stdout)
         self.assertIn("worktree_viable: no\n", after.stdout)
 
     def test_set_worktree_viable_then_read_back_on_a_hit(self):

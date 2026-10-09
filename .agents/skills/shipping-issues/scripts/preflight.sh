@@ -25,7 +25,8 @@
 # detected here (git-worktree viability requires actually running a baseline
 # verify command, which is worktree_setup.sh's job, not preflight's) — it is
 # only ever set via --set-worktree-viable, once the caller has paid for that
-# probe, so future preflight calls can read it back for free.
+# probe, so future preflight calls can read it back for free. A cache miss
+# keeps a recorded `yes` and resets a recorded `no` to `unknown`.
 #
 # Exit codes:
 #   0 = ready
@@ -89,11 +90,15 @@ if (data.get("lockfile_hash") != lockfile_hash
         or data.get("meta_hash") != meta_hash
         or str(data.get("logic_version")) != logic_version):
     # A miss invalidates what was *derived* from the repo's config files, not
-    # what was *measured* by running a gate in a real worktree. Hand the stale
-    # worktree_viable back so the caller can carry it forward; everything else
-    # gets recomputed.
+    # what was *measured* by running a gate in a real worktree. Hand a stale
+    # `yes` back so the caller can carry it forward; everything else gets
+    # recomputed. A stale `no` is dropped (the caller falls back to
+    # `unknown`): the changed lockfile, config, or provisioning logic may be
+    # what fixes it, and a carried `no` keeps every later run serial, so the
+    # repo would never be probed again.
     print("MISS")
-    print(f"worktree_viable\t{data.get('worktree_viable', '')}")
+    if data.get("worktree_viable") == "yes":
+        print("worktree_viable\tyes")
     sys.exit(0)
 
 print("HIT")
@@ -394,12 +399,15 @@ VERIFY_COMMAND="${VERIFY_COMMAND:-NONE}"
 VERIFY_SOURCE="${VERIFY_SOURCE:-none}"
 
 # --- profile cache (only touched with --profile-cache) -----------------------
-# `unknown` only until an existing cache is read. worktree_viable deliberately
+# `unknown` only until an existing cache is read. A recorded `yes` deliberately
 # SURVIVES a cache miss: it is a property of the repository and its tooling —
 # whether a fresh worktree can run the gate at all — not of the lockfile or the
 # config file that invalidated the rest of the profile. Resetting it on every
 # lockfile bump would throw away the one fact that cost a whole worktree install
 # to learn, and the caller reads a fresh baseline before trusting a stale `yes`.
+# A recorded `no` does not survive a miss: it goes back to `unknown`, so the
+# next run re-probes instead of staying serial forever after the change that
+# may have fixed it. On a hit (the profile it was recorded for) `no` stands.
 worktree_viable="unknown"
 if [[ -n "$PROFILE_CACHE" ]]; then
   # meta_hash covers the small set of build-config files that can change
