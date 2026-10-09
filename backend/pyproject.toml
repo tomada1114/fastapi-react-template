@@ -37,6 +37,11 @@ Homepage = "https://github.com/your-username/fastapi-react-template"
 Repository = "https://github.com/your-username/fastapi-react-template"
 Issues = "https://github.com/your-username/fastapi-react-template/issues"
 
+[project.optional-dependencies]
+postgres = [
+    "asyncpg>=0.31",
+]
+
 # --------------------------------------------------------------------------- #
 #  Build
 # --------------------------------------------------------------------------- #
@@ -120,7 +125,9 @@ addopts = [
     "--import-mode=importlib",
     "--strict-markers",
     "--strict-config",
+    "-m", "not postgres",
 ]
+markers = ["postgres: requires a disposable PostgreSQL database and the postgres extra"]
 # Any warning fails the run, so a deprecation surfaces here before the upgrade
 # that removes the deprecated path. Silence one only by a narrow entry with a
 # reason comment and a follow-up issue (changing-gates).

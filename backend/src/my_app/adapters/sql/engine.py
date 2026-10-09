@@ -36,4 +36,10 @@ def make_engine(url: str) -> AsyncEngine:
     connect_args: dict[str, Any] = {}
     if make_url(url).get_backend_name() == "sqlite":
         connect_args["timeout"] = SQLITE_BUSY_TIMEOUT_SECONDS
-    return create_async_engine(url, connect_args=connect_args)
+    try:
+        return create_async_engine(url, connect_args=connect_args)
+    except ModuleNotFoundError as exc:
+        if make_url(url).drivername != "postgresql+asyncpg" or exc.name != "asyncpg":
+            raise
+        msg = "Install the 'postgres' extra to use a PostgreSQL database"
+        raise RuntimeError(msg) from exc
