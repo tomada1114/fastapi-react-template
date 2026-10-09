@@ -46,9 +46,16 @@ def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | No
     """depends_on from the structured sources, or None when the body has none.
 
     The sources are the ship contract's `blocked-by=` field (`none` counts as
-    stated) and `Depends on: #N` lines. Prose phrasings are not read here.
+    stated) and `Depends on: #N` lines. Prose phrasings are not read here, and
+    neither is a `Depends on:` line inside a code block or span: a quoted
+    example states nothing.
     """
-    lines = list(DEPENDS_ON_LINE_RE.finditer(body))
+    spans = _code_spans(body)
+    lines = [
+        m
+        for m in DEPENDS_ON_LINE_RE.finditer(body)
+        if not any(start <= m.start(1) < end for start, end in spans)
+    ]
     has_field = contract is not None and "blocked-by" in contract["fields"]
     if not lines and not has_field:
         return None

@@ -177,6 +177,21 @@ class StructuredDependencySourcesTest(unittest.TestCase):
         self.assertEqual(rec["depends_on"], [4, 5])
         self.assertIn(3, rec["mentions"])
 
+    def test_depends_on_line_in_code_does_not_override_prose(self):
+        for example in (
+            "```\nDepends on: #99\n```",
+            "    Depends on: #99",
+            "`Depends on: #99`",
+        ):
+            with self.subTest(example=example):
+                body = f"Blocked by #3.\n\nExample:\n\n{example}\n"
+                issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(99)]
+                rec = self._record(issues, 1)
+                # The quoted line is no stated source, so the prose blocker
+                # stays an edge (prose reading itself does not skip code).
+                self.assertIn(3, rec["depends_on"])
+                self.assertIn(3, rec["depends_on_open"])
+
     def test_contract_without_blocked_by_keeps_prose_edges(self):
         body = "depends on #3\n<!-- ship: tier=P2 touches=* -->"
         rec = self._record([gh_issue(1, body=body), gh_issue(3)], 1)
