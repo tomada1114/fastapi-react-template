@@ -342,9 +342,9 @@ def script_import_findings(root: Path) -> list[str]:
         siblings = {sibling.stem for sibling in path.parent.glob("*.py")}
         relative = path.relative_to(root)
         if relative.parts[0] == ".agents":
-            stdlib = STDLIB_PY39
+            stdlib = STDLIB_PY39 & sys.stdlib_module_names
         elif relative == Path("scripts/check_staged.py"):
-            stdlib = STDLIB_PY310
+            stdlib = STDLIB_PY310 & sys.stdlib_module_names
         else:
             stdlib = sys.stdlib_module_names
         allowed = stdlib | {"__future__"} | siblings
@@ -430,6 +430,19 @@ def test_script_imports_newer_stdlib_is_rejected(
     path = tmp_path / script
     path.parent.mkdir(parents=True)
     path.write_text(f"def main():\n    import {module}\n", encoding="utf-8")
+    assert len(script_import_findings(tmp_path)) == 1
+
+
+@pytest.mark.parametrize(
+    "script", ["scripts/check_staged.py", ".agents/skills/sample/scripts/probe.py"]
+)
+@pytest.mark.parametrize("module", ["formatter", "parser", "cgi"])
+def test_script_imports_removed_stdlib_is_rejected(
+    tmp_path: Path, script: str, module: str
+) -> None:
+    path = tmp_path / script
+    path.parent.mkdir(parents=True)
+    path.write_text(f"import {module}\n", encoding="utf-8")
     assert len(script_import_findings(tmp_path)) == 1
 
 

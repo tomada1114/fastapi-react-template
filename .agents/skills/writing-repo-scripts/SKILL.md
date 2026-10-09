@@ -35,8 +35,9 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
   syntax. It inherits `GIT_*` from the hook on purpose, because `git commit -a` hands
   the hook a temporary index through `GIT_INDEX_FILE`.
 - Enforced by: `tests/test_script_imports.py`, which checks repository and skill
-  scripts against their stdlib floors (skills: 3.9; `check_staged.py`: 3.10;
-  other repository scripts: the project floor), plus absolute sibling imports. The backend's
+  scripts against the stdlib shared by their floors (skills: 3.9; `check_staged.py`:
+  3.10) and the project interpreter; other repository scripts use the project stdlib.
+  Absolute sibling imports are allowed. The backend's
   `banned-api` table does not reach `scripts/`.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and
   `print` is its output channel.
