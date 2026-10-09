@@ -4,9 +4,8 @@
 
 A Python application built with [uv](https://docs.astral.sh/uv/) and
 [hatchling](https://hatch.pypa.io/), in a strict `src/` layout with comprehensive
-type checking and linting. A framework-free core carries two entry points: a
-FastAPI HTTP API and a Typer CLI (`my-app`). The sample domain is a to-do list —
-replace it with your own, and delete whichever entry point you do not need.
+type checking and linting. A framework-free core carries one entry point, a
+FastAPI HTTP API. The sample domain is a to-do list — replace it with your own.
 
 Every task here:
 
@@ -58,7 +57,6 @@ just lock-check      # Fail when uv.lock is out of date, without changing it
 just verify          # Non-mutating gate: lock-check → agents-check → check-harness → lint → test-skills → test
 just check-harness   # Harness drift (skills, Skills table, recipes, this index, ruleset, labels, workflows) + the Product section check
 just test-skills     # Run the unittest suites bundled under .agents/skills/*/scripts/tests
-just run *ARGS       # Run the CLI, e.g. `just run todo list` (uv run --locked my-app ...)
 just worktree-prepare # Recreate the locked Python environment in an existing linked worktree
 just worktree-setup ISSUE BRANCH BASE ROOT VERIFY # Provision one issue worktree with its baseline
 just worktree-clean ROOT BRANCH # Preview cleanup of one named worktree whose local tip is a merged PR's head; a failed gh fails the run
@@ -76,8 +74,8 @@ just dev             # Serve the API on http://127.0.0.1:8000 with auto-reload; 
 
 `just dev` is the developer's server: never start, stop, or restart it, or bind
 its port. To see what only a running server shows, prefer a `TestClient` test,
-else your own `my-app serve` on a free port, stopped before your turn ends
-(`running-the-app`).
+else your own `uv run --locked uvicorn my_app.api.app:create_app --factory --port
+<free port>`, stopped before your turn ends (`running-the-app`).
 
 ### Writes to GitHub
 
@@ -119,22 +117,19 @@ src/my_app/
 ├── core/            # Framework-free: domain model, ports (Protocols, LlmPort included), services, errors
 ├── adapters/        # Port implementations: in-memory and SQLite repositories; fake, closed, and OpenRouter LLM adapters (httpx, optional ai extra)
 ├── api/             # FastAPI: create_app(settings) factory, routers (api/routers/), Pydantic schemas
-├── cli/             # Typer: `my-app todo add|list|complete|delete`; serve.py holds `my-app serve`
 ├── settings.py      # pydantic-settings `Settings`, read from MY_APP_* environment variables and the unprefixed OPENROUTER_API_KEY
-└── composition.py   # Composition root: wires adapters into services for both entry points
+└── composition.py   # Composition root: wires adapters into services for the API
 ```
 
-- Dependencies point inward: `api/` and `cli/` call `core/` services and get
+- Dependencies point inward: `api/` calls `core/` services and gets
   them only from `composition.build_container`; `adapters/` implement
   `core/ports.py`; `core/` imports nothing outside the stdlib and itself.
   Ruff's `TID251` banned-api rule and `tests/core/test_imports.py` fail the
   build otherwise (`designing-core-logic`).
-- Domain errors derive from `core.errors.AppError`; each entry point maps them
-  in one place (`api/app.py`, `cli/errors.py`), per `designing-errors`.
-- The CLI never imports the API at import time: `cli/serve.py` is the only
-  bridge, and it imports FastAPI and uvicorn inside the command.
-- Removing an entry point is a deletion, never a core change:
-  `building-api-routes` and `designing-clis` each list what goes with theirs.
+- Domain errors derive from `core.errors.AppError`; the API maps them in one
+  place (`api/app.py`), per `designing-errors`.
+- No module imports uvicorn (ruff's banned-api refuses it): it serves the app
+  from the command line (`just dev`), through `create_app` as a factory.
 
 ## Skills
 

@@ -1,7 +1,7 @@
 """Domain errors, each a subclass of one package base exception.
 
-Entry points translate these into their own vocabulary (an HTTP status, an
-exit code), so the core never needs to know which one called it.
+An entry point translates these into its own vocabulary (the API into an
+HTTP status), so the core never needs to know which one called it.
 """
 
 from __future__ import annotations

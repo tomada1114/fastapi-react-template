@@ -12,7 +12,6 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.141.1",
     "pydantic-settings>=2.15.0",
-    "typer>=0.27.2",
     "uvicorn>=0.53.0",
 ]
 license = "MIT"
@@ -30,9 +29,6 @@ classifiers = [
 # The OpenRouter LLM adapter (src/my_app/adapters/openrouter.py). Without it the
 # app runs with the LLM closed; see the integrating-llm skill.
 ai = ["httpx>=0.28"]
-
-[project.scripts]
-my-app = "my_app.cli.main:app"
 
 [project.urls]
 Homepage = "https://github.com/your-username/fastapi-react-template"
@@ -161,7 +157,7 @@ ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-# Pydantic, FastAPI, and Typer read annotations at run time, so the types they
+# Pydantic and FastAPI read annotations at run time, so the types they
 # name must stay real imports rather than move under `if TYPE_CHECKING:`.
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-base-classes = [
@@ -180,8 +176,6 @@ runtime-evaluated-decorators = [
     "fastapi.FastAPI.patch",
     "fastapi.FastAPI.delete",
     "fastapi.FastAPI.exception_handler",
-    "typer.Typer.command",
-    "typer.Typer.callback",
 ]
 
 # The core (src/my_app/core) must stay framework- and I/O-free so every entry
@@ -191,18 +185,16 @@ runtime-evaluated-decorators = [
 # layers that exist to use them.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "fastapi".msg = "the core is framework-free; use fastapi only in my_app.api"
-"typer".msg = "the core is framework-free; use typer only in my_app.cli"
-"uvicorn".msg = "the core is framework-free; use uvicorn only in my_app.cli"
+"uvicorn".msg = "uvicorn serves the app from the command line (just dev); no module imports it"
 "sqlite3".msg = "the core is I/O-free; use sqlite3 only in my_app.adapters"
 "httpx".msg = "the core is I/O-free; use httpx only in an adapter or a test"
 
 [tool.ruff.lint.per-file-ignores]
 # The outer layers exist to use the frameworks and drivers the core may not.
 "src/my_app/api/**" = ["TID251"]     # FastAPI is the HTTP entry point
-"src/my_app/cli/**" = ["TID251"]     # Typer and uvicorn are the CLI entry point
 "src/my_app/adapters/**" = ["TID251"] # adapters wrap sqlite3 and other I/O
 "tests/**" = [
-    "TID251",  # tests drive the API (TestClient/httpx) and the CLI (CliRunner)
+    "TID251",  # tests drive the API (TestClient/httpx)
     "S101",    # assert is fine in tests
     "ARG001",  # unused arguments (fixtures)
     "PLR2004", # magic numbers in tests

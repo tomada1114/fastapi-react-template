@@ -23,7 +23,7 @@ body:
       description: Minimal code or steps to reproduce the behavior.
       placeholder: |
         ```bash
-        uv run --locked my-app todo ...
+        curl -i http://127.0.0.1:8000/healthz
         ```
     validations:
       required: true

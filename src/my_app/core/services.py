@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 class TodoService:
     """Create, list, complete, and delete to-dos.
 
-    The API and the CLI both call this class and nothing below it, so a rule
-    added here holds for every entry point.
+    The API calls this class and nothing below it, so a rule added here holds
+    for every entry point.
     """
 
     def __init__(self, repository: TodoRepository, clock: Clock) -> None:
