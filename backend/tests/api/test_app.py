@@ -325,3 +325,19 @@ def test_create_app_cors_still_allows_middleware_registration(make_container):
 
     assert response.status_code == HTTPStatus.OK
     assert response.headers["access-control-allow-origin"] == "https://app.example.com"
+
+
+def test_create_app_supplied_container_ignores_invalid_storage_env_but_reads_cors(
+    monkeypatch, make_container
+):
+    container = make_container()
+    monkeypatch.setenv("MY_APP_DATABASE_URL", "not-a-database-url")
+    monkeypatch.setenv("MY_APP_CORS_ORIGINS", "https://APP.EXAMPLE.COM:443")
+    with TestClient(create_app(container=container)) as client:
+        response = client.get(
+            "/api/todos", headers={"Origin": "https://app.example.com"}
+        )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json() == {"items": [], "next_cursor": None}
+    assert response.headers["access-control-allow-origin"] == "https://app.example.com"

@@ -125,6 +125,8 @@ def test_settings_cors_origins_are_stripped_and_deduplicated(monkeypatch):
         pytest.param("ftp://app.example.com", id="wrong-scheme"),
         pytest.param("https://bad host", id="whitespace"),
         pytest.param("https://app.example.com?x=1", id="query"),
+        pytest.param("https://app.example.com?", id="empty-query"),
+        pytest.param("https://app.example.com#", id="empty-fragment"),
         pytest.param("https://app.example.com#fragment", id="fragment"),
         pytest.param("https://app.example.com:abc", id="non-numeric-port"),
         pytest.param("https://app.example.com:65536", id="out-of-range-port"),
@@ -150,3 +152,33 @@ def test_settings_programmatic_cors_origins_use_the_same_rules():
 
     with pytest.raises(ValidationError, match="invalid CORS origin"):
         Settings(cors_origins=["https://app.example.com/"])
+
+
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        pytest.param(
+            "https://APP.EXAMPLE.COM", "https://app.example.com", id="lowercase-host"
+        ),
+        pytest.param(
+            "https://app.example.com:443",
+            "https://app.example.com",
+            id="default-https-port",
+        ),
+        pytest.param(
+            "http://app.example.com:80",
+            "http://app.example.com",
+            id="default-http-port",
+        ),
+        pytest.param("https://éxample.com", "https://xn--xample-9ua.com", id="idn"),
+        pytest.param("http://[::1]:5173", "http://[::1]:5173", id="ipv6-port"),
+    ],
+)
+def test_settings_cors_origins_match_browser_serialization(origin, expected):
+    assert Settings(cors_origins=[origin]).cors_origins == [expected]
+
+
+def test_settings_cors_origins_deduplicate_after_normalization():
+    assert Settings(
+        cors_origins=["https://APP.EXAMPLE.COM:443", "https://app.example.com"]
+    ).cors_origins == ["https://app.example.com"]

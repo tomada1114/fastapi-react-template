@@ -6,7 +6,7 @@ import re
 from typing import Annotated
 from urllib.parse import urlsplit
 
-from pydantic import field_validator
+from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_PREFIX = "MY_APP_"
@@ -15,7 +15,7 @@ POSTGRESQL_URL_PREFIX = "postgresql+asyncpg://"
 # The blocking driver's form, refused with a pointer to the async one.
 SYNC_SQLITE_URL_PREFIX = "sqlite:///"
 SQLITE_MEMORY_PATH = ":memory:"
-CORS_ORIGIN_PATTERN = re.compile(r"^https?://[^/\s]+$")
+CORS_ORIGIN_PATTERN = re.compile(r"^https?://[^/\s?#]+$")
 
 
 class Settings(BaseSettings):
@@ -56,11 +56,12 @@ class Settings(BaseSettings):
             origin = item.strip()
             if not origin:
                 continue
-            if not _is_browser_origin(origin):
+            normalized = _normalize_browser_origin(origin)
+            if normalized is None:
                 msg = f"invalid CORS origin {origin!r}: use http(s)://host[:port] without a path"
                 raise ValueError(msg)
-            if origin not in origins:
-                origins.append(origin)
+            if normalized not in origins:
+                origins.append(normalized)
         return origins
 
     @field_validator("database_url")
@@ -123,20 +124,25 @@ def _check_sqlite_path(url: str, path: str) -> None:
         raise ValueError(msg)
 
 
-def _is_browser_origin(origin: str) -> bool:
+def _normalize_browser_origin(origin: str) -> str | None:
     """Reject origin strings a browser cannot send in its Origin header."""
     if CORS_ORIGIN_PATTERN.fullmatch(origin) is None or "*" in origin or "\\" in origin:
-        return False
+        return None
     try:
         parsed = urlsplit(origin)
         # Access validates both the port range and its numeric spelling.
         _ = parsed.port
     except ValueError:
-        return False
-    return bool(parsed.hostname) and not (
+        return None
+    if not parsed.hostname or (
         parsed.username is not None
         or parsed.password is not None
         or parsed.query
         or parsed.fragment
         or parsed.netloc.endswith(":")
-    )
+    ):
+        return None
+    try:
+        return str(AnyHttpUrl(origin)).removesuffix("/")
+    except ValueError:
+        return None

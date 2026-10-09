@@ -77,7 +77,9 @@ def create_app(
     Returns:
         The application, ready for uvicorn or ``TestClient``.
     """
-    settings = settings if settings is not None else Settings()
+    if settings is None:
+        # A supplied container already owns storage; only HTTP settings apply.
+        settings = Settings(database_url=None) if container is not None else Settings()
     owns_container = container is None
     if container is None:
         container = build_container(settings)
