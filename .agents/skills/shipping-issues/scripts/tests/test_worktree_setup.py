@@ -47,19 +47,53 @@ def make_repo(path):
 
 
 def write_stub(
-    bin_dir: Path, name: str, record_path: Path, *, exit_code: int = 0
+    bin_dir: Path,
+    name: str,
+    record_path: Path,
+    *,
+    exit_code: int = 0,
+    append: bool = False,
 ) -> None:
     """Install a fake executable on `bin_dir` that records its argv and cwd
-    (one per line) to `record_path`, then exits with `exit_code`."""
+    (one per line) to `record_path`, then exits with `exit_code`. With
+    `append`, the stub records `<name> <argv>` and adds to the file, so stubs
+    sharing one record show the order they ran in."""
     stub = bin_dir / name
+    argv = f"{name} $*" if append else "$*"
+    redirect = ">>" if append else ">"
     stub.write_text(
         "#!/usr/bin/env bash\n"
-        f'printf \'%s\\n\' "$*" > "{record_path}"\n'
+        f'printf \'%s\\n\' "{argv}" {redirect} "{record_path}"\n'
         f'pwd >> "{record_path}"\n'
         f"exit {exit_code}\n",
         encoding="utf-8",
     )
     stub.chmod(stub.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def commit_files(repo: Path, *names: str) -> None:
+    """Commit a fixture file for each name, so a new worktree checks it out."""
+    for name in names:
+        (repo / name).write_text("fixture\n", encoding="utf-8")
+    git(repo, "add", *names)
+    git(repo, "commit", "-qm", "add " + " ".join(names))
+
+
+def issue_args(issue: str, root: Path) -> list:
+    return [
+        "--issue",
+        issue,
+        "--branch",
+        "feat/" + issue,
+        "--base",
+        "main",
+        "--root",
+        str(root),
+    ]
+
+
+def deps_lines(stdout: str) -> list:
+    return [ln for ln in stdout.splitlines() if ln.startswith("deps: ")]
 
 
 def run_script(args, cwd, *, extra_path: str | None = None):
@@ -324,6 +358,235 @@ class WorktreeSetupTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("verdict: BLOCKED\n", proc.stdout)
         self.assertIn("exit=7", proc.stdout)
+
+    # --- JavaScript dependencies (pnpm-lock.yaml) ---------------------------
+
+    def test_pnpm_lockfile_installs_after_uv_in_worktree(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+            # An untracked node_modules in the main checkout: pnpm links it into
+            # its store and node_modules/.pnpm, so a copy points at the wrong tree.
+            (repo / "node_modules" / ".pnpm").mkdir(parents=True)
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            record = td / "calls.txt"
+            write_stub(bin_dir, "uv", record, append=True)
+            write_stub(bin_dir, "pnpm", record, append=True)
+
+            proc = run_script(issue_args("7", root), repo, extra_path=str(bin_dir))
+            wt = root / "7"
+            recorded = record.read_text(encoding="utf-8").splitlines()
+            node_modules_copied = (wt / "node_modules").exists()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            recorded,
+            [
+                "uv sync --all-groups --locked",
+                str(wt),
+                "pnpm install --frozen-lockfile",
+                str(wt),
+            ],
+        )
+        self.assertEqual(
+            deps_lines(proc.stdout),
+            [
+                "deps: uv sync --all-groups --locked",
+                "deps: pnpm install --frozen-lockfile",
+            ],
+        )
+        self.assertIn("verdict: READY\n", proc.stdout)
+        self.assertFalse(
+            node_modules_copied, "node_modules must be re-created, never copied"
+        )
+
+    def test_pnpm_install_failure_blocks(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            write_stub(bin_dir, "uv", td / "uv-call.txt")
+            write_stub(bin_dir, "pnpm", td / "pnpm-call.txt", exit_code=7)
+
+            proc = run_script(issue_args("8", root), repo, extra_path=str(bin_dir))
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(
+            deps_lines(proc.stdout),
+            [
+                "deps: uv sync --all-groups --locked",
+                "deps: FAILED: pnpm install --frozen-lockfile (exit=7)",
+            ],
+        )
+        self.assertIn("verdict: BLOCKED\n", proc.stdout)
+
+    def test_uv_failure_blocks_before_the_pnpm_install(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            pnpm_record = td / "pnpm-call.txt"
+            write_stub(bin_dir, "uv", td / "uv-call.txt", exit_code=5)
+            write_stub(bin_dir, "pnpm", pnpm_record)
+
+            proc = run_script(issue_args("9", root), repo, extra_path=str(bin_dir))
+            pnpm_ran = pnpm_record.exists()
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(
+            deps_lines(proc.stdout),
+            ["deps: FAILED: uv sync --all-groups --locked (exit=5)"],
+        )
+        self.assertIn("verdict: BLOCKED\n", proc.stdout)
+        self.assertFalse(pnpm_ran)
+
+    def test_missing_pnpm_blocks_with_exit_127(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            commit_files(repo, "pnpm-lock.yaml")
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            env = dict(os.environ)
+            # The system directories only: a pnpm installed by a version
+            # manager or under /usr/local is out of reach.
+            env["PATH"] = os.pathsep.join([str(bin_dir), "/usr/bin", "/bin"])
+
+            proc = subprocess.run(
+                ["bash", str(SCRIPT), *issue_args("10", root)],
+                cwd=repo,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+
+        self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertEqual(
+            deps_lines(proc.stdout),
+            ["deps: FAILED: pnpm install --frozen-lockfile (exit=127)"],
+        )
+        self.assertIn("verdict: BLOCKED\n", proc.stdout)
+
+    def test_no_pnpm_lockfile_runs_no_pnpm_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            commit_files(repo, "uv.lock")
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            pnpm_record = td / "pnpm-call.txt"
+            write_stub(bin_dir, "uv", td / "uv-call.txt")
+            write_stub(bin_dir, "pnpm", pnpm_record)
+
+            proc = run_script(issue_args("11", root), repo, extra_path=str(bin_dir))
+            pnpm_ran = pnpm_record.exists()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            deps_lines(proc.stdout), ["deps: uv sync --all-groups --locked"]
+        )
+        self.assertNotIn("pnpm", proc.stdout)
+        self.assertFalse(pnpm_ran)
+
+    def test_pnpm_lockfile_without_uv_lockfile_runs_only_pnpm(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            commit_files(repo, "pnpm-lock.yaml")
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            record = td / "calls.txt"
+            write_stub(bin_dir, "uv", record, append=True)
+            write_stub(bin_dir, "pnpm", record, append=True)
+
+            proc = run_script(issue_args("12", root), repo, extra_path=str(bin_dir))
+            wt = root / "12"
+            recorded = record.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(recorded, ["pnpm install --frozen-lockfile", str(wt)])
+        self.assertEqual(
+            deps_lines(proc.stdout), ["deps: pnpm install --frozen-lockfile"]
+        )
+
+    def test_other_javascript_lockfiles_select_nothing(self):
+        for lockfile in ("package-lock.json", "yarn.lock", "bun.lock"):
+            with self.subTest(lockfile=lockfile), tempfile.TemporaryDirectory() as td:
+                td = Path(td)
+                repo = td / "repo"
+                repo.mkdir()
+                make_repo(repo)
+                commit_files(repo, lockfile)
+                root = td / "worktrees"
+                bin_dir = td / "bin"
+                bin_dir.mkdir()
+                record = td / "calls.txt"
+                write_stub(bin_dir, "uv", record, append=True)
+                write_stub(bin_dir, "pnpm", record, append=True)
+
+                proc = run_script(issue_args("13", root), repo, extra_path=str(bin_dir))
+                anything_ran = record.exists()
+
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(deps_lines(proc.stdout), ["deps: none"])
+                self.assertFalse(anything_ran)
+
+    def test_dry_run_prints_the_pnpm_install_and_runs_nothing(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            repo = td / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+            root = td / "worktrees"
+            bin_dir = td / "bin"
+            bin_dir.mkdir()
+            record = td / "calls.txt"
+            write_stub(bin_dir, "uv", record, append=True)
+            write_stub(bin_dir, "pnpm", record, append=True)
+
+            proc = run_script(
+                [*issue_args("14", root), "--dry-run"],
+                repo,
+                extra_path=str(bin_dir),
+            )
+            wt = root / "14"
+            anything_ran = record.exists()
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        dry = [ln for ln in proc.stdout.splitlines() if ln.startswith("DRY: (cd ")]
+        self.assertEqual(
+            dry,
+            [
+                f"DRY: (cd {wt} && uv sync --all-groups --locked)",
+                f"DRY: (cd {wt} && pnpm install --frozen-lockfile)",
+            ],
+        )
+        self.assertFalse(anything_ran)
 
     def test_missing_shared_pre_commit_hook_warns_and_installs_nothing(self):
         with tempfile.TemporaryDirectory() as td:
