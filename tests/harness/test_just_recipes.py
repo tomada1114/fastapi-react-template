@@ -44,11 +44,16 @@ The root justfile's ``mod NAME`` and ``mod NAME 'PATH'`` statements (``mod?``
 for an optional one) declare just modules, read from ``PATH`` (a file, or a
 directory holding ``mod.just``, ``justfile``, or ``.justfile``) or, without
 one, from the first of ``NAME.just``, ``NAME/mod.just``, ``NAME/justfile``, and
-``NAME/.justfile`` that exists. A module recipe is named as
-``just NAME <recipe>`` or ``just NAME::<recipe>``, and must exist in the
-module's file; ``just NAME`` alone names no recipe and is reported. A
-non-optional module without a file is reported; an optional one is not, but a
-call into it is.
+``NAME/.justfile`` that exists. A module file's own ``mod`` statements declare
+nested modules, resolved the same way from that file's directory (a cycle, or
+nesting deeper than ``MAX_MODULE_DEPTH``, is reported, not followed). A module
+recipe is named as ``just NAME <recipe>`` or ``just NAME::<recipe>`` (nested:
+``just NAME SUB <recipe>``, ``just NAME::SUB::<recipe>``, or a mix), and must
+exist in its module's file; a call that ends at a module names no recipe and
+is reported. A non-optional module without a file is reported; an optional one
+is not, but a call into it is. Same-name ``mod?`` declarations are one module
+whose sole existing file is used; more than one existing file, or a repeated
+name with any non-optional declaration, is reported, as just refuses both.
 
 ``ci_recipe_findings`` keeps the required CI jobs' commands equal to the
 recipe lines they mirror, root recipes in a step run at the repository root
@@ -75,7 +80,7 @@ from tests.harness._workflows import jobs, read_workflow, steps
 from tests.harness._yaml import Mapping, as_mapping, block_text, scalar
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterator
+    from collections.abc import Callable, Iterator
 
     type MakeRoot = Callable[[dict[str, str]], Path]
 
@@ -111,12 +116,6 @@ NOT_RECIPES = frozenset({"set", "export", "unexport", "import", "mod", "alias"})
 _NAME = r"[A-Za-z_][A-Za-z0-9_-]*"
 _RECIPE_HEADER = re.compile(rf"^@?(?P<name>{_NAME})(?:[ \t]+[^:]*?)?[ \t]*:(?!=)")
 _ALIAS = re.compile(rf"^alias[ \t]+(?P<name>{_NAME})[ \t]*:=")
-# `just a::b` is one path; after a module name, the next word is its recipe, a
-# `<placeholder>` names nothing, and anything else (or nothing) names no recipe.
-_CALL = re.compile(
-    rf"^just\s+(?P<head>{_NAME})(?P<path>(?:::{_NAME})*)"
-    rf"(?:\s+(?:(?P<argument>{_NAME})|(?P<placeholder><)))?"
-)
 _MOD_START = re.compile(r"^mod\??[ \t]")
 _MOD = re.compile(
     rf"^mod(?P<optional>\?)?[ \t]+(?P<name>{_NAME})"
@@ -169,18 +168,30 @@ def justfile_recipes(text: str) -> set[str]:
 
 @dataclass(frozen=True, slots=True)
 class JustModule:
-    """A ``mod`` statement and the module files found where just looks."""
+    """A module's ``mod`` declarations and the module files found where just looks.
+
+    just accepts one declaration per name, or several ``mod?`` ones of which at
+    most one finds a file; every same-name declaration is merged here.
+    """
 
     name: str
-    optional: bool
+    optional: bool  # every declaration is `mod?`
     # What just searches, relative to the declaring justfile's directory.
     searched: tuple[str, ...]
     found: tuple[Path, ...]
+    declarations: int = 1
+
+    @property
+    def redefined(self) -> bool:
+        """Whether just refuses the name as declared more than once."""
+        return self.declarations > 1 and not self.optional
 
     @property
     def path(self) -> Path | None:
-        """The module's file, or None when there is none or more than one."""
-        return self.found[0] if len(self.found) == 1 else None
+        """The module's file, or None when just cannot load exactly one."""
+        if self.redefined or len(self.found) != 1:
+            return None
+        return self.found[0]
 
 
 def _existing(directory: Path, relative: str) -> list[Path]:
@@ -224,118 +235,200 @@ def justfile_modules(text: str, directory: Path) -> dict[str, JustModule]:
         found = tuple(
             path for relative in searched for path in _existing(directory, relative)
         )
-        modules[name] = JustModule(name, bool(match["optional"]), searched, found)
+        module = JustModule(name, bool(match["optional"]), searched, found)
+        if (earlier := modules.get(name)) is not None:
+            module = JustModule(
+                name,
+                earlier.optional and module.optional,
+                earlier.searched + searched,
+                earlier.found + found,
+                earlier.declarations + 1,
+            )
+        modules[name] = module
     return modules
 
 
-def module_findings(root: Path) -> list[str]:
-    """Return each module the root justfile declares whose file just cannot read."""
-    text = (root / JUSTFILE).read_text(encoding="utf-8")
-    findings: list[str] = []
-    for module in justfile_modules(text, root).values():
-        if len(module.found) > 1:
-            files = ", ".join(
-                path.relative_to(root).as_posix() for path in module.found
-            )
-            findings.append(
-                f"{JUSTFILE}: `mod {module.name}` matches more than one file: {files}"
-            )
-        elif not module.found and not module.optional:
-            findings.append(
-                f"{JUSTFILE}: `mod {module.name}` has no module file "
-                f"(looked for {', '.join(module.searched)})"
-            )
-    return findings
+# A module tree deeper than this is reported rather than followed.
+MAX_MODULE_DEPTH = 8
 
 
 @dataclass(frozen=True, slots=True)
-class ModuleRecipes:
-    """A module that has a file: where it is and the recipes it defines."""
+class ModuleTree:
+    """A justfile's recipes and the modules it declares, each loaded in turn.
+
+    ``file`` is root-relative (``justfile`` for the root). A declared module
+    just cannot load (no file, several, a redefinition, a cycle) maps to None.
+    """
 
     file: str
     recipes: frozenset[str]
+    modules: dict[str, ModuleTree | None]
+
+    @property
+    def label(self) -> str:
+        """How a finding names this file."""
+        return f"the {JUSTFILE}" if self.file == JUSTFILE else self.file
 
 
-def module_recipes(root: Path) -> dict[str, ModuleRecipes]:
-    """Return the recipes of each root module whose file exists, by module name."""
-    text = (root / JUSTFILE).read_text(encoding="utf-8")
-    return {
-        name: ModuleRecipes(
-            module.path.relative_to(root).as_posix(),
-            frozenset(justfile_recipes(module.path.read_text(encoding="utf-8"))),
+def _relative(path: Path, root: Path) -> str:
+    return Path(os.path.relpath(path, root)).as_posix()
+
+
+def _declaration_findings(file: str, module: JustModule, root: Path) -> list[str]:
+    """Return why just cannot load a module as ``file`` declares it."""
+    where = f"{file}: `mod {module.name}`"
+    if module.redefined:
+        return [
+            (
+                f"{where} is declared more than once; just allows that only for "
+                "`mod?` declarations of which at most one finds a file"
+            )
+        ]
+    if len(module.found) > 1:
+        files = ", ".join(_relative(path, root) for path in module.found)
+        return [f"{where} matches more than one file: {files}"]
+    if not module.found and not module.optional:
+        return [f"{where} has no module file (looked for {', '.join(module.searched)})"]
+    return []
+
+
+def _load_tree(
+    root: Path, path: Path, chain: tuple[Path, ...], findings: list[str]
+) -> ModuleTree:
+    text = path.read_text(encoding="utf-8")
+    file = _relative(path, root)
+    chain = (*chain, path.resolve())
+    modules: dict[str, ModuleTree | None] = {}
+    for name, module in justfile_modules(text, path.parent).items():
+        findings.extend(_declaration_findings(file, module, root))
+        target = module.path
+        if target is not None and target.resolve() in chain:
+            findings.append(
+                f"{file}: `mod {name}` loads {_relative(target, root)}, "
+                "which already encloses it"
+            )
+            target = None
+        elif target is not None and len(chain) > MAX_MODULE_DEPTH:
+            findings.append(
+                f"{file}: `mod {name}` nests modules deeper than "
+                f"{MAX_MODULE_DEPTH} levels, which this check does not follow"
+            )
+            target = None
+        modules[name] = (
+            None if target is None else _load_tree(root, target, chain, findings)
         )
-        for name, module in justfile_modules(text, root).items()
-        if module.path is not None
-    }
+    return ModuleTree(file, frozenset(justfile_recipes(text)), modules)
+
+
+def module_tree(root: Path) -> tuple[ModuleTree, list[str]]:
+    """Return the root justfile's module tree and why any module will not load."""
+    findings: list[str] = []
+    return _load_tree(root, root / JUSTFILE, (), findings), findings
+
+
+def module_findings(root: Path) -> list[str]:
+    """Return each module, at any depth, whose file just cannot load."""
+    return module_tree(root)[1]
+
+
+def nested_modules(
+    tree: ModuleTree, prefix: tuple[str, ...] = ()
+) -> Iterator[tuple[tuple[str, ...], ModuleTree]]:
+    """Yield ``(module path, tree)`` of every loadable module under ``tree``."""
+    for name, child in sorted(tree.modules.items()):
+        if child is not None:
+            yield (*prefix, name), child
+            yield from nested_modules(child, (*prefix, name))
 
 
 @dataclass(frozen=True, slots=True)
 class Call:
     """A ``just`` invocation in command position, as far as it names a recipe.
 
-    ``module`` is None for a root recipe. ``recipe`` is None for a bare
-    ``just MODULE``, which names no recipe. ``spelled`` is how a finding quotes it.
+    ``module`` is the module path the call walked (``()`` for the root),
+    ``recipe`` the recipe it names, if any, and ``problem`` why it names
+    nothing, None for a recipe that exists. ``spelled`` is how a finding
+    quotes it.
     """
 
-    module: str | None
+    module: tuple[str, ...]
     recipe: str | None
     spelled: str
+    problem: str | None
 
 
-def parse_call(command: str, modules: Collection[str]) -> Call | None:
+_CALL = re.compile(rf"^just\s+(?P<word>{_NAME}(?:::{_NAME})*)")
+_NEXT_WORD = re.compile(rf"\s+(?:(?P<word>{_NAME}(?:::{_NAME})*)|(?P<placeholder><))")
+
+
+@dataclass(frozen=True, slots=True)
+class _Stop:
+    """Where walking a word stopped short of a loadable module."""
+
+    recipe: str | None
+    problem: str | None
+    # The word ended at a module just cannot load, so the next word belongs
+    # to the call a finding quotes.
+    unloadable: bool = False
+
+
+def _walk(node: ModuleTree, word: str, walked: list[str]) -> ModuleTree | _Stop:
+    """Walk ``word``'s ``::`` segments from ``node``, appending each module to ``walked``.
+
+    Return the module the word ends at, or where it stopped: at a recipe, which
+    exists when the stop has no problem, or at a name that is neither.
+    """
+    segments = word.split("::")
+    for index, segment in enumerate(segments):
+        last = index == len(segments) - 1
+        if segment in node.modules:
+            walked.append(segment)
+            child = node.modules[segment]
+            if child is None:
+                problem = (
+                    f"names the module {'::'.join(walked)}, which has no module file"
+                )
+                return _Stop(None, problem, unloadable=last)
+            node = child
+        elif not last:
+            return _Stop(None, f"names no module in {node.label}")
+        elif segment in node.recipes:
+            return _Stop(segment, None)
+        else:
+            return _Stop(segment, f"names no recipe in {node.label}")
+    return node
+
+
+def parse_call(command: str, tree: ModuleTree) -> Call | None:
     """Return what a command beginning with ``just`` names, or None for nothing.
 
-    ``modules`` are the root justfile's module names, declared ones included
-    even when their file is missing, so a call into one is never read as a
-    root recipe.
+    ``a::b`` walks a path; after a word that ends at a module, the next word
+    walks on from that module (``just foo bar test``). Arguments after a
+    recipe are ignored, a ``<placeholder>`` after a module names nothing, and a
+    module with nothing after it names no recipe.
     """
     match = _CALL.match(command)
     if match is None:
         return None
-    head, path = match["head"], match["path"]
-    if path:
-        return Call(head, path[2:], f"{head}{path}")
-    if head not in modules:
-        return Call(None, head, head)
-    if match["placeholder"]:
-        return None
-    argument = match["argument"]
-    return Call(head, argument, f"{head} {argument}" if argument else head)
-
-
-def _module_call_finding(
-    call: Call, declared: Collection[str], available: dict[str, ModuleRecipes]
-) -> str | None:
-    """Return why a call into a module names nothing, or None for a recipe."""
-    module = available.get(call.module or "")
-    if call.module not in declared:
-        problem = f"names no module in the {JUSTFILE}"
-    elif module is None:
-        problem = f"names the module {call.module}, which has no module file"
-    elif call.recipe is None:
-        problem = (
-            f"names no recipe of {module.file}; name one, "
-            f"as `just {call.module} <recipe>`"
-        )
-    elif call.recipe not in module.recipes:
-        problem = f"names no recipe in {module.file}"
-    else:
-        return None
-    return f"`just {call.spelled}` {problem}"
-
-
-def _call_finding(
-    call: Call,
-    recipes: Collection[str],
-    declared: Collection[str],
-    available: dict[str, ModuleRecipes],
-) -> str | None:
-    """Return why a call names nothing, or None when it names a recipe."""
-    if call.module is not None:
-        return _module_call_finding(call, declared, available)
-    if call.recipe in recipes:
-        return None
-    return f"`just {call.spelled}` names no recipe in the {JUSTFILE}"
+    walked: list[str] = []
+    word, rest, spelled = match["word"], command[match.end() :], match["word"]
+    outcome = _walk(tree, word, walked)
+    while isinstance(outcome, ModuleTree):
+        after = _NEXT_WORD.match(rest)
+        if after is not None and after["placeholder"]:
+            return None
+        if after is None:
+            problem = (
+                f"names no recipe of {outcome.file}; name one, "
+                f"as `just {' '.join(walked)} <recipe>`"
+            )
+            return Call(tuple(walked), None, spelled, problem)
+        word, rest = after["word"], rest[after.end() :]
+        spelled = f"{spelled} {word}"
+        outcome = _walk(outcome, word, walked)
+    if outcome.unloadable and (after := _NEXT_WORD.match(rest)) and after["word"]:
+        spelled = f"{spelled} {after['word']}"
+    return Call(tuple(walked), outcome.recipe, spelled, outcome.problem)
 
 
 def _paragraphs(lines: list[str]) -> Iterator[tuple[int, str]]:
@@ -456,11 +549,7 @@ def recipe_findings(root: Path) -> list[str]:
     justfile = root / JUSTFILE
     if not justfile.is_file():
         return [f"{JUSTFILE} is missing"]
-    text = justfile.read_text(encoding="utf-8")
-    recipes = justfile_recipes(text)
-    declared = set(justfile_modules(text, root))
-    available = module_recipes(root)
-    findings = module_findings(root)
+    tree, findings = module_tree(root)
     for path in documents(root):
         relative = path.relative_to(root).as_posix()
         snippets = _snippets(path, root)
@@ -479,10 +568,9 @@ def recipe_findings(root: Path) -> list[str]:
         )
         missing = sorted(
             {
-                (number, finding)
+                (number, f"`just {call.spelled}` {call.problem}")
                 for number, command in calls
-                if (call := parse_call(command, declared))
-                and (finding := _call_finding(call, recipes, declared, available))
+                if (call := parse_call(command, tree)) and call.problem
             }
         )
         findings.extend(
@@ -507,12 +595,14 @@ def test_justfile_recipes_reads_repository_justfile() -> None:
     assert not recipes & NOT_RECIPES
 
 
-def test_module_recipes_reads_repository_backend_module() -> None:
-    modules = module_recipes(REPO_ROOT)
+def test_module_tree_reads_repository_backend_module() -> None:
+    tree, findings = module_tree(REPO_ROOT)
 
-    assert modules["backend"].file == "backend/justfile"
-    assert {"lint", "fmt", "test", "dev"} <= modules["backend"].recipes
-    assert module_findings(REPO_ROOT) == []
+    backend = tree.modules["backend"]
+    assert backend is not None
+    assert backend.file == "backend/justfile"
+    assert {"lint", "fmt", "test", "dev"} <= backend.recipes
+    assert findings == []
 
 
 # --- fixtures ---
@@ -1043,6 +1133,220 @@ def test_recipe_findings_ambiguous_module_file_is_reported(
             "backend/justfile"
         )
     ]
+
+
+def _write(root: Path, files: dict[str, str]) -> Path:
+    for relative, text in files.items():
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text(text, encoding="utf-8")
+    return root
+
+
+OPTIONAL_PAIR = "mod? foo 'bar.just'\nmod? foo 'baz.just'\n"
+
+
+def test_justfile_modules_optional_declarations_merge(tmp_path: Path) -> None:
+    _write(tmp_path, {"bar.just": "test:\n    true\n"})
+
+    module = justfile_modules(OPTIONAL_PAIR, tmp_path)["foo"]
+
+    assert module.path == tmp_path / "bar.just"
+    assert module.searched == ("bar.just", "baz.just")
+    assert module.declarations == 2
+    assert not module.redefined
+
+
+@pytest.mark.parametrize(
+    ("present", "expected"),
+    [
+        pytest.param(("bar.just",), [], id="first-exists"),
+        pytest.param(("baz.just",), [], id="second-exists"),
+        pytest.param(
+            (),
+            [
+                (
+                    "AGENTS.md:1: `just foo test` names the module foo, which has no "
+                    "module file"
+                )
+            ],
+            id="neither-exists",
+        ),
+        pytest.param(
+            ("bar.just", "baz.just"),
+            [
+                f"{JUSTFILE}: `mod foo` matches more than one file: bar.just, baz.just",
+                (
+                    "AGENTS.md:1: `just foo test` names the module foo, which has no "
+                    "module file"
+                ),
+            ],
+            id="both-exist",
+        ),
+    ],
+)
+def test_recipe_findings_optional_declarations_select_sole_source(
+    tmp_path: Path, present: tuple[str, ...], expected: list[str]
+) -> None:
+    root = _write(
+        tmp_path,
+        {
+            JUSTFILE: OPTIONAL_PAIR,
+            "AGENTS.md": "Run `just foo test`.\n",
+            **dict.fromkeys(present, "test:\n    true\n"),
+        },
+    )
+
+    assert recipe_findings(root) == expected
+
+
+@pytest.mark.parametrize(
+    "declarations",
+    [
+        pytest.param("mod foo 'bar.just'\nmod foo 'baz.just'\n", id="both-required"),
+        pytest.param("mod? foo 'bar.just'\nmod foo 'baz.just'\n", id="mixed"),
+    ],
+)
+def test_recipe_findings_redefined_module_is_reported(
+    tmp_path: Path, declarations: str
+) -> None:
+    root = _write(
+        tmp_path,
+        {
+            JUSTFILE: declarations,
+            "bar.just": "test:\n    true\n",
+            "AGENTS.md": "Run `just foo test`.\n",
+        },
+    )
+
+    assert recipe_findings(root) == [
+        (
+            f"{JUSTFILE}: `mod foo` is declared more than once; just allows that only "
+            "for `mod?` declarations of which at most one finds a file"
+        ),
+        "AGENTS.md:1: `just foo test` names the module foo, which has no module file",
+    ]
+
+
+NESTED_FILES = {
+    JUSTFILE: "mod foo\n",
+    "foo/justfile": "mod bar\n\nr:\n    true\n",
+    "foo/bar/justfile": "b:\n    pwd\n",
+}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("Run `just foo::bar::b`.\n", id="path"),
+        pytest.param("Run `just foo bar b`.\n", id="subcommands"),
+        pytest.param("Run `just foo::bar b`.\n", id="path-then-subcommand"),
+        pytest.param("Run `just foo bar::b`.\n", id="subcommand-then-path"),
+        pytest.param("Run `just foo r`.\n", id="outer-recipe"),
+        pytest.param("Use `just foo bar <recipe>`.\n", id="placeholder"),
+    ],
+)
+def test_recipe_findings_nested_module_recipe_passes(tmp_path: Path, text: str) -> None:
+    root = _write(tmp_path, {**NESTED_FILES, "AGENTS.md": text})
+
+    assert recipe_findings(root) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "finding"),
+    [
+        pytest.param(
+            "Run `just foo::bar::nope`.\n",
+            "`just foo::bar::nope` names no recipe in foo/bar/justfile",
+            id="missing-nested-recipe",
+        ),
+        pytest.param(
+            "Run `just foo bar nope`.\n",
+            "`just foo bar nope` names no recipe in foo/bar/justfile",
+            id="missing-nested-recipe-subcommands",
+        ),
+        pytest.param(
+            "Run `just foo bar`.\n",
+            "`just foo bar` names no recipe of foo/bar/justfile; name one, as "
+            "`just foo bar <recipe>`",
+            id="bare-nested-module",
+        ),
+        pytest.param(
+            "Run `just foo::bar`.\n",
+            "`just foo::bar` names no recipe of foo/bar/justfile; name one, as "
+            "`just foo bar <recipe>`",
+            id="bare-nested-module-path",
+        ),
+        pytest.param(
+            "Run `just foo::baz::b`.\n",
+            "`just foo::baz::b` names no module in foo/justfile",
+            id="undeclared-nested-module",
+        ),
+        pytest.param(
+            "Run `just foo b`.\n",
+            "`just foo b` names no recipe in foo/justfile",
+            id="nested-recipe-one-level-up",
+        ),
+    ],
+)
+def test_recipe_findings_nested_module_drift_is_named(
+    tmp_path: Path, text: str, finding: str
+) -> None:
+    root = _write(tmp_path, {**NESTED_FILES, "AGENTS.md": text})
+
+    assert recipe_findings(root) == [f"AGENTS.md:1: {finding}"]
+
+
+def test_recipe_findings_nested_module_resolves_from_its_own_directory(
+    tmp_path: Path,
+) -> None:
+    # `mod bar` in foo/justfile looks in foo/, never at the root's bar/.
+    root = _write(
+        tmp_path,
+        {
+            JUSTFILE: "mod foo\n",
+            "foo/justfile": "mod bar\n",
+            "bar/justfile": "b:\n    true\n",
+            "AGENTS.md": "Run `just foo bar b`.\n",
+        },
+    )
+
+    assert recipe_findings(root) == [
+        (
+            "foo/justfile: `mod bar` has no module file (looked for bar.just, "
+            "bar/mod.just, bar/justfile, bar/.justfile)"
+        ),
+        (
+            "AGENTS.md:1: `just foo bar b` names the module foo::bar, which has no "
+            "module file"
+        ),
+    ]
+
+
+def test_module_tree_cycle_is_reported_not_followed(tmp_path: Path) -> None:
+    root = _write(
+        tmp_path,
+        {JUSTFILE: "mod foo\n\nt:\n    true\n", "foo/justfile": "mod back '..'\n"},
+    )
+
+    tree, findings = module_tree(root)
+
+    assert findings == [
+        "foo/justfile: `mod back` loads justfile, which already encloses it"
+    ]
+    foo = tree.modules["foo"]
+    assert foo is not None
+    assert foo.modules == {"back": None}
+
+
+def test_module_tree_depth_is_bounded(tmp_path: Path) -> None:
+    files = {JUSTFILE: "mod m\n"}
+    for depth in range(1, MAX_MODULE_DEPTH + 3):
+        files["/".join(["m"] * depth) + "/justfile"] = "mod m\n"
+
+    _, findings = module_tree(_write(tmp_path, files))
+
+    assert len(findings) == 1
+    assert f"nests modules deeper than {MAX_MODULE_DEPTH} levels" in findings[0]
 
 
 # Each recipe whose commands a required CI job repeats verbatim. A module

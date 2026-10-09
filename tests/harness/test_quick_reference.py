@@ -31,10 +31,9 @@ import pytest
 from tests.harness.test_just_recipes import (
     code_snippets,
     commands,
-    justfile_modules,
     justfile_recipes,
-    module_findings,
-    module_recipes,
+    module_tree,
+    nested_modules,
     parse_call,
 )
 
@@ -100,27 +99,26 @@ def quick_reference_findings(root: Path) -> list[str]:
     if bounds is None:
         return [f"{AGENTS} has no `{HEADING}` section"]
     first, last = bounds
-    declared = set(justfile_modules(recipes_text, root))
+    tree, findings = module_tree(root)
     indexed = {
         (call.module, call.recipe)
         for number, code in code_snippets(text)
         if first <= number <= last
         for command in commands(code)
-        if (call := parse_call(command, declared))
+        if (call := parse_call(command, tree)) and call.problem is None
     }
-    findings = module_findings(root)
     findings.extend(
         f"{AGENTS}: `just {name}` is a {JUSTFILE} recipe the Quick Reference "
         "does not index"
         for name in sorted(justfile_recipes(recipes_text) - UNINDEXED)
-        if (None, name) not in indexed
+        if ((), name) not in indexed
     )
-    for module, found in sorted(module_recipes(root).items()):
+    for path, module in nested_modules(tree):
         findings.extend(
-            f"{AGENTS}: `just {module} {name}` is a {found.file} recipe the "
-            "Quick Reference does not index"
-            for name in sorted(found.recipes - UNINDEXED)
-            if (module, name) not in indexed
+            f"{AGENTS}: `just {' '.join(path)} {name}` is a {module.file} recipe "
+            "the Quick Reference does not index"
+            for name in sorted(module.recipes - UNINDEXED)
+            if (path, name) not in indexed
         )
     deps = verify_dependencies(recipes_text)
     if deps is None:
@@ -437,3 +435,31 @@ def test_quick_reference_findings_missing_module_file_fails(
             "backend/mod.just, backend/justfile, backend/.justfile)"
         )
     ]
+
+
+def test_quick_reference_findings_nested_module_recipe_is_indexed(
+    make_root: MakeRoot,
+) -> None:
+    agents = AGENTS_TEXT.replace(
+        "## Architecture", f"{MODULE_SECTION}\n## Architecture"
+    )
+    root = _module_root(make_root, agents)
+    (root / "backend/justfile").write_text(
+        f"mod db\n\n{MODULE_JUSTFILE}", encoding="utf-8"
+    )
+    (root / "backend/db").mkdir()
+    (root / "backend/db/justfile").write_text("upgrade:\n    true\n", encoding="utf-8")
+
+    assert quick_reference_findings(root) == [
+        (
+            f"{AGENTS}: `just backend db upgrade` is a backend/db/justfile recipe the "
+            "Quick Reference does not index"
+        )
+    ]
+
+    indexed = agents.replace(
+        "just backend::fmt ", "just backend db::upgrade # Upgrade\njust backend::fmt "
+    )
+    (root / AGENTS).write_text(indexed, encoding="utf-8")
+
+    assert quick_reference_findings(root) == []
