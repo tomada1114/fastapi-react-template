@@ -41,8 +41,9 @@ arguments (``just run todo list``) are ignored. ``just -f``/``--justfile``/
 cannot read, so that form is reported rather than skipped.
 
 The root justfile's ``mod NAME`` and ``mod NAME 'PATH'`` statements (``mod?``
-for an optional one) declare just modules, read from ``PATH`` or, without one,
-from the first of ``NAME.just``, ``NAME/mod.just``, ``NAME/justfile``, and
+for an optional one) declare just modules, read from ``PATH`` (a file, or a
+directory holding ``mod.just``, ``justfile``, or ``.justfile``) or, without
+one, from the first of ``NAME.just``, ``NAME/mod.just``, ``NAME/justfile``, and
 ``NAME/.justfile`` that exists. A module recipe is named as
 ``just NAME <recipe>`` or ``just NAME::<recipe>``, and must exist in the
 module's file; ``just NAME`` alone names no recipe and is reported. A
@@ -130,6 +131,9 @@ MODULE_CANDIDATES = (
     "{name}/justfile",
     "{name}/.justfile",
 )
+# An explicit `mod NAME 'PATH'` may name the file itself or a directory holding
+# one of these, the last two again in any capitalization (same page).
+DIRECTORY_CANDIDATES = ("mod.just", "justfile", ".justfile")
 _ANY_CASE = frozenset({"justfile", ".justfile"})
 _OTHER_JUSTFILE = re.compile(
     r"^just\s+(?P<flag>-f|-d|--justfile|--working-directory)(?![\w-])"
@@ -210,11 +214,13 @@ def justfile_modules(text: str, directory: Path) -> dict[str, JustModule]:
             raise ValueError(msg)
         name = match["name"]
         explicit = match["raw"] if match["raw"] is not None else match["cooked"]
-        searched = (
-            (explicit,)
-            if explicit is not None
-            else tuple(pattern.format(name=name) for pattern in MODULE_CANDIDATES)
-        )
+        if explicit is None:
+            searched = tuple(pattern.format(name=name) for pattern in MODULE_CANDIDATES)
+        elif (directory / explicit).is_dir():
+            folder = PurePosixPath(explicit)
+            searched = tuple(str(folder / file) for file in DIRECTORY_CANDIDATES)
+        else:
+            searched = (explicit,)
         found = tuple(
             path for relative in searched for path in _existing(directory, relative)
         )
@@ -876,6 +882,37 @@ def test_justfile_modules_explicit_path_is_read(
 
     assert modules["tools"].path == tmp_path / relative
     assert modules["tools"].searched == (relative,)
+
+
+@pytest.mark.parametrize(
+    ("line", "relative"),
+    [
+        pytest.param("mod tools 'tools'", "tools/justfile", id="justfile"),
+        pytest.param("mod tools 'build/tools/'", "build/tools/mod.just", id="mod-just"),
+        pytest.param(
+            'mod tools "tools"', "tools/.JUSTFILE", id="dot-justfile-any-case"
+        ),
+    ],
+)
+def test_justfile_modules_explicit_directory_is_searched(
+    tmp_path: Path, line: str, relative: str
+) -> None:
+    (tmp_path / relative).parent.mkdir(parents=True)
+    (tmp_path / relative).write_text("test:\n    true\n", encoding="utf-8")
+
+    module = justfile_modules(f"{line}\n", tmp_path)["tools"]
+
+    assert module.path == tmp_path / relative
+    assert len(module.searched) == len(DIRECTORY_CANDIDATES)
+
+
+def test_justfile_modules_explicit_empty_directory_is_missing(tmp_path: Path) -> None:
+    (tmp_path / "tools").mkdir()
+
+    module = justfile_modules("mod tools 'tools'\n", tmp_path)["tools"]
+
+    assert module.path is None
+    assert module.searched == ("tools/mod.just", "tools/justfile", "tools/.justfile")
 
 
 def test_justfile_modules_optional_module_without_file(tmp_path: Path) -> None:
