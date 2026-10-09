@@ -36,14 +36,23 @@ The interactive API docs are at <http://127.0.0.1:8000/docs>.
 
 | HTTP | Result |
 |---|---|
-| `POST /todos` `{"title": "..."}` | 201 with the new to-do |
-| `GET /todos` | every to-do, oldest first (`[]` when empty) |
+| `POST /todos` `{"title": "..."}` | 201 with the new to-do, `{"id": "<uuid>", "title": "...", "completed": false, "created_at": "..."}` |
+| `GET /todos?cursor=<cursor>&limit=<n>` | one page, oldest first: `{"items": [<to-do>, ...], "next_cursor": "<cursor>" \| null}` |
 | `POST /todos/{id}/complete` | the completed to-do |
 | `DELETE /todos/{id}` | 204 |
 
+A to-do's `id` is a UUID (version 7) the application generates, so ids sort in
+creation order. `GET /todos` returns at most `limit` to-dos (default 50, at most
+100) and pages by cursor: pass a page's `next_cursor` back as `cursor` to fetch
+the next page; `next_cursor` is `null` on the last one. `GET /todos` with no
+parameters is the first page, `{"items": [], "next_cursor": null}` when empty.
+
 An unknown id is a 404 from the API; a title that is empty or longer than 200
-characters after trimming is a 422. Either way the body is `{"detail": "<reason>"}` — only a request that
-does not parse at all gets FastAPI's list-shaped `detail`.
+characters after trimming, a `cursor` that is not a `next_cursor` the API
+returned, or a `limit` outside 1-100 is a 422. Either way the body is
+`{"detail": "<reason>"}` — only a request that does not parse at all (an `{id}`
+that is not a UUID, a `limit` that is not an integer) gets FastAPI's
+list-shaped `detail`.
 
 ## Configuration
 
@@ -58,6 +67,11 @@ Settings are read from environment variables prefixed with `MY_APP_`.
 > and `just dev` restarts it on every source change. The in-memory default
 > suits tests and a quick look; point the variable at a SQLite file for
 > anything you want to keep.
+
+> [!WARNING]
+> A SQLite file written before to-do ids became UUIDs (its table has integer
+> ids) is not migrated: the server refuses to start on it, naming the file.
+> Delete the file, or point `MY_APP_DATABASE_URL` at a new one.
 
 ## Architecture
 

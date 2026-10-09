@@ -7,7 +7,9 @@ import sqlite3
 from contextlib import closing, contextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
+from my_app.adapters.cursor import decode_after, page_of
 from my_app.core.errors import TodoNotFoundError
 from my_app.core.models import Todo
 
@@ -15,11 +17,13 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from my_app.core.models import TodoDraft
+    from my_app.core.models import Page
 
+# The id is the canonical UUID string: lowercase, fixed-width hex sorts the way
+# the UUIDs do, so ORDER BY id is id order.
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS todos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     is_completed INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -28,14 +32,19 @@ CREATE TABLE IF NOT EXISTS todos (
 # Spelled out in full rather than assembled, so no query string is ever built
 # at run time; _to_todo relies on this column order.
 _SELECT_ONE = "SELECT id, title, is_completed, created_at FROM todos WHERE id = ?"
-_SELECT_ALL = "SELECT id, title, is_completed, created_at FROM todos ORDER BY id"
-_INSERT = "INSERT INTO todos (title, created_at) VALUES (?, ?) RETURNING id"
+_SELECT_FIRST_PAGE = (
+    "SELECT id, title, is_completed, created_at FROM todos ORDER BY id LIMIT ?"
+)
+_SELECT_PAGE_AFTER = (
+    "SELECT id, title, is_completed, created_at FROM todos "
+    "WHERE id > ? ORDER BY id LIMIT ?"
+)
+_INSERT = "INSERT INTO todos (id, title, is_completed, created_at) VALUES (?, ?, ?, ?)"
+_ID_COLUMN_TYPE = "SELECT type FROM pragma_table_info('todos') WHERE name = 'id'"
 _UPDATE = "UPDATE todos SET title = ?, is_completed = ?, created_at = ? WHERE id = ?"
 _DELETE = "DELETE FROM todos WHERE id = ?"
-# SQLite stores INTEGER as signed 64-bit; binding anything outside raises
-# OverflowError, so such an id is answered as "not found" before any query.
-SQLITE_MIN_INTEGER = -(2**63)
-SQLITE_MAX_INTEGER = 2**63 - 1
+
+type _Row = tuple[str, str, int, str]
 
 
 class SqliteTodoRepository:
@@ -57,11 +66,23 @@ class SqliteTodoRepository:
 
         Args:
             path: The SQLite file; created on first use.
+
+        Raises:
+            RuntimeError: If the file holds the integer-id table an earlier
+                version of this adapter created. Nothing migrates it.
         """
         self._path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._transaction() as connection:
             connection.execute(_CREATE_TABLE)
+            (id_type,) = connection.execute(_ID_COLUMN_TYPE).fetchone()
+        if id_type != "TEXT":
+            msg = (
+                f"{path} holds a to-do table with integer ids from an earlier "
+                "version; this adapter does not migrate it. Delete the file to "
+                "start over."
+            )
+            raise RuntimeError(msg)
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
@@ -73,24 +94,27 @@ class SqliteTodoRepository:
         with closing(sqlite3.connect(self._path)) as connection, connection:
             yield connection
 
-    async def add(self, draft: TodoDraft) -> Todo:
-        """Insert a draft.
+    async def add(self, todo: Todo) -> Todo:
+        """Insert a new to-do under its own id.
 
         Args:
-            draft: The validated to-do to store.
+            todo: The to-do to store.
 
         Returns:
-            The stored to-do. ``AUTOINCREMENT`` keeps SQLite from reusing the
-            id of a deleted row.
-        """
-        todo_id = await asyncio.to_thread(self._insert, draft)
-        return Todo(id=todo_id, title=draft.title, created_at=draft.created_at)
+            ``todo``, now stored.
 
-    async def get(self, todo_id: int) -> Todo:
+        Raises:
+            ValueError: If a to-do with this id is already stored; the primary
+                key refuses the row and the stored one is left unchanged.
+        """
+        await asyncio.to_thread(self._insert, todo)
+        return todo
+
+    async def get(self, todo_id: UUID) -> Todo:
         """Fetch one to-do.
 
         Args:
-            todo_id: Any integer, including one SQLite cannot store.
+            todo_id: Any id; one never stored is simply not found.
 
         Returns:
             The stored to-do.
@@ -98,20 +122,27 @@ class SqliteTodoRepository:
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        _require_storable_id(todo_id)
         row = await asyncio.to_thread(self._select_one, todo_id)
         if row is None:
             raise TodoNotFoundError(todo_id)
         return _to_todo(row)
 
-    async def list_all(self) -> list[Todo]:
-        """Fetch every to-do.
+    async def list_page(self, cursor: str | None, limit: int) -> Page[Todo]:
+        """Fetch one page of to-dos in ascending id order.
+
+        Args:
+            cursor: ``None`` for the first page, else a ``next_cursor``.
+            limit: The most to-dos the page holds.
 
         Returns:
-            The to-dos in ascending id order.
+            The page, with a cursor when more to-dos follow it.
+
+        Raises:
+            InvalidCursorError: If ``cursor`` is not one this store issued.
         """
-        rows = await asyncio.to_thread(self._select_all)
-        return [_to_todo(row) for row in rows]
+        after = None if cursor is None else decode_after(cursor)
+        rows = await asyncio.to_thread(self._select_page, after, limit + 1)
+        return page_of([_to_todo(row) for row in rows], limit)
 
     async def update(self, todo: Todo) -> Todo:
         """Replace the stored to-do that has ``todo.id``.
@@ -125,82 +156,88 @@ class SqliteTodoRepository:
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        _require_storable_id(todo.id)
         if await asyncio.to_thread(self._update_row, todo) == 0:
             raise TodoNotFoundError(todo.id)
         return todo
 
-    async def delete(self, todo_id: int) -> None:
+    async def delete(self, todo_id: UUID) -> None:
         """Remove one to-do.
 
         Args:
-            todo_id: Any integer, including one SQLite cannot store.
+            todo_id: Any id; one never stored is simply not found.
 
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        _require_storable_id(todo_id)
         if await asyncio.to_thread(self._delete_row, todo_id) == 0:
             raise TodoNotFoundError(todo_id)
 
     # The blocking halves below run in a worker thread, one connection each.
 
-    def _insert(self, draft: TodoDraft) -> int:
-        """Insert a row and return the id SQLite assigned it."""
-        with self._transaction() as connection:
-            (todo_id,) = connection.execute(
-                _INSERT, (draft.title, draft.created_at.isoformat())
-            ).fetchone()
-        return int(todo_id)
+    def _insert(self, todo: Todo) -> None:
+        """Insert a row, translating a duplicate id into ``ValueError``."""
+        try:
+            with self._transaction() as connection:
+                connection.execute(
+                    _INSERT,
+                    (
+                        str(todo.id),
+                        todo.title,
+                        todo.is_completed,
+                        todo.created_at.isoformat(),
+                    ),
+                )
+        except sqlite3.IntegrityError as error:
+            msg = f"A to-do with id {todo.id} is already stored"
+            raise ValueError(msg) from error
 
-    def _select_one(self, todo_id: int) -> tuple[int, str, int, str] | None:
+    def _select_page(self, after: UUID | None, count: int) -> list[_Row]:
+        """Return up to ``count`` rows in id order, after ``after`` when given."""
+        with self._transaction() as connection:
+            if after is None:
+                rows: list[_Row] = connection.execute(
+                    _SELECT_FIRST_PAGE, (count,)
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    _SELECT_PAGE_AFTER, (str(after), count)
+                ).fetchall()
+        return rows
+
+    def _select_one(self, todo_id: UUID) -> _Row | None:
         """Return the row with this id, or ``None`` when there is none."""
         with self._transaction() as connection:
-            row: tuple[int, str, int, str] | None = connection.execute(
-                _SELECT_ONE, (todo_id,)
+            row: _Row | None = connection.execute(
+                _SELECT_ONE, (str(todo_id),)
             ).fetchone()
         return row
-
-    def _select_all(self) -> list[tuple[int, str, int, str]]:
-        """Return every row in id order."""
-        with self._transaction() as connection:
-            rows: list[tuple[int, str, int, str]] = connection.execute(
-                _SELECT_ALL
-            ).fetchall()
-        return rows
 
     def _update_row(self, todo: Todo) -> int:
         """Overwrite the row with ``todo.id`` and return how many rows changed."""
         with self._transaction() as connection:
             cursor = connection.execute(
                 _UPDATE,
-                (todo.title, todo.is_completed, todo.created_at.isoformat(), todo.id),
+                (
+                    todo.title,
+                    todo.is_completed,
+                    todo.created_at.isoformat(),
+                    str(todo.id),
+                ),
             )
         return cursor.rowcount
 
-    def _delete_row(self, todo_id: int) -> int:
+    def _delete_row(self, todo_id: UUID) -> int:
         """Delete the row with this id and return how many rows went."""
         with self._transaction() as connection:
-            cursor = connection.execute(_DELETE, (todo_id,))
+            cursor = connection.execute(_DELETE, (str(todo_id),))
         return cursor.rowcount
 
 
-def _require_storable_id(todo_id: int) -> None:
-    """Answer an id SQLite cannot even bind the way the in-memory store does.
-
-    Raises:
-        TodoNotFoundError: If the id is outside SQLite's signed 64-bit range,
-            where no row can exist.
-    """
-    if not SQLITE_MIN_INTEGER <= todo_id <= SQLITE_MAX_INTEGER:
-        raise TodoNotFoundError(todo_id)
-
-
-def _to_todo(row: tuple[int, str, int, str]) -> Todo:
+def _to_todo(row: _Row) -> Todo:
     """Rebuild a domain to-do from a row in the ``_SELECT_*`` column order."""
     todo_id, title, is_completed, created_at = row
     return Todo(
-        id=todo_id,
+        id=UUID(todo_id),
         title=title,
         created_at=datetime.fromisoformat(created_at),
         is_completed=bool(is_completed),

@@ -14,6 +14,8 @@ from my_app.api.schemas import ErrorResponse
 from my_app.composition import Container, build_container
 from my_app.core.errors import (
     AppError,
+    InvalidCursorError,
+    InvalidPageLimitError,
     InvalidTodoError,
     TodoNotFoundError,
 )
@@ -84,7 +86,7 @@ def _status_for(error: AppError) -> HTTPStatus:
     match error:
         case TodoNotFoundError():
             status = HTTPStatus.NOT_FOUND
-        case InvalidTodoError():
+        case InvalidTodoError() | InvalidCursorError() | InvalidPageLimitError():
             status = HTTPStatus.UNPROCESSABLE_CONTENT
         case _:
             status = HTTPStatus.BAD_REQUEST

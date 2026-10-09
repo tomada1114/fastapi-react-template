@@ -10,11 +10,18 @@ from __future__ import annotations
 
 from http import HTTPStatus
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter
 
 from my_app.api.dependencies import TodoServiceDep
-from my_app.api.schemas import ErrorResponse, TodoCreateRequest, TodoResponse
+from my_app.api.schemas import (
+    ErrorResponse,
+    TodoCreateRequest,
+    TodoPageResponse,
+    TodoResponse,
+)
+from my_app.core.models import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 
 # Any: FastAPI's own type for `responses=` values is dict[str, Any].
 _NOT_FOUND: dict[int | str, dict[str, Any]] = {
@@ -29,14 +36,31 @@ _INVALID_TITLE: dict[int | str, dict[str, Any]] = {
         ),
     },
 }
+_INVALID_PAGE: dict[int | str, dict[str, Any]] = {
+    HTTPStatus.UNPROCESSABLE_CONTENT: {
+        "model": ErrorResponse,
+        "description": (
+            "The cursor is not a `next_cursor` this API returned, or the limit "
+            f"is outside 1-{MAX_PAGE_LIMIT}. A limit that is not an integer "
+            "gets FastAPI's list-shaped `detail` instead."
+        ),
+    },
+}
 
 router = APIRouter(prefix="/todos", tags=["todos"])
 
 
-@router.get("")
-async def list_todos(service: TodoServiceDep) -> list[TodoResponse]:
-    """List every to-do, oldest first; an empty store returns `[]`."""
-    return [TodoResponse.from_domain(todo) for todo in await service.list_todos()]
+# No Query(ge=, le=) on limit: the core owns the range, and its
+# InvalidPageLimitError becomes the 422 with the one message every entry
+# point shares.
+@router.get("", responses=_INVALID_PAGE)
+async def list_todos(
+    service: TodoServiceDep,
+    cursor: str | None = None,
+    limit: int = DEFAULT_PAGE_LIMIT,
+) -> TodoPageResponse:
+    """List one page of to-dos, oldest first; `next_cursor` fetches the next one."""
+    return TodoPageResponse.from_domain(await service.list_page(cursor, limit))
 
 
 @router.post("", status_code=HTTPStatus.CREATED, responses=_INVALID_TITLE)
@@ -46,12 +70,12 @@ async def create_todo(body: TodoCreateRequest, service: TodoServiceDep) -> TodoR
 
 
 @router.post("/{todo_id}/complete", responses=_NOT_FOUND)
-async def complete_todo(todo_id: int, service: TodoServiceDep) -> TodoResponse:
+async def complete_todo(todo_id: UUID, service: TodoServiceDep) -> TodoResponse:
     """Mark a to-do as completed."""
     return TodoResponse.from_domain(await service.complete(todo_id))
 
 
 @router.delete("/{todo_id}", status_code=HTTPStatus.NO_CONTENT, responses=_NOT_FOUND)
-async def delete_todo(todo_id: int, service: TodoServiceDep) -> None:
+async def delete_todo(todo_id: UUID, service: TodoServiceDep) -> None:
     """Delete a to-do."""
     await service.delete(todo_id)
