@@ -118,6 +118,27 @@ class ExtractDepsTest(unittest.TestCase):
         deps = idg.extract_deps("this blocks #9", "t", self_number=1)
         self.assertEqual(deps["blocks"], [9])
 
+    def test_quoted_dependency_phrases_do_not_create_edges(self):
+        for example in (
+            "```\nrequires #99; blocks #98\n```",
+            "~~~\nrequires #99; blocks #98\n~~~",
+            "    requires #99; blocks #98",
+            "`requires #99; blocks #98`",
+            "<!-- requires #99; blocks #98 -->",
+            "<!--\nrequires #99; blocks #98\n-->",
+            "<!-- requires #99; blocks #98",
+        ):
+            with self.subTest(example=example):
+                body = f"Blocked by #3. Blocks #4.\n\n{example}"
+                deps = idg.extract_deps(body, "t", self_number=1)
+                self.assertEqual(deps["depends_on"], [3])
+                self.assertEqual(deps["blocks"], [4])
+
+    def test_quoted_comment_opener_keeps_real_prose_edges(self):
+        body = "Use `<!--` for a comment. Blocked by #3."
+        deps = idg.extract_deps(body, "t", self_number=1)
+        self.assertEqual(deps["depends_on"], [3])
+
     def test_self_reference_excluded(self):
         deps = idg.extract_deps("depends on #1", "t", self_number=1)
         self.assertEqual(deps["depends_on"], [])
@@ -189,10 +210,8 @@ class StructuredDependencySourcesTest(unittest.TestCase):
                 body = f"Blocked by #3.\n\nExample:\n\n{example}\n"
                 issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(99)]
                 rec = self._record(issues, 1)
-                # The quoted line is no stated source, so the prose blocker
-                # stays an edge (prose reading itself does not skip code).
-                self.assertIn(3, rec["depends_on"])
-                self.assertIn(3, rec["depends_on_open"])
+                self.assertEqual(rec["depends_on"], [3])
+                self.assertEqual(rec["depends_on_open"], [3])
 
     def test_comment_opener_in_code_does_not_hide_a_stated_line(self):
         body = "Use `<!--` to begin a comment. Blocked by #3.\n\nDepends on: #4\n"

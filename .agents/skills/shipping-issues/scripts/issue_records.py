@@ -901,13 +901,14 @@ def squeeze(text: str | None, limit: int) -> str:
 
 def extract_deps(body: str, title: str, self_number: int) -> dict[str, list[int]]:
     haystack = f"{title}\n{body or ''}"
+    prose = closing_text(haystack)
     deps: dict[str, set[int]] = {
         "depends_on": set(),
         "blocks": set(),
         "mentions": set(),
     }
     for pattern, kind in DEP_PATTERNS:
-        for m in re.finditer(pattern, haystack, re.IGNORECASE):
+        for m in re.finditer(pattern, prose, re.IGNORECASE):
             for ref in re.findall(r"\d+", m.group(1)):
                 n = int(ref)
                 if n != self_number:
