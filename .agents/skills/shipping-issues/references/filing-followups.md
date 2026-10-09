@@ -113,7 +113,9 @@ file nothing.
 
 ## What the body needs
 
-Give the body what the next session needs and cannot cheaply re-derive:
+Give the body what the next session needs and cannot cheaply re-derive (drafting
+several bodies from already-verified findings can go to the `worker` tier —
+[cost-discipline.md#tier-assignment](cost-discipline.md#tier-assignment)):
 
 - the observed defect with `file:line`;
 - why it matters in this codebase's terms;

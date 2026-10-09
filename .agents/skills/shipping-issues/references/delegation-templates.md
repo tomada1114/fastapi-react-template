@@ -23,7 +23,8 @@ checkout.
 Every brief below runs **inline by default**: this session fills it and follows it
 itself, in the same `{workdir}`, under the same prohibitions and the same return
 contract. On a host with named sub-agents — the tiers AGENTS.md's "Sub-agents" defines —
-a brief may instead be handed to the tier its section names. Spawn by the tier's
+a brief may instead be handed to the tier its section names (`executor`, `architect`,
+`scout`, or `worker` — the last only for tool-free drafting, never code). Spawn by the tier's
 **name**, never by a bare model name or a per-spawn `model` parameter: the tier carries
 its effort with it, and a bare model runs at whatever effort the session has. Which tier
 takes which brief, and why:

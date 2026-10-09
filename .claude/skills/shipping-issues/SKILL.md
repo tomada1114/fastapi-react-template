@@ -55,7 +55,8 @@ number or `--include-design` ([step 2b](#2b-decide-a-design-that-gates-the-pick)
 - **Inline by default; tiers by name.** On a host with named sub-agents (AGENTS.md
   "Sub-agents"), a brief (`references/agent-*.md`) may go to the `executor`,
   `architect`, or `scout` tier [cost-discipline.md](references/cost-discipline.md#tier-assignment)
-  names — by tier name, never a bare model name. A patch round or repeat CI repair on
+  names — by tier name, never a bare model name; `worker` for tool-free drafting from a
+  complete brief, such as follow-up issue bodies or a PR body from verified findings. A patch round or repeat CI repair on
   the same tier continues the same agent where the host allows.
 - **State lives in `<runstate>`** ([run-record.md](references/run-record.md)), never
   inside a checkout — an untracked path there is a hard stop. Record each event as it
