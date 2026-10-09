@@ -19,8 +19,11 @@ A short description of what this application does.
 
 ```bash
 uv sync --locked
-just dev   # HTTP API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C to stop)
-# without Just: uv run --locked uvicorn my_app.api.app:create_app --factory --reload
+just dev   # migrate backend/var/dev.db, then serve the API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C to stop)
+# without Just, from backend/:
+#   mkdir -p var
+#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked alembic upgrade head
+#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked uvicorn my_app.api.app:create_app --factory --reload
 ```
 
 With the server running, from another terminal:
@@ -60,29 +63,40 @@ Settings are read from environment variables prefixed with `MY_APP_`.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `MY_APP_DATABASE_URL` | unset | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite:///<path>` stores them in a SQLite file at `<path>`, created on first use; `sqlite:///:memory:` and a path ending in `/` are rejected at startup. |
+| `MY_APP_DATABASE_URL` | unset (`just dev`: `sqlite+aiosqlite:///./var/dev.db`) | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite+aiosqlite:///<path>` stores them in a SQLite file at `<path>`, relative to the working directory (an absolute path adds a fourth slash: `sqlite+aiosqlite:////var/lib/todos.db`). `postgresql+asyncpg://<user>:<password>@<host>/<database>` names a PostgreSQL database; its driver, asyncpg, is not installed yet. Anything else is rejected at startup, naming the fix: a URL without the async driver (`sqlite:` or `postgresql:` alone), an in-memory SQLite database (`:memory:`), and a path ending in `/`. |
+
+The database must be migrated before the API uses it: the app never creates or
+alters a table. `just backend db-upgrade` migrates the database
+`MY_APP_DATABASE_URL` names to the newest revision, and `just dev` runs it first
+(see AGENTS.md's Quick Reference for `db-revision`, which writes a new one).
+With neither the variable nor `just dev`, the API runs on the in-memory store.
 
 > [!NOTE]
-> Without `MY_APP_DATABASE_URL` the server forgets every to-do when it stops,
-> and `just dev` restarts it on every source change. The in-memory default
-> suits tests and a quick look; point the variable at a SQLite file for
-> anything you want to keep.
+> `just dev` keeps to-dos in `backend/var/dev.db` (gitignored) unless
+> `MY_APP_DATABASE_URL` is set, so they survive the restart on every source
+> change. A server started without the variable forgets every to-do when it
+> stops.
 
 > [!WARNING]
-> A SQLite file written before to-do ids became UUIDs (its table has integer
-> ids) is not migrated: the server refuses to start on it, naming the file.
-> Delete the file, or point `MY_APP_DATABASE_URL` at a new one.
+> A database file the app's earlier stdlib-`sqlite3` store wrote is not
+> migrated: its table predates the migrations, so `just backend db-upgrade`
+> fails on it. Delete the file, or point `MY_APP_DATABASE_URL` at a new one.
+> A database nobody migrated answers every to-do request with a 500.
 
 ## Architecture
 
 ```
 backend/src/my_app/
 ├── core/            # Domain model, ports (typing.Protocol), services, errors — no frameworks
-├── adapters/        # In-memory and SQLite repositories
+├── adapters/        # In-memory and SQL repositories (SQLAlchemy asyncio Core; SQLite or PostgreSQL)
 ├── api/             # FastAPI app factory, routers, request/response models
 ├── settings.py      # MY_APP_* environment variables
 └── composition.py   # The one place adapters are wired into services
 ```
+
+The schema lives in `backend/src/my_app/adapters/sql/tables.py` and its history in
+Alembic revisions under `backend/migrations/`; the `persisting-data` skill covers
+changing it.
 
 The API is thin: it gets its services from `composition.build_container`
 and only translates between HTTP and the core. The core imports neither the
@@ -98,7 +112,7 @@ for full setup instructions.
 ```bash
 just install   # dependencies + git hooks, then checks the hooks are in place
 just check
-just dev       # API with auto-reload on http://127.0.0.1:8000
+just dev       # migrate backend/var/dev.db, then the API with auto-reload on http://127.0.0.1:8000
 ```
 
 The git hooks are not optional: they carry the secret gate that refuses a

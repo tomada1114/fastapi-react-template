@@ -51,11 +51,12 @@ rather than by a new file:
 
 ## Where a fixture goes
 
-- Used by every layer: `backend/tests/conftest.py`. It holds `make_container`,
-  `fixed_clock`, `fixed_now`, `new_id` and `nth_id` (predictable ids), the
-  session-scoped `anyio_backend` that runs async tests on asyncio (`writing-tests`'
-  "Async tests"), and the autouse fixture that keeps a
-  developer's `MY_APP_*` variables out of every test. `backend/tests/settings_env.py` derives the
+- Used by every layer: `backend/tests/conftest.py`. It holds `make_container` (which
+  closes every container it built), `fixed_clock`, `fixed_now`, `new_id` and `nth_id`
+  (predictable ids), `sqlite_url`, `alembic_config`, and `migrated_sqlite_url` (a
+  SQLite file migrated to head; `persisting-data`), the session-scoped `anyio_backend`
+  that runs async tests on asyncio (`writing-tests`' "Async tests"), and the autouse
+  fixture that keeps a developer's `MY_APP_*` variables out of every test. `backend/tests/settings_env.py` derives the
   cleanup from the settings prefix and model aliases.
 - Used by one layer: that layer's `conftest.py` — `backend/tests/api/conftest.py`
   holds `client`.

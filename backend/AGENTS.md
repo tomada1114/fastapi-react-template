@@ -16,13 +16,15 @@ can fail while iterating, then `just verify` before a completion claim.
 | A module under `backend/src/my_app/<layer>/` | `uv run --locked --directory backend pytest tests/<layer>/` |
 | `settings.py` or `composition.py` | `uv run --locked --directory backend pytest tests/test_settings.py tests/test_composition.py` |
 | A repository adapter | `uv run --locked --directory backend pytest tests/adapters/test_repository_contract.py` |
+| A table in `adapters/sql/tables.py`, or a revision under `migrations/` | `uv run --locked --directory backend pytest tests/adapters/`, then `just backend lint` (`persisting-data`) |
 | One backend test | `uv run --locked --directory backend pytest tests/<path>.py::test_<name>` |
 | A backend Python file's types | `uv run --locked --directory backend mypy` |
 | A backend Python file's lint, or `backend/pyproject.toml`'s ruff, mypy, pytest, or coverage settings | `just backend lint`, then `just backend test` (`changing-gates`) |
 | The whole backend, with its 80% branch-coverage floor | `just backend test` |
 
-`just backend dev` is the developer's server, human-run: the root `AGENTS.md`'s
-Quick Reference says what to run instead (`running-the-app`).
+`just backend dev` is the developer's server, human-run, and migrates the
+developer's database (`backend/var/dev.db` by default) before it starts: the root
+`AGENTS.md`'s Quick Reference says what to run instead (`running-the-app`).
 
 ## Architecture
 
@@ -30,9 +32,12 @@ Quick Reference says what to run instead (`running-the-app`).
 backend/
 ├── pyproject.toml   # The app's dependencies; its ruff (extending the root's), banned-api, mypy, pytest, and coverage settings
 ├── justfile         # A just module of the root justfile: `just backend <recipe>`
+├── alembic.ini      # Alembic's settings; no database URL (MY_APP_DATABASE_URL supplies it)
+├── migrations/      # Alembic: env.py, the revision template, and versions/ (the schema's history)
+├── var/             # Gitignored: the development database, dev.db
 ├── src/my_app/
 │   ├── core/            # Framework-free: domain model, ports (Protocols), services, errors
-│   ├── adapters/        # Port implementations: in-memory and SQLite repositories
+│   ├── adapters/        # Port implementations: in-memory, and SQL (adapters/sql/: tables, engine, repository)
 │   ├── api/             # FastAPI: create_app(settings) factory, routers (api/routers/), Pydantic schemas
 │   ├── settings.py      # pydantic-settings `Settings`, read from MY_APP_* environment variables
 │   └── composition.py   # Composition root: wires adapters into services for the API
@@ -46,6 +51,9 @@ backend/
   build otherwise (`designing-core-logic`).
 - Domain errors derive from `core.errors.AppError`; the API maps them in one
   place (`api/app.py`), per `designing-errors`.
+- The schema belongs to the migrations: the app never creates or alters a table,
+  and `just backend db-upgrade` (which `just backend dev` runs first) applies them
+  (`persisting-data`).
 
 ## Skills for the backend
 
@@ -56,5 +64,7 @@ The root `AGENTS.md`'s Skills table lists every skill; these are the backend's:
 - `building-api-routes` — an HTTP route, request or response model, or API
   dependency, and its TestClient tests.
 - `designing-errors` — a failure mode, or the HTTP status a domain error becomes.
+- `persisting-data` — a table, a SQL statement, the engine, or an Alembic
+  revision.
 - `placing-tests` — where a backend test or fixture goes, running one test, or
   a coverage run below the floor.

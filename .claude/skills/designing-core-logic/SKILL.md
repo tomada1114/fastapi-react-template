@@ -136,15 +136,15 @@ port of the same kind rather than a direct call.
   and translates its driver's failures into the domain errors the port promises
   (`designing-errors`).
 - It never blocks the event loop. `InMemoryTodoRepository` never awaits inside a
-  read-modify-write, so it needs no lock; `SqliteTodoRepository` runs each `sqlite3` call
-  in `asyncio.to_thread`, one connection per call, as `sqlite3` binds one to its thread.
-- Its queries are module constants spelled out in full, never assembled at run time
-  (`adapters/sqlite.py`).
+  read-modify-write, so it needs no lock; `SqlTodoRepository` awaits an async driver
+  through SQLAlchemy's asyncio API, one pooled connection per call.
+- Its queries are module constants, never assembled at run time. The SQL side —
+  tables, statements, the engine, migrations — is **REQUIRED:** `persisting-data`.
 - Every implementation of a port runs the one shared contract suite. A new repository
   joins `backend/tests/adapters/test_repository_contract.py` by adding a `pytest.param`
-  to `REPOSITORY_FACTORIES`; behavior only it has (the SQLite file outliving the object,
-  persistence details) goes in `backend/tests/adapters/test_<adapter>.py`. Concurrent adds
-  must all be stored in every repository (200 `add` calls in one task group).
+  to `REPOSITORY_FACTORIES`, an async context manager yielding it on a fresh store;
+  behavior only it has goes in `backend/tests/adapters/test_<adapter>.py`. Concurrent
+  adds must all be stored in every repository (200 `add` calls in one task group).
 - The in-memory adapter doubles as the core's fake: `backend/tests/core/test_services.py`
   builds a service over `InMemoryTodoRepository()`, `fixed_clock`, and `new_id` instead
   of mocking the port.
@@ -157,8 +157,8 @@ port of the same kind rather than a direct call.
 
 - validated in a `field_validator`, so a bad value fails at startup with a message that
   says what to set, rather than on the first request;
-- turned into the form the composition root needs by a property (`sqlite_path` turns
-  `database_url` into a `Path`), so adapters never parse configuration strings;
+- checked with string rules only, so `settings.py` imports no adapter's library, and
+  handed to the composition root in the form an adapter takes (a URL);
 - deleted from the environment by `backend/tests/conftest.py`'s autouse
   `_isolate_settings_env` fixture, which derives the prefix and aliases from `Settings`,
   so a developer's shell cannot leak into a test without a hand-kept variable list;

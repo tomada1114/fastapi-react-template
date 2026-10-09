@@ -68,6 +68,10 @@ added for it.
   `TypeError: 'coroutine' object is not callable`.
 - `TestClient` tests stay plain `def`: the client is synchronous and runs the app on its
   own loop (`building-api-routes`).
+- An async fixture yields what it opens and releases it after the `yield`, on the
+  test's loop. A plain `def` test gets an async fixture only when the fixture takes
+  `anyio_backend` (as `make_container` does) or the test is in an `anyio`-marked
+  module and itself `async def`.
 
 ## Expected values come from outside the code
 
