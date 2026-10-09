@@ -120,8 +120,12 @@ one pass.
 - A checkout installed before the `pre-merge-commit` hook existed has only the
   `pre-commit` hook: re-run `just install` to add it.
 - Git hooks live in the main checkout's `.git/hooks/` and are shared by every linked
-  worktree. Run `just install` from the main checkout: run from a worktree, it points
-  the shared hooks at that worktree's `.venv`.
+  worktree, so they are installed from the primary checkout only. In a linked worktree
+  (`git rev-parse --git-dir` differs from `--git-common-dir`), `just install` syncs the
+  environment but never runs `pre-commit install`, which would point the shared hooks
+  at that worktree's `.venv`; it only verifies the shared hooks, and fails naming the
+  primary checkout when they are missing (a warning under `CI=true` or
+  `ALLOW_MISSING_GIT_HOOKS=1`).
 
 ## What replaced the agent hooks
 
