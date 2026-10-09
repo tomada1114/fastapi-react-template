@@ -78,7 +78,7 @@ It includes resource routers under `API_PREFIX` (`/api`) and probes at the root;
 handlers cover domain, parsing, HTTP, and unexpected errors. It reads HTTP settings
 also when a caller supplies a container. A non-empty `cors_origins` wraps the complete
 middleware stack with CORS, including server-error responses; the stack is built
-lazily so a caller can still register middleware before startup.
+lazily so callers can register middleware; handled errors also wrap user middleware.
 
 - A new router is a module under `api/routers/`, added to the imports and included with `app.include_router(router, prefix=API_PREFIX)`.
 - Each route function name is its public generated-client operation id; keep names

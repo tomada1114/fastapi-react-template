@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.utils import is_body_allowed_for_status_code
 from starlette.exceptions import HTTPException
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.errors import ServerErrorMiddleware
+from starlette.middleware.exceptions import ExceptionMiddleware
 
 from my_app.api.routers import health, todos
 from my_app.api.schemas import (
@@ -51,6 +53,18 @@ class _ApiApp(FastAPI):
     def build_middleware_stack(self) -> ASGIApp:
         """Build lazily so callers can still register middleware before startup."""
         middleware = super().build_middleware_stack()
+        if isinstance(middleware, ServerErrorMiddleware):
+            # The framework puts user middleware outside its exception handler.
+            # Catch handled failures there too, before server-error handling can
+            # respond with 500. Keep unexpected failures on the original path.
+            handlers = {
+                key: handler
+                for key, handler in self.exception_handlers.items()
+                if key not in (500, Exception)
+            }
+            middleware.app = ExceptionMiddleware(
+                middleware.app, handlers=handlers, debug=self.debug
+            )
         if self.cors_origins:
             middleware = CORSMiddleware(
                 middleware,

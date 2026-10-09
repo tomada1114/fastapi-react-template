@@ -9,9 +9,11 @@ from uuid import UUID
 import httpx2
 import pytest
 from fastapi import FastAPI
+from fastapi import HTTPException as FastAPIHTTPException
 from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 from starlette.exceptions import HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 import my_app
@@ -532,3 +534,49 @@ def test_http_exception_unregistered_status_keeps_status_detail_and_headers(
         "detail": detail if isinstance(detail, str) else "Unknown Status",
         "code": "http_error",
     }
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        HTTPException(
+            401, "authentication required", headers={"WWW-Authenticate": "Bearer"}
+        ),
+        FastAPIHTTPException(
+            499, {"private": "context"}, headers={"X-Reason": "custom"}
+        ),
+    ],
+)
+def test_middleware_http_exception_returns_problem_without_server_error_log(
+    make_container, caplog, error
+):
+    app = create_app(
+        Settings(cors_origins=["https://app.example.com"]), container=make_container()
+    )
+
+    async def reject(request, call_next):
+        raise error
+
+    app.add_middleware(BaseHTTPMiddleware, dispatch=reject)
+    with (
+        caplog.at_level("ERROR", logger="my_app.api.errors"),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.get("/healthz", headers={"Origin": "https://app.example.com"})
+
+    assert response.status_code == error.status_code
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["access-control-allow-origin"] == "https://app.example.com"
+    for name, value in error.headers.items():
+        assert response.headers[name] == value
+    phrase = "Unauthorized" if error.status_code == 401 else "Unknown Status"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": phrase,
+        "status": error.status_code,
+        "detail": error.detail if isinstance(error.detail, str) else phrase,
+        "code": "http_error",
+    }
+    assert not [
+        record for record in caplog.records if record.name == "my_app.api.errors"
+    ]
