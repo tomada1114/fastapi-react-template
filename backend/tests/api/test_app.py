@@ -579,6 +579,8 @@ def test_unhandled_exception_returns_500_problem_without_leaking(
 def test_openapi_documents_every_error_as_problem_details(client):
     document = client.get("/openapi.json").json()
     schemas = document["components"]["schemas"]
+    assert "request_id" in schemas["ProblemDetails"]["required"]
+    assert schemas["ProblemDetails"]["properties"]["request_id"]["type"] == "string"
     assert set(schemas) == {
         "HealthResponse",
         "ProblemDetails",

@@ -218,13 +218,19 @@ def _problem_response(
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """Serialize a client-safe error, omitting absent extensions."""
+    request_id = request_id_var.get()
+    if request_id is None:
+        # All HTTP handlers, including the outer 500 handler, run within the
+        # request-ID context. Do not publish an invalid correlation contract.
+        msg = "An HTTP problem response requires an active request ID"
+        raise RuntimeError(msg)
     body = ProblemDetails(
         title=status_phrase(status),
         status=status,
         detail=detail,
         code=code,
         errors=errors,
-        request_id=request_id_var.get(),
+        request_id=request_id,
     )
     return JSONResponse(
         status_code=status,
