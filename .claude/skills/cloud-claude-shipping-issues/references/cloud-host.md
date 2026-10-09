@@ -34,9 +34,13 @@ limit of the host.
 The repository's `.claude/settings.json` holds a SessionStart hook that runs
 `just install` when `CLAUDE_CODE_REMOTE` is `true`, so the environment and the git
 hooks are in place before step 1. It runs the `just` on `PATH` only when that is
-1.42.3 or later — the root justfile's module dependencies need it (CONTRIBUTING.md) —
-and otherwise `uvx --from 'rust-just>=1.42.3' just install`. A single-repository cloud session reads that file,
-and reads neither `~/.claude/settings.json` nor `.claude/settings.local.json`
+1.42.3 or later, and otherwise `uvx --from 'rust-just>=1.42.3' just install`: the root
+justfile depends on module recipes (`lint: backend::lint`), which Just accepts from
+[1.42.0](https://github.com/casey/just/releases/tag/1.42.0) and runs in the module's
+directory from [1.42.3](https://github.com/casey/just/releases/tag/1.42.3)
+("Run recipes from submodules in correct directory", checked 2026-10-09).
+
+A single-repository cloud session reads that file, and reads neither `~/.claude/settings.json` nor `.claude/settings.local.json`
 ([settings in cloud sessions](https://code.claude.com/docs/en/settings#settings-in-cloud-sessions),
 checked 2026-10-07): only what the repository commits applies. When `.venv` is missing
 anyway, run `just install` once before the baseline.
