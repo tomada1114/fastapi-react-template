@@ -25,7 +25,7 @@ def make_todo(client):
     """Create a to-do through the API and return its JSON body."""
 
     def _make(title: str = "buy milk") -> dict[str, object]:
-        response = client.post("/todos", json={"title": title})
+        response = client.post("/api/todos", json={"title": title})
         assert response.status_code == HTTPStatus.CREATED
         body: dict[str, object] = response.json()
         return body
@@ -34,14 +34,14 @@ def make_todo(client):
 
 
 def test_list_todos_empty_store_returns_empty_last_page(client):
-    response = client.get("/todos")
+    response = client.get("/api/todos")
 
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {"items": [], "next_cursor": None}
 
 
 def test_create_todo_valid_title_returns_201_with_open_todo(client, nth_id, fixed_now):
-    response = client.post("/todos", json={"title": "  buy milk "})
+    response = client.post("/api/todos", json={"title": "  buy milk "})
 
     assert response.status_code == HTTPStatus.CREATED
     body = response.json()
@@ -63,15 +63,15 @@ def test_create_todo_valid_title_returns_201_with_open_todo(client, nth_id, fixe
     ],
 )
 def test_create_todo_invalid_title_returns_422_and_stores_nothing(client, title):
-    response = client.post("/todos", json={"title": title})
+    response = client.post("/api/todos", json={"title": title})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert "characters" in response.json()["detail"]
-    assert client.get("/todos").json()["items"] == []
+    assert client.get("/api/todos").json()["items"] == []
 
 
 def test_create_todo_missing_title_returns_422_with_fastapi_list_detail(client):
-    response = client.post("/todos", json={})
+    response = client.post("/api/todos", json={})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert isinstance(response.json()["detail"], list)
@@ -81,7 +81,7 @@ def test_list_todos_after_creates_returns_them_oldest_first(client, make_todo):
     first = make_todo("first")
     second = make_todo("second")
 
-    response = client.get("/todos")
+    response = client.get("/api/todos")
 
     assert response.json() == {"items": [first, second], "next_cursor": None}
 
@@ -89,9 +89,9 @@ def test_list_todos_after_creates_returns_them_oldest_first(client, make_todo):
 def test_list_todos_two_pages_returns_all_in_creation_order(client, make_todo):
     a, b, c = make_todo("a"), make_todo("b"), make_todo("c")
 
-    first = client.get("/todos", params={"limit": 2})
+    first = client.get("/api/todos", params={"limit": 2})
     cursor = first.json()["next_cursor"]
-    second = client.get("/todos", params={"limit": 2, "cursor": cursor})
+    second = client.get("/api/todos", params={"limit": 2, "cursor": cursor})
 
     assert first.status_code == HTTPStatus.OK
     assert first.json()["items"] == [a, b]
@@ -112,7 +112,7 @@ def test_list_todos_two_pages_returns_all_in_creation_order(client, make_todo):
 def test_list_todos_invalid_cursor_returns_422(client, make_todo, cursor):
     make_todo()
 
-    response = client.get("/todos", params={"cursor": cursor})
+    response = client.get("/api/todos", params={"cursor": cursor})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.json() == {"detail": INVALID_CURSOR_MESSAGE}
@@ -122,7 +122,7 @@ def test_list_todos_invalid_cursor_returns_422(client, make_todo, cursor):
 def test_list_todos_limit_at_a_bound_returns_200(client, make_todo, limit):
     make_todo()
 
-    response = client.get("/todos", params={"limit": limit})
+    response = client.get("/api/todos", params={"limit": limit})
 
     assert response.status_code == HTTPStatus.OK
     assert len(response.json()["items"]) == 1
@@ -132,21 +132,21 @@ def test_list_todos_limit_at_a_bound_returns_200(client, make_todo, limit):
     "limit", [pytest.param(0, id="zero"), pytest.param(-1, id="negative")]
 )
 def test_list_todos_limit_below_one_returns_422(client, limit):
-    response = client.get("/todos", params={"limit": limit})
+    response = client.get("/api/todos", params={"limit": limit})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.json() == {"detail": f"Page limit must be 1-100, got {limit}"}
 
 
 def test_list_todos_limit_above_max_returns_422(client):
-    response = client.get("/todos?limit=101")
+    response = client.get("/api/todos?limit=101")
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.json() == {"detail": "Page limit must be 1-100, got 101"}
 
 
 def test_list_todos_non_integer_limit_returns_422_with_fastapi_list_detail(client):
-    response = client.get("/todos", params={"limit": "abc"})
+    response = client.get("/api/todos", params={"limit": "abc"})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert isinstance(response.json()["detail"], list)
@@ -155,7 +155,7 @@ def test_list_todos_non_integer_limit_returns_422_with_fastapi_list_detail(clien
 def test_complete_todo_existing_id_returns_completed_todo(client, make_todo):
     todo = make_todo()
 
-    response = client.post(f"/todos/{todo['id']}/complete")
+    response = client.post(f"/api/todos/{todo['id']}/complete")
 
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {**todo, "completed": True}
@@ -163,14 +163,14 @@ def test_complete_todo_existing_id_returns_completed_todo(client, make_todo):
 
 @pytest.mark.parametrize("todo_id", UNKNOWN_IDS)
 def test_complete_todo_unknown_id_returns_404(client, todo_id):
-    response = client.post(f"/todos/{todo_id}/complete")
+    response = client.post(f"/api/todos/{todo_id}/complete")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.json() == {"detail": f"To-do {todo_id} not found"}
 
 
 def test_complete_todo_unhyphenated_uppercase_id_names_the_canonical_id(client):
-    response = client.post(f"/todos/{'F' * 32}/complete")
+    response = client.post(f"/api/todos/{'F' * 32}/complete")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.json() == {"detail": f"To-do {UUID(int=2**128 - 1)} not found"}
@@ -179,16 +179,16 @@ def test_complete_todo_unhyphenated_uppercase_id_names_the_canonical_id(client):
 def test_delete_todo_existing_id_returns_204_and_removes_it(client, make_todo):
     todo = make_todo()
 
-    response = client.delete(f"/todos/{todo['id']}")
+    response = client.delete(f"/api/todos/{todo['id']}")
 
     assert response.status_code == HTTPStatus.NO_CONTENT
     assert response.content == b""
-    assert client.get("/todos").json()["items"] == []
+    assert client.get("/api/todos").json()["items"] == []
 
 
 @pytest.mark.parametrize("todo_id", UNKNOWN_IDS)
 def test_delete_todo_unknown_id_returns_404(client, todo_id):
-    response = client.delete(f"/todos/{todo_id}")
+    response = client.delete(f"/api/todos/{todo_id}")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.json() == {"detail": f"To-do {todo_id} not found"}
@@ -197,10 +197,10 @@ def test_delete_todo_unknown_id_returns_404(client, todo_id):
 @pytest.mark.parametrize(
     ("method", "path"),
     [
-        pytest.param("POST", "/todos/abc/complete", id="complete-abc"),
-        pytest.param("DELETE", "/todos/abc", id="delete-abc"),
-        pytest.param("POST", "/todos/999/complete", id="complete-integer"),
-        pytest.param("DELETE", "/todos/999", id="delete-integer"),
+        pytest.param("POST", "/api/todos/abc/complete", id="complete-abc"),
+        pytest.param("DELETE", "/api/todos/abc", id="delete-abc"),
+        pytest.param("POST", "/api/todos/999/complete", id="complete-integer"),
+        pytest.param("DELETE", "/api/todos/999", id="delete-integer"),
     ],
 )
 def test_todo_route_non_uuid_id_returns_422(client, method, path):
@@ -213,12 +213,12 @@ def test_todo_route_non_uuid_id_returns_422(client, method, path):
 @pytest.mark.parametrize(
     ("method", "path", "status"),
     [
-        pytest.param("get", "/todos", "422", id="list-invalid-page"),
-        pytest.param("post", "/todos", "422", id="create-invalid-title"),
+        pytest.param("get", "/api/todos", "422", id="list-invalid-page"),
+        pytest.param("post", "/api/todos", "422", id="create-invalid-title"),
         pytest.param(
-            "post", "/todos/{todo_id}/complete", "404", id="complete-not-found"
+            "post", "/api/todos/{todo_id}/complete", "404", id="complete-not-found"
         ),
-        pytest.param("delete", "/todos/{todo_id}", "404", id="delete-not-found"),
+        pytest.param("delete", "/api/todos/{todo_id}", "404", id="delete-not-found"),
     ],
 )
 def test_openapi_documents_domain_errors_with_error_response(
@@ -232,7 +232,7 @@ def test_openapi_documents_domain_errors_with_error_response(
 
 def test_openapi_list_todos_documents_the_page_shape(client):
     document = client.get("/openapi.json").json()
-    operation = document["paths"]["/todos"]["get"]
+    operation = document["paths"]["/api/todos"]["get"]
 
     schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
     page = document["components"]["schemas"]["TodoPageResponse"]

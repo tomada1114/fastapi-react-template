@@ -7,6 +7,7 @@ from inspect import iscoroutinefunction
 
 import httpx2
 import pytest
+from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 
@@ -70,9 +71,9 @@ def test_create_app_without_settings_reads_the_environment(
     monkeypatch.setenv("MY_APP_DATABASE_URL", migrated_sqlite_url)
 
     with TestClient(create_app()) as writer:
-        created = writer.post("/todos", json={"title": "from env"})
+        created = writer.post("/api/todos", json={"title": "from env"})
     with TestClient(create_app()) as reader:
-        titles = [todo["title"] for todo in reader.get("/todos").json()["items"]]
+        titles = [todo["title"] for todo in reader.get("/api/todos").json()["items"]]
 
     assert created.status_code == HTTPStatus.CREATED
     assert titles == ["from env"]
@@ -80,19 +81,19 @@ def test_create_app_without_settings_reads_the_environment(
 
 def test_create_app_each_call_owns_an_independent_store():
     with TestClient(create_app(Settings())) as first:
-        first.post("/todos", json={"title": "only in first"})
+        first.post("/api/todos", json={"title": "only in first"})
 
     with TestClient(create_app(Settings())) as second:
-        assert second.get("/todos").json()["items"] == []
+        assert second.get("/api/todos").json()["items"] == []
 
 
 def test_create_app_with_sql_keeps_todos_across_apps(migrated_sqlite_url):
     settings = Settings(database_url=migrated_sqlite_url)
     with TestClient(create_app(settings)) as first:
-        first.post("/todos", json={"title": "survives"})
+        first.post("/api/todos", json={"title": "survives"})
 
     with TestClient(create_app(settings)) as second:
-        titles = [todo["title"] for todo in second.get("/todos").json()["items"]]
+        titles = [todo["title"] for todo in second.get("/api/todos").json()["items"]]
 
     assert titles == ["survives"]
 
@@ -103,7 +104,7 @@ def test_create_app_on_unmigrated_database_answers_500(sqlite_url):
     app = create_app(Settings(database_url=sqlite_url))
 
     with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/todos")
+        response = client.get("/api/todos")
 
     assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
 
@@ -163,3 +164,131 @@ async def test_create_app_shutdown_leaves_supplied_container_caller_owned(
 async def _record(log: list[str], name: str) -> None:
     """An async cleanup callback that records that it ran."""
     log.append(name)
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        pytest.param("GET", "/todos", id="list"),
+        pytest.param("POST", "/todos", id="create"),
+        pytest.param(
+            "POST",
+            "/todos/01900000-0000-7000-8000-000000000001/complete",
+            id="complete",
+        ),
+        pytest.param(
+            "DELETE", "/todos/01900000-0000-7000-8000-000000000001", id="delete"
+        ),
+    ],
+)
+def test_resource_routes_require_api_prefix(client, method, path):
+    assert client.request(method, path).status_code == HTTPStatus.NOT_FOUND
+
+
+def test_api_prefixed_list_returns_empty_page(client):
+    response = client.get("/api/todos")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json() == {"items": [], "next_cursor": None}
+
+
+def test_operation_ids_are_unique_function_names(make_container):
+    app = create_app(container=make_container())
+    schema = app.openapi()
+    operations = [
+        operation["operationId"]
+        for path in schema["paths"].values()
+        for operation in path.values()
+    ]
+    endpoint_names = [
+        context.original_route.endpoint.__name__
+        for context in iter_route_contexts(app.routes)
+        if isinstance(context.original_route, APIRoute)
+    ]
+
+    assert set(operations) == {
+        "healthz",
+        "list_todos",
+        "create_todo",
+        "complete_todo",
+        "delete_todo",
+    }
+    assert sorted(operations) == sorted(endpoint_names)
+    assert len(operations) == len(set(operations))
+
+
+def test_duplicate_endpoint_names_warn_when_building_openapi():
+    app = FastAPI(generate_unique_id_function=app_module.route_operation_id)
+
+    async def duplicate() -> None:
+        return None
+
+    app.add_api_route("/first", duplicate)
+    app.add_api_route("/second", duplicate)
+
+    with pytest.warns(UserWarning, match="Duplicate Operation ID"):
+        app.openapi()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(None, id="unset"),
+        pytest.param("", id="blank"),
+        pytest.param(" , ", id="empty-items"),
+    ],
+)
+def test_create_app_empty_cors_origins_add_no_middleware(
+    monkeypatch, make_container, value
+):
+    if value is not None:
+        monkeypatch.setenv("MY_APP_CORS_ORIGINS", value)
+    app = create_app(container=make_container())
+
+    assert app.user_middleware == []
+
+
+@pytest.mark.parametrize(
+    ("origin", "status", "allowed"),
+    [
+        pytest.param(
+            "https://app.example.com",
+            HTTPStatus.OK,
+            "https://app.example.com",
+            id="allowed",
+        ),
+        pytest.param("https://evil.example", HTTPStatus.BAD_REQUEST, None, id="denied"),
+    ],
+)
+def test_cors_preflight_checks_origins_and_allows_json_post(
+    monkeypatch, origin, status, allowed
+):
+    monkeypatch.setenv(
+        "MY_APP_CORS_ORIGINS", "http://localhost:5173, https://app.example.com"
+    )
+    with TestClient(create_app()) as client:
+        response = client.options(
+            "/api/todos",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    assert response.status_code == status
+    assert response.headers.get("access-control-allow-origin") == allowed
+    assert "POST" in response.headers["access-control-allow-methods"]
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_create_app_explicit_settings_control_cors_with_supplied_container(
+    make_container,
+):
+    app = create_app(
+        Settings(cors_origins=["https://app.example.com"]), container=make_container()
+    )
+    with TestClient(app) as client:
+        response = client.get("/healthz", headers={"Origin": "https://app.example.com"})
+
+    assert response.headers["access-control-allow-origin"] == "https://app.example.com"

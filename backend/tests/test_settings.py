@@ -91,3 +91,54 @@ def test_settings_unsupported_database_url_raises_validation_error(
 
     with pytest.raises(ValidationError, match=pattern):
         Settings()
+
+
+@pytest.mark.parametrize(
+    "value", [pytest.param("", id="blank"), pytest.param(" , ", id="empty-items")]
+)
+def test_settings_blank_cors_origins_disable_cors(monkeypatch, value):
+    monkeypatch.setenv("MY_APP_CORS_ORIGINS", value)
+
+    assert Settings().cors_origins == []
+
+
+def test_settings_cors_origins_are_stripped_and_deduplicated(monkeypatch):
+    monkeypatch.setenv(
+        "MY_APP_CORS_ORIGINS",
+        "http://localhost:5173, https://app.example.com, ,http://localhost:5173",
+    )
+
+    assert Settings().cors_origins == [
+        "http://localhost:5173",
+        "https://app.example.com",
+    ]
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        pytest.param("http://localhost:5173/", id="slash"),
+        pytest.param("https://app.example.com/path", id="path"),
+        pytest.param("*", id="wildcard"),
+        pytest.param("null", id="null"),
+        pytest.param("localhost:5173", id="no-scheme"),
+        pytest.param("ftp://app.example.com", id="wrong-scheme"),
+        pytest.param("https://bad host", id="whitespace"),
+    ],
+)
+def test_settings_invalid_cors_origin_names_the_item(monkeypatch, origin):
+    monkeypatch.setenv("MY_APP_CORS_ORIGINS", origin)
+
+    with pytest.raises(ValidationError, match="invalid CORS origin") as caught:
+        Settings()
+
+    assert origin in str(caught.value)
+
+
+def test_settings_programmatic_cors_origins_use_the_same_rules():
+    assert Settings(
+        cors_origins=[" https://app.example.com ", "https://app.example.com"]
+    ).cors_origins == ["https://app.example.com"]
+
+    with pytest.raises(ValidationError, match="invalid CORS origin"):
+        Settings(cors_origins=["https://app.example.com/"])

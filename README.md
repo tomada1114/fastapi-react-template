@@ -30,24 +30,24 @@ With the server running, from another terminal:
 
 ```bash
 curl http://127.0.0.1:8000/healthz   # {"status":"ok"}
-curl -X POST http://127.0.0.1:8000/todos \
+curl -X POST http://127.0.0.1:8000/api/todos \
   -H 'Content-Type: application/json' -d '{"title": "buy milk"}'
-curl http://127.0.0.1:8000/todos
+curl http://127.0.0.1:8000/api/todos
 ```
 
 The interactive API docs are at <http://127.0.0.1:8000/docs>.
 
 | HTTP | Result |
 |---|---|
-| `POST /todos` `{"title": "..."}` | 201 with the new to-do, `{"id": "<uuid>", "title": "...", "completed": false, "created_at": "..."}` |
-| `GET /todos?cursor=<cursor>&limit=<n>` | one page, oldest first: `{"items": [<to-do>, ...], "next_cursor": "<cursor>" \| null}` |
-| `POST /todos/{id}/complete` | the completed to-do |
-| `DELETE /todos/{id}` | 204 |
+| `POST /api/todos` `{"title": "..."}` | 201 with the new to-do, `{"id": "<uuid>", "title": "...", "completed": false, "created_at": "..."}` |
+| `GET /api/todos?cursor=<cursor>&limit=<n>` | one page, oldest first: `{"items": [<to-do>, ...], "next_cursor": "<cursor>" \| null}` |
+| `POST /api/todos/{id}/complete` | the completed to-do |
+| `DELETE /api/todos/{id}` | 204 |
 
 A to-do's `id` is a UUID (version 7) the application generates, so ids sort in
-creation order. `GET /todos` returns at most `limit` to-dos (default 50, at most
+creation order. `GET /api/todos` returns at most `limit` to-dos (default 50, at most
 100) and pages by cursor: pass a page's `next_cursor` back as `cursor` to fetch
-the next page; `next_cursor` is `null` on the last one. `GET /todos` with no
+the next page; `next_cursor` is `null` on the last one. `GET /api/todos` with no
 parameters is the first page, `{"items": [], "next_cursor": null}` when empty.
 
 An unknown id is a 404 from the API; a title that is empty or longer than 200
@@ -63,6 +63,7 @@ Settings are read from environment variables prefixed with `MY_APP_`.
 
 | Variable | Default | Effect |
 |---|---|---|
+| `MY_APP_CORS_ORIGINS` | empty (CORS disabled) | Comma-separated HTTP(S) origins, e.g. `http://localhost:5173,https://app.example.com`. Spaces and empty items are removed, duplicates kept once. Paths, trailing slashes, wildcards, and origins without an HTTP(S) scheme are rejected at startup. JSON requests from listed origins are allowed without credentials. |
 | `MY_APP_DATABASE_URL` | unset (`just dev`: `sqlite+aiosqlite:///./var/dev.db`) | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite+aiosqlite:///<path>` stores them in a SQLite file at `<path>`, relative to the working directory (an absolute path adds a fourth slash: `sqlite+aiosqlite:////var/lib/todos.db`). `postgresql+asyncpg://<user>:<password>@<host>/<database>` names a PostgreSQL database; its driver, asyncpg, is not installed yet. Anything else is rejected at startup, naming the fix: a URL without the async driver (`sqlite:` or `postgresql:` alone), an in-memory SQLite database (`:memory:`), and a path ending in `/`. |
 
 The database must be migrated before the API uses it: the app never creates or

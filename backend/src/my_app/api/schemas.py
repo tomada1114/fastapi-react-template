@@ -35,7 +35,7 @@ class HealthResponse(BaseModel):
 
 
 class TodoCreateRequest(BaseModel):
-    """Body of ``POST /todos``.
+    """Body of ``POST /api/todos``.
 
     The title is left unconstrained here on purpose: the core owns the length
     rule, and its ``InvalidTodoError`` becomes the 422 response.
@@ -64,7 +64,7 @@ class TodoResponse(BaseModel):
 
 
 class TodoPageResponse(BaseModel):
-    """Body of ``GET /todos``: one page of to-dos, oldest first.
+    """Body of ``GET /api/todos``: one page of to-dos, oldest first.
 
     ``next_cursor`` is opaque: a client passes it back as ``cursor`` to fetch
     the next page, and it is ``null`` on the last page.
