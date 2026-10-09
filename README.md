@@ -42,22 +42,16 @@ The interactive API docs are at <http://127.0.0.1:8000/docs>.
 | `DELETE /todos/{id}` | 204 |
 
 An unknown id is a 404 from the API; a title that is empty or longer than 200
-characters after trimming is a 422. A route you build on the optional LLM
-layer answers 503 while no key is set, 429 when the provider keeps
-rate-limiting, 504 when the call times out, and 502 for any other provider
-failure. Either way the body is `{"detail": "<reason>"}` — only a request that
+characters after trimming is a 422. Either way the body is `{"detail": "<reason>"}` — only a request that
 does not parse at all gets FastAPI's list-shaped `detail`.
 
 ## Configuration
 
-Settings are read from environment variables prefixed with `MY_APP_`; the
-one exception is `OPENROUTER_API_KEY`, which keeps the name OpenRouter uses.
+Settings are read from environment variables prefixed with `MY_APP_`.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `MY_APP_DATABASE_URL` | unset | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite:///<path>` stores them in a SQLite file at `<path>`, created on first use; `sqlite:///:memory:` and a path ending in `/` are rejected at startup. |
-| `OPENROUTER_API_KEY` | unset | Unset (or blank) keeps the optional LLM layer closed: an LLM-backed route answers 503, and neither `httpx` nor the OpenRouter adapter is imported. Set, it opens the OpenRouter adapter, which needs the `ai` extra. |
-| `MY_APP_LLM_MODEL` | `deepseek/deepseek-v4.1-flash` | The OpenRouter model a call that names none is sent to; blank means the default. |
 
 > [!NOTE]
 > Without `MY_APP_DATABASE_URL` the server forgets every to-do when it stops,
@@ -65,19 +59,14 @@ one exception is `OPENROUTER_API_KEY`, which keeps the name OpenRouter uses.
 > suits tests and a quick look; point the variable at a SQLite file for
 > anything you want to keep.
 
-The LLM layer is optional: `uv sync --extra ai` (or `pip install 'my-app[ai]'`)
-installs `httpx` for the OpenRouter adapter. The `integrating-llm` skill
-(`.agents/skills/integrating-llm/SKILL.md`) covers calling it, testing with
-the fake, and removing it.
-
 ## Architecture
 
 ```
 backend/src/my_app/
 ├── core/            # Domain model, ports (typing.Protocol), services, errors — no frameworks
-├── adapters/        # In-memory and SQLite repositories; fake, closed, and OpenRouter LLM adapters
+├── adapters/        # In-memory and SQLite repositories
 ├── api/             # FastAPI app factory, routers, request/response models
-├── settings.py      # MY_APP_* environment variables, plus OPENROUTER_API_KEY
+├── settings.py      # MY_APP_* environment variables
 └── composition.py   # The one place adapters are wired into services
 ```
 

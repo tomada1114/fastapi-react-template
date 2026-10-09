@@ -139,7 +139,6 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `create-pr` | opening or updating a pull request by hand |
 | `designing-core-logic` | adding a use case, domain rule, port, adapter, or `MY_APP_*` setting, or wiring the composition root |
 | `designing-errors` | adding a failure mode, or choosing the HTTP status a domain error becomes |
-| `integrating-llm` | calling a model through LlmPort, wiring an LLM-backed route, testing with FakeLlm, changing the OpenRouter adapter or its retries and deadline, setting OPENROUTER_API_KEY or MY_APP_LLM_MODEL, or removing the LLM layer |
 | `managing-dependencies` | adding, bumping, or removing a package, or changing the `exclude-newer` window, its Dependabot cooldown, or a one-package exception |
 | `merging-dependency-prs` | landing open Dependabot pull requests (GitHub Actions and `uv` bumps) |
 | `placing-tests` | adding a test file or a fixture, running one test, or a coverage run below the floor |

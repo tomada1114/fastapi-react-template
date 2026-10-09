@@ -31,10 +31,10 @@ backend/
 ├── pyproject.toml   # The app's dependencies; its ruff (extending the root's), banned-api, mypy, pytest, and coverage settings
 ├── justfile         # A just module of the root justfile: `just backend <recipe>`
 ├── src/my_app/
-│   ├── core/            # Framework-free: domain model, ports (Protocols, LlmPort included), services, errors
-│   ├── adapters/        # Port implementations: in-memory and SQLite repositories; fake, closed, and OpenRouter LLM adapters (httpx, optional ai extra)
+│   ├── core/            # Framework-free: domain model, ports (Protocols), services, errors
+│   ├── adapters/        # Port implementations: in-memory and SQLite repositories
 │   ├── api/             # FastAPI: create_app(settings) factory, routers (api/routers/), Pydantic schemas
-│   ├── settings.py      # pydantic-settings `Settings`, read from MY_APP_* environment variables and the unprefixed OPENROUTER_API_KEY
+│   ├── settings.py      # pydantic-settings `Settings`, read from MY_APP_* environment variables
 │   └── composition.py   # Composition root: wires adapters into services for the API
 └── tests/           # The app's suite, mirroring src/my_app/ (`placing-tests`)
 ```
@@ -56,7 +56,5 @@ The root `AGENTS.md`'s Skills table lists every skill; these are the backend's:
 - `building-api-routes` — an HTTP route, request or response model, or API
   dependency, and its TestClient tests.
 - `designing-errors` — a failure mode, or the HTTP status a domain error becomes.
-- `integrating-llm` — calling a model through LlmPort, the OpenRouter adapter,
-  FakeLlm, or removing the LLM layer.
 - `placing-tests` — where a backend test or fixture goes, running one test, or
   a coverage run below the floor.

@@ -1,4 +1,4 @@
-"""One settings-environment boundary for fixtures and subprocess probes."""
+"""One settings-environment boundary for the test fixtures."""
 
 from __future__ import annotations
 

@@ -4,8 +4,7 @@ description: >
   Covers the AppError hierarchy in backend/src/my_app/core/errors.py and how the API reports
   it: when a failure earns a subclass, what its message and attributes carry,
   translating a driver error in an adapter, and the HTTP status _status_for in
-  api/app.py gives it with an ErrorResponse body (404, 422, the LLM errors' 503, 429,
-  504, and 502, 400 fallback). Use when adding a failure mode, choosing a status,
+  api/app.py gives it with an ErrorResponse body (404, 422, 400 fallback). Use when adding a failure mode, choosing a status,
   seeing an unexpected 500 or traceback, or deciding whether to log an error.
 ---
 
@@ -87,11 +86,6 @@ table is `_status_for` in `api/app.py`, and nowhere else:
 |---|---|
 | `TodoNotFoundError` | 404 `HTTPStatus.NOT_FOUND` |
 | `InvalidTodoError` | 422 `HTTPStatus.UNPROCESSABLE_CONTENT` |
-| `LlmConfigurationError` | 503 `HTTPStatus.SERVICE_UNAVAILABLE` — the LLM is closed or unusable: no key, a key the provider rejects, or a proxy setting the client cannot use |
-| `LlmRateLimitError` | 429 `HTTPStatus.TOO_MANY_REQUESTS` |
-| `LlmTimeoutError` | 504 `HTTPStatus.GATEWAY_TIMEOUT` |
-| `LlmProviderError` | 502 `HTTPStatus.BAD_GATEWAY` |
-| any other `LlmError` | 502 `HTTPStatus.BAD_GATEWAY` — upstream's, never the 400 fallback |
 | any other `AppError` | 400 `HTTPStatus.BAD_REQUEST` |
 
 The body is always `ErrorResponse`, `{"detail": str(error)}`. FastAPI's own 422 for a
@@ -102,10 +96,7 @@ Each status names a cause. 404 means the named thing does not exist. 422 means t
 request parsed but its input breaks a domain rule on a field — `InvalidTodoError`'s
 kind of failure. A new error class gets its own case when a specific status names its
 cause: 404 for something missing, 409 `HTTPStatus.CONFLICT` for a conflict with the
-current state such as a duplicate, 422 for invalid input. An `LlmError` names a cause
-outside the request: 503 because an unconfigured feature is not a bug (a plain 500
-would claim one), and 429, 504, or 502 for what the provider did. No `Retry-After`
-header is sent with a 429.
+current state such as a duplicate, 422 for invalid input.
 
 400 is only the fallback for an `AppError` that has no case yet: it keeps an unmapped
 subclass the client's problem, never an unhandled 500, and
@@ -128,7 +119,6 @@ match error:
         status = HTTPStatus.NOT_FOUND
     case InvalidTodoError():
         status = HTTPStatus.UNPROCESSABLE_CONTENT
-    # ... the LLM cases elided
     case _:
         status = HTTPStatus.BAD_REQUEST
 return status
@@ -143,10 +133,7 @@ An invalid setting is not an `AppError`: Pydantic raises `ValidationError` when
 `Settings()` is built. The API does not map it: `create_app()` without settings, as
 uvicorn's `--factory` calls it for `just dev`, fails to start with the traceback.
 Validate a new setting in a `field_validator`, so it fails at startup rather than on
-the first request (`designing-core-logic`). The deliberate exception is
-`LlmConfigurationError`, an `AppError`: a missing or rejected LLM key is found when the
-LLM is built or called, not by `Settings()`, and the API answers it 503 like any closed
-feature (`integrating-llm`).
+the first request (`designing-core-logic`).
 
 ## Logging
 

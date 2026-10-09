@@ -31,11 +31,6 @@ Two of them carry a policy on top:
 - mypy's `ignore-without-code` error code makes a `# type: ignore` name its error code.
   The reason written beside it, like the reason on a `noqa` or a per-file ignore, is
   AGENTS.md's policy ("Security and human approval"); no tool checks it.
-  `composition.py` shows the shape:
-
-  ```python
-  from my_app.adapters.openrouter import (  # noqa: PLC0415 - httpx comes only with the optional `ai` extra
-  ```
 
 - Ruff's bandit rules (`S`) stay on; a `noqa` for one argues that specific check.
 
@@ -84,7 +79,7 @@ if TYPE_CHECKING:
 ## Names and constants
 
 - A literal that carries meaning is an `UPPER_SNAKE_CASE` module constant in the module
-  that owns the meaning (`MAX_TITLE_LENGTH`, `OPENROUTER_API_KEY_ENV`, `ENV_PREFIX`);
+  that owns the meaning (`MAX_TITLE_LENGTH`, `SQLITE_URL_PREFIX`, `ENV_PREFIX`);
   another module imports it rather than repeating the value.
 - A boolean is named `is_`, `has_`, `can_`, or `should_` (`Todo.is_completed`). A wire
   format may spell it differently; the schema owns that mapping.
@@ -119,9 +114,7 @@ if TYPE_CHECKING:
       raise TodoNotFoundError(todo_id) from None
   ```
 
-  `from None` drops a cause that adds nothing; `from error` keeps one that does, as
-  `composition.build_llm` does when it turns a missing `httpx` into
-  `LlmConfigurationError`.
+  `from None` drops a cause that adds nothing; `from error` keeps one that does.
 - **A context manager for every resource.** When an object's own `with` does not
   release it, compose `contextlib.closing`: `SqliteTodoRepository._transaction` closes
   the connection that `sqlite3.Connection`'s context manager only commits. A reusable
