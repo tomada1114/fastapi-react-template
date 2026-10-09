@@ -70,7 +70,7 @@ checked 2026-10-07):
   built on GraphQL get the same 403, and so does a request with a `GH_TOKEN` you set.
 - **A repository not attached to the session**: the message starts with
   `GitHub access to` and contains `is not enabled for this session`.
-- **`search/issues`**, refused as out of scope for the session (#179 › Observed,
+- **`search/issues`**, refused as out of scope for the session (tomada1114/uv-template#179 › Observed,
   2026-10-07).
 
 Each one is a stop: report the call and the message, and stop the run. Never retry the

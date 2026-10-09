@@ -9,10 +9,10 @@ the repository's **Security** tab and choose **Report a vulnerability**, or
 go straight to [the new advisory form][advisory]. The report is visible only
 to you, the maintainers, and collaborators they invite.
 
-If that form is unavailable, [open an issue](https://github.com/your-username/uv-template/issues)
+If that form is unavailable, [open an issue](https://github.com/your-username/fastapi-react-template/issues)
 asking for a private contact, and leave every detail of the vulnerability out of it.
 
-[advisory]: https://github.com/your-username/uv-template/security/advisories/new
+[advisory]: https://github.com/your-username/fastapi-react-template/security/advisories/new
 
 Include:
 

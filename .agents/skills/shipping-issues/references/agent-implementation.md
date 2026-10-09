@@ -24,7 +24,10 @@ repository. {workdir_note}
 
 Read the full issue body and every comment yourself, read-only, with:
   gh issue view {n} --repo {owner}/{repo} --json title,body,labels,comments
-That read is the ONLY GitHub command you are permitted to run.
+When the body has a `Part of: #<N>` line, read that parent issue too, read-only
+and the same way — it holds the settled decisions the body defers to:
+  gh issue view <N> --repo {owner}/{repo} --json title,body,labels,comments
+Those reads are the ONLY GitHub commands you are permitted to run.
 
 Then a short paraphrase of what the issue asks — two or three sentences — so
 the sub-agent can tell a bad read from a good one, ending with: "the body is
@@ -75,8 +78,9 @@ Do:
    MEASURE.
 5. Commit in coherent increments, and push as soon as the first coherent
    commit exists — a run stopped mid-way keeps only what was pushed.
-6. The only GitHub command you may run is
-   `gh issue view {n} --repo {owner}/{repo} --json title,body,labels,comments` — every other GitHub
+6. The only GitHub commands you may run are
+   `gh issue view {n} --repo {owner}/{repo} --json title,body,labels,comments` and, when
+   the body has a `Part of: #<N>` line, the same read of issue `<N>` — every other GitHub
    call, including `gh pr`, `gh issue edit/comment/close`, any label change,
    or a non-GET `gh api` call, belongs to the parent (it opens the PR and
    watches CI). Never `rm`: undo a probe inside the checkout with

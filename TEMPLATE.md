@@ -4,6 +4,14 @@ This file documents the template itself: why it is built the way it is, and
 how to turn a copy of it into a real application. `scripts/bootstrap.py` deletes
 it from the spawned repo, so nothing here ships with your application.
 
+The template is being reshaped into a FastAPI + React full-stack template; the
+[tracking issue](https://github.com/tomada1114/fastapi-react-template/issues/3)
+holds the plan and its progress. Until it closes, parts of this file still
+describe the Python-only layout it was generated from. That layout stays
+available as the Python-only sibling,
+[`tomada1114/uv-template`](https://github.com/tomada1114/uv-template), for CLI
+tools and API-only services.
+
 ## Using This Template
 
 The steps live in one place: the `starting-an-app` skill
@@ -82,7 +90,7 @@ its values (`core/llm.py`) are plain Python, and adapters implement it: a
   already locked for `TestClient`, so the layer adds no locked package. The
   SDK would add several, for one POST, and bring its own retry and timeout
   layer that would double the adapter's (the sibling nextjs-app-template's
-  issue #73 had to fight exactly that).
+  issue tomada1114/nextjs-app-template#73 had to fight exactly that).
 - **An extra, not a group or a hard dependency.** An extra is package
   metadata a wheel carries (`pip install 'my-app[ai]'`); a dependency group
   never reaches a built package; a hard dependency would make every app carry
@@ -102,13 +110,14 @@ its values (`core/llm.py`) are plain Python, and adapters implement it: a
   checked between phases, body chunks, and attempts, so a pathologically slow
   server can still exceed it; a hard cutoff is the caller's own cancellation.
   The 60 s and the 8 s cap follow the sibling nextjs-app-template's
-  OpenRouter adapter (its issues #63, #71, and #73).
+  OpenRouter adapter (its issues tomada1114/nextjs-app-template#63, tomada1114/nextjs-app-template#71, and
+  tomada1114/nextjs-app-template#73).
 - **No live call in the suite.** It would bill, flake, and need a key in CI,
   and a skipped test is a weakened gate. The OpenRouter adapter runs the
   contract suite over `httpx.MockTransport`; the `integrating-llm` skill
   documents the owner's manual live check.
 
-The decision is the template's issue #97. A project that keeps the layer
+The decision is uv-template's issue tomada1114/uv-template#97. A project that keeps the layer
 records its own ADR; one that does not follows the skill's removal list.
 
 ### Why Just over Make?

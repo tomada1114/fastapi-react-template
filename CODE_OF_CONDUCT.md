@@ -48,9 +48,9 @@ an individual is officially representing the community in public spaces.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported privately through the repository's
-[private vulnerability reporting form](https://github.com/your-username/uv-template/security/advisories/new),
+[private vulnerability reporting form](https://github.com/your-username/fastapi-react-template/security/advisories/new),
 which only the maintainers can read. A report that needs no privacy can go to
-[the issue tracker](https://github.com/your-username/uv-template/issues).
+[the issue tracker](https://github.com/your-username/fastapi-react-template/issues).
 
 All complaints will be reviewed and investigated fairly, and the reporter's
 privacy will be respected.

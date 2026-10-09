@@ -19,7 +19,7 @@ scp-style `[user@]host:[/]owner/repo` (a bare ssh host alias too) or
 `scheme://[user@]host[:port]/owner/repo`, `.git` and a trailing `/` optional; anything
 else, `file://` included, is `UNKNOWN` — and `scripts/tests/test_runstate_parity.py`
 holds them equal. `run_record.py` instead takes `--repo` or asks `gh repo view`
-(as do `file_followup.py` and `link_check.sh`); aligning those is left to #126.
+(as do `file_followup.py` and `link_check.sh`); aligning those is left to tomada1114/uv-template#126.
 
 Every other file this run generates lives there too, and **never inside a repo
 checkout** — the main one or a worktree: issue bodies for follow-ups, verify baselines

@@ -23,7 +23,10 @@ Issue #{n}: {two-sentence paraphrase of what issue #{n} asks for}, "the body
 is authoritative over this summary."
 Read it yourself, read-only, with:
   gh issue view {n} --repo {owner}/{repo} --json title,body,labels,comments
-That read is the ONLY GitHub command you are permitted to run.
+When the body has a `Part of: #<N>` line, read that parent issue too, read-only
+and the same way — it holds the settled decisions the body defers to:
+  gh issue view <N> --repo {owner}/{repo} --json title,body,labels,comments
+Those reads are the ONLY GitHub commands you are permitted to run.
 </context>
 
 <findings>

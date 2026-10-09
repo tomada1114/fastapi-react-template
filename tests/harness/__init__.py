@@ -32,7 +32,8 @@ repository and fails on a fixture built under ``tmp_path``:
 - (i) ``test_quick_reference.py``: AGENTS.md's Quick Reference names every
   justfile recipe but ``default``, and its ``just verify`` line lists
   ``verify``'s dependencies in order;
-- (g) the Product section check is ``tests/test_product_section.py`` (#95),
+- (g) the Product section check is ``tests/test_product_section.py``
+  (tomada1114/uv-template#95),
   not duplicated here.
 
 The checks hold in the template and in an app the bootstrap cut from it, so

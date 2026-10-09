@@ -181,7 +181,7 @@ and this is the whole list:
 
 When the default branch's CI is green but the local baseline is red, suspect the
 environment first: compare against that CI run, then re-run the failing suite with the
-suspect variables unset (for example `env -u GIT_CONFIG_COUNT ...`) to confirm. #178 is
+suspect variables unset (for example `env -u GIT_CONFIG_COUNT ...`) to confirm. tomada1114/uv-template#178 is
 the example: the `GIT_CONFIG_*` url rewrites a Claude Code cloud session exports failed
 the baseline while the default branch stayed green.
 

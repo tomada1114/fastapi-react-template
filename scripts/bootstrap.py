@@ -40,7 +40,7 @@ PLACEHOLDER_SLUG = "my-app"
 PLACEHOLDER_MODULE = "my_app"
 PLACEHOLDER_DISPLAY_NAME = "My App"
 PLACEHOLDER_ENV_PREFIX = "MY_APP_"
-PLACEHOLDER_REPOSITORY = "your-username/uv-template"
+PLACEHOLDER_REPOSITORY = "your-username/fastapi-react-template"
 PLACEHOLDER_AUTHOR = "Your Name"
 # The same idea is worded differently per file, so both spellings are replaced.
 PLACEHOLDER_DESCRIPTIONS = (
@@ -53,7 +53,7 @@ PLACEHOLDER_DESCRIPTIONS = (
 FORBIDDEN_TOKENS = (
     "my-app",
     "my_app",
-    "uv-template",
+    "fastapi-react-template",
     "your-username",
     "you@example.com",
 )
@@ -94,10 +94,10 @@ RESERVED_NAMES = frozenset(
     }
 )
 
-TEMPLATE_REPOSITORY_URL = "https://github.com/tomada1114/uv-template"
+TEMPLATE_REPOSITORY_URL = "https://github.com/tomada1114/fastapi-react-template"
 # The template's first commit. Every clone of the template shares it; GitHub's
 # "Use this template" starts a new history without it.
-TEMPLATE_ROOT_COMMIT = "ccf05e09ee69311d15581c3e6f9bd086eb711e0a"
+TEMPLATE_ROOT_COMMIT = "d6fdcdbf1020387a6ab74ac02d8efdf38497604c"
 ORIGIN_FILE = ".template-origin"
 UNKNOWN = "unknown"
 

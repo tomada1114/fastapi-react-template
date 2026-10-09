@@ -65,7 +65,7 @@ decision, never this run's.
 
 The PR's review is the Codex GitHub integration's, posted by
 `chatgpt-codex-connector[bot]`. It runs when the PR opens (or a draft is marked ready, or
-someone comments `@codex review`), and **a push may start another**: PRs #184 and #190
+someone comments `@codex review`), and **a push may start another**: PRs tomada1114/uv-template#184 and tomada1114/uv-template#190
 ended on a review of a fix-push head (observed 2026-10-08). This run never asks for one:
 no `@codex review` comment, no close/reopen, no change to review settings. Each review
 is a **round**, and at most 3 are handled per PR:
@@ -81,15 +81,16 @@ round, judged against the code: the badge decides only whether an accepted findi
 fixed now or followed up. Fixes after round 3 get no further review — local verification
 and current-head CI cover them, and the step 10 report says so.
 
-What it looked like on PRs #170 and #171, both opened by a run of this skill (observed
+What it looked like on uv-template's PRs tomada1114/uv-template#170 and tomada1114/uv-template#171, both opened by a run of
+this skill (observed
 2026-10-07): the summary comment appeared about 15 s after the PR opened with a
 `🔄 **Running**` row naming the 7-character head commit and the trigger `PR opened`,
 and was edited in place to `✅ **Completed**` about 2.5 minutes later. CI took about 3
-minutes, so the two finish close together — and on #170 the merge on CI's `PASS` landed
+minutes, so the two finish close together — and on tomada1114/uv-template#170 the merge on CI's `PASS` landed
 at 19:26:55Z, 24 s **before** the review completed at 19:27:19Z. That race is why the
 merge waits for both. A fix push may or may not start one (trigger `New commits`,
-observed 2026-10-08): on #190 it started 12 s after the push and completed 4 minutes
-later; on #184 one push started none, and the next started one 2 min 13 s after the
+observed 2026-10-08): on tomada1114/uv-template#190 it started 12 s after the push and completed 4 minutes
+later; on tomada1114/uv-template#184 one push started none, and the next started one 2 min 13 s after the
 push — 9 s before the PR merged on CI alone, which is what the start grace prevents.
 
 ```bash
@@ -143,7 +144,7 @@ repair or a merge of the default branch is a push like any other — so a
 its round's row above, even one from a review that settled after the grace — do not
 wait for a review that started late, but do not ignore a defect it already named. The
 summary keeps a single row, rewritten for the latest review (a `Manual request` row
-replaced the opening one on PRs #154 and #156, observed 2026-10-07), so the watch
+replaced the opening one on PRs tomada1114/uv-template#154 and tomada1114/uv-template#156, observed 2026-10-07), so the watch
 remembers every round it saw complete, and the current push's grace, in
 `<runstate>/review/<pr>-rounds.json`, reporting a review not yet settled on
 `later_review:`. Leave that file in place until the PR merges.

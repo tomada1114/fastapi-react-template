@@ -1,12 +1,15 @@
 # My App
 
-[![CI](https://github.com/your-username/uv-template/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/uv-template/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/your-username/uv-template/blob/main/LICENSE)
+[![CI](https://github.com/your-username/fastapi-react-template/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/fastapi-react-template/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/your-username/fastapi-react-template/blob/main/LICENSE)
 
 <!-- template-only -->
 > [!NOTE]
-> This is the uv-template repository itself. To start an application from it,
-> follow the `starting-an-app` skill (`.agents/skills/starting-an-app/SKILL.md`);
+> This is the fastapi-react-template repository itself. It is being migrated
+> from a Python-only template to a FastAPI + React full-stack one; the
+> [tracking issue](https://github.com/tomada1114/fastapi-react-template/issues/3)
+> holds the plan and its progress. To start an application from it, follow the
+> `starting-an-app` skill (`.agents/skills/starting-an-app/SKILL.md`);
 > `TEMPLATE.md` explains why the template is built the way it is.
 <!-- /template-only -->
 
@@ -93,7 +96,7 @@ therefore be removed by deleting files, without touching the core. The
 
 ## Development
 
-See [CONTRIBUTING.md](https://github.com/your-username/uv-template/blob/main/CONTRIBUTING.md)
+See [CONTRIBUTING.md](https://github.com/your-username/fastapi-react-template/blob/main/CONTRIBUTING.md)
 for full setup instructions.
 
 ```bash
@@ -115,4 +118,4 @@ skips the hooks. Without Just, run `uv sync --all-groups --locked` and then
 
 ## License
 
-[MIT](https://github.com/your-username/uv-template/blob/main/LICENSE)
+[MIT](https://github.com/your-username/fastapi-react-template/blob/main/LICENSE)
