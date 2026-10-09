@@ -136,6 +136,97 @@ class ExtractDepsTest(unittest.TestCase):
         deps = idg.extract_deps("#5 に依存", "t", self_number=1)
         self.assertEqual(deps["depends_on"], [5])
 
+    def test_japanese_after_phrasings_still_parse(self):
+        deps = idg.extract_deps("#5 の後、#6 完了後", "t", self_number=1)
+        self.assertEqual(deps["depends_on"], [5, 6])
+
+    def test_bare_after_in_prose_is_only_a_mention(self):
+        # Issue #25's scope note: "after #19" there was chronology, not an edge.
+        sentence = "a Claude Code cloud session gets Node.js 24 through #40, after #19"
+        deps = idg.extract_deps(sentence, "t", self_number=25)
+        self.assertEqual(deps["depends_on"], [])
+        self.assertEqual(deps["mentions"], [19, 40])
+
+
+class StructuredDependencySourcesTest(unittest.TestCase):
+    def _record(self, issues, number):
+        payload = idg.build_records(issues, [], body_chars=0)
+        return next(r for r in payload["issues"] if r["number"] == number)
+
+    def test_issue_25_contract_edges_win_over_prose(self):
+        body = (
+            "Scope: a Claude Code cloud session gets Node.js 24 through #40, after #19.\n"
+            "Blocked by #19 in spirit only.\n\n"
+            "<!-- ship: tier=P1 blocked-by=#7,#8 touches=* -->"
+        )
+        issues = [gh_issue(25, body=body), gh_issue(19), gh_issue(7), gh_issue(8)]
+        rec = self._record(issues, 25)
+        self.assertEqual(rec["depends_on"], [7, 8])
+        self.assertIn(19, rec["mentions"])
+        self.assertNotIn(19, rec["depends_on_open"])
+
+    def test_contract_blocked_by_none_drops_prose_edges(self):
+        body = "requires #3 to be reviewed\n<!-- ship: tier=P2 blocked-by=none touches=* -->"
+        rec = self._record([gh_issue(1, body=body), gh_issue(3)], 1)
+        self.assertEqual(rec["depends_on"], [])
+
+    def test_depends_on_lines_win_over_prose(self):
+        body = "Blocked by #3 in prose.\n\n## Dependencies\n\n- Depends on: #4\nDepends on: #5"
+        issues = [gh_issue(1, body=body)] + [gh_issue(n) for n in (3, 4, 5)]
+        rec = self._record(issues, 1)
+        self.assertEqual(rec["depends_on"], [4, 5])
+        self.assertIn(3, rec["mentions"])
+
+    def test_depends_on_line_in_code_does_not_override_prose(self):
+        for example in (
+            "```\nDepends on: #99\n```",
+            "    Depends on: #99",
+            "`Depends on: #99`",
+            "<!--\nDepends on: #99\n-->",
+            "<!-- Depends on: #99 -->",
+        ):
+            with self.subTest(example=example):
+                body = f"Blocked by #3.\n\nExample:\n\n{example}\n"
+                issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(99)]
+                rec = self._record(issues, 1)
+                # The quoted line is no stated source, so the prose blocker
+                # stays an edge (prose reading itself does not skip code).
+                self.assertIn(3, rec["depends_on"])
+                self.assertIn(3, rec["depends_on_open"])
+
+    def test_comment_opener_in_code_does_not_hide_a_stated_line(self):
+        body = "Use `<!--` to begin a comment. Blocked by #3.\n\nDepends on: #4\n"
+        issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(4)]
+        rec = self._record(issues, 1)
+        self.assertEqual(rec["depends_on"], [4])
+
+    def test_real_comment_after_a_quoted_opener_still_hides_its_line(self):
+        body = (
+            "Use `<!--` to begin a comment. Blocked by #3.\n\n"
+            "<!--\nDepends on: #99\n-->\n"
+        )
+        issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(99)]
+        rec = self._record(issues, 1)
+        self.assertIn(3, rec["depends_on_open"])
+
+    def test_ordered_and_task_list_depends_on_lines_are_stated(self):
+        for line in (
+            "1. Depends on: #4",
+            "2) Depends on: #4",
+            "- [ ] Depends on: #4",
+            "* [x] Depends on: #4",
+        ):
+            with self.subTest(line=line):
+                body = f"Blocked by #3.\n\n{line}\n"
+                issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(4)]
+                rec = self._record(issues, 1)
+                self.assertEqual(rec["depends_on"], [4])
+
+    def test_contract_without_blocked_by_keeps_prose_edges(self):
+        body = "depends on #3\n<!-- ship: tier=P2 touches=* -->"
+        rec = self._record([gh_issue(1, body=body), gh_issue(3)], 1)
+        self.assertEqual(rec["depends_on"], [3])
+
 
 class DaysSinceTest(unittest.TestCase):
     def test_recent_date_is_zero_or_more(self):

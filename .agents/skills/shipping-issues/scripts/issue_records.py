@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 _REF_LIST = r"(#\d+(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)#\d+)*)"
 DEP_PATTERNS = [
     (
-        r"(?:depends?\s+on|blocked\s+by|after|requires?)\s*:?\s*" + _REF_LIST,
+        # No bare "after": "through #40, after #19" (#25) is chronology, not
+        # an edge. Japanese の後 / 完了後 stay: they attach to the number.
+        r"(?:depends?\s+on|blocked\s+by|requires?)\s*:?\s*" + _REF_LIST,
         "depends_on",
     ),
     (r"(?:blocks|blocking)\s*:?\s*" + _REF_LIST, "blocks"),
@@ -30,6 +32,49 @@ DEP_PATTERNS = [
     (r"(?:前提|依存|ブロッカー|先行)\s*:?\s*#(\d+)", "depends_on"),
     (r"#(\d+)\s*(?:をブロック|の前提)", "blocks"),
 ]
+
+# A `Depends on: #N` line (file_followup.py writes one per blocker under
+# `## Dependencies`), optionally a list item. With the contract's `blocked-by=`
+# it is a structured source: when either is present, it alone sets depends_on.
+DEPENDS_ON_LINE_RE = re.compile(
+    r"^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)?"
+    r"depends[ \t]+on[ \t]*:[ \t]*" + _REF_LIST,
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | None:
+    """depends_on from the structured sources, or None when the body has none.
+
+    The sources are the ship contract's `blocked-by=` field (`none` counts as
+    stated) and `Depends on: #N` lines. Prose phrasings are not read here, and
+    neither is a `Depends on:` line inside a code block or span or an HTML
+    comment: a quoted example or a template's hidden placeholder states nothing.
+    """
+    code = _code_spans(body)
+    spans = list(code)
+    pos = body.find("<!--")
+    while pos != -1:
+        if any(start <= pos < end for start, end in code):
+            pos = body.find("<!--", pos + 4)
+            continue
+        close = body.find("-->", pos + 4)
+        end = len(body) if close == -1 else close + 3
+        spans.append((pos, end))
+        pos = body.find("<!--", end)
+    lines = [
+        m
+        for m in DEPENDS_ON_LINE_RE.finditer(body)
+        if not any(start <= m.start(1) < end for start, end in spans)
+    ]
+    has_field = contract is not None and "blocked-by" in contract["fields"]
+    if not lines and not has_field:
+        return None
+    stated = set(contract["depends_on"]) if contract and has_field else set()
+    for m in lines:
+        stated.update(int(n) for n in re.findall(r"\d+", m.group(1)))
+    return stated
+
 
 # owner/repo as preflight.sh's repo_slug block accepts it, and the URL schemes
 # it reads one from; parse_repo_slug() below is that block's twin.
@@ -1054,18 +1099,25 @@ def build_records(
         deps = extract_deps(body, it.get("title", ""), num)
         contract = parse_ship_contract(body)
         contracts[num] = contract
-        if contract:
-            # An explicit contract edge is a stated fact; the regex scrape is an
-            # inference from prose. Union rather than override — an author who
-            # writes both a `blocked-by=` field and "depends on #12" in the body
-            # means the same thing, and dropping either would lose an edge the
-            # other caught.
-            for kind in ("depends_on", "blocks"):
-                merged = set(deps[kind]) | set(contract[kind])
-                deps[kind] = sorted(n for n in merged if n != num)
-            # Anything now a declared edge stops counting as a bare mention.
+        stated = stated_depends_on(body, contract)
+        if contract or stated is not None:
+            prose_depends = set(deps["depends_on"])
+            # A stated edge (`blocked-by=`, `Depends on: #N`) is a fact; the
+            # regex scrape is an inference from prose. When a body states its
+            # dependencies, they alone count: prose such as "after #19" in a
+            # scope note made #25 look blocked by the issue it blocks.
+            if stated is not None:
+                deps["depends_on"] = sorted(n for n in stated if n != num)
+            # `blocks` has no structured line form: union the contract's
+            # edges with the scrape, as before.
+            if contract:
+                merged = set(deps["blocks"]) | set(contract["blocks"])
+                deps["blocks"] = sorted(n for n in merged if n != num)
+            # A dropped prose edge is still a reference; a declared edge is not
+            # a bare mention.
             declared = set(deps["depends_on"]) | set(deps["blocks"])
-            deps["mentions"] = [n for n in deps["mentions"] if n not in declared]
+            mentions = set(deps["mentions"]) | (prose_depends - {num})
+            deps["mentions"] = sorted(mentions - declared)
         all_deps[num] = deps
     open_numbers = set(all_deps)
 
