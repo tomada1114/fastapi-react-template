@@ -10,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 import my_app
 from my_app.api import app as app_module
@@ -291,4 +292,36 @@ def test_create_app_explicit_settings_control_cors_with_supplied_container(
     with TestClient(app) as client:
         response = client.get("/healthz", headers={"Origin": "https://app.example.com"})
 
+    assert response.headers["access-control-allow-origin"] == "https://app.example.com"
+
+
+@pytest.mark.parametrize(
+    ("origin", "allowed"),
+    [
+        pytest.param(
+            "https://app.example.com", "https://app.example.com", id="allowed"
+        ),
+        pytest.param("https://evil.example", None, id="denied"),
+    ],
+)
+def test_cors_headers_cover_unhandled_errors(sqlite_url, origin, allowed):
+    app = create_app(
+        Settings(database_url=sqlite_url, cors_origins=["https://app.example.com"])
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/todos", headers={"Origin": origin})
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert response.headers.get("access-control-allow-origin") == allowed
+
+
+def test_create_app_cors_still_allows_middleware_registration(make_container):
+    app = create_app(
+        Settings(cors_origins=["https://app.example.com"]), container=make_container()
+    )
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["testserver"])
+    with TestClient(app) as client:
+        response = client.get("/healthz", headers={"Origin": "https://app.example.com"})
+
+    assert response.status_code == HTTPStatus.OK
     assert response.headers["access-control-allow-origin"] == "https://app.example.com"

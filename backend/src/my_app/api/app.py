@@ -26,9 +26,29 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from fastapi.routing import APIRoute
+    from starlette.types import ASGIApp
 
 APP_TITLE = "My App"
 API_PREFIX = "/api"
+
+
+class _CorsApp(FastAPI):
+    """Keep CORS outside server-error handling while retaining the factory API."""
+
+    cors_origins: tuple[str, ...] = ()
+
+    def build_middleware_stack(self) -> ASGIApp:
+        """Build lazily so callers can still register middleware before startup."""
+        middleware = super().build_middleware_stack()
+        if self.cors_origins:
+            middleware = CORSMiddleware(
+                middleware,
+                allow_origins=self.cors_origins,
+                allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+                allow_headers=["Content-Type"],
+                allow_credentials=False,
+            )
+        return middleware
 
 
 def route_operation_id(route: APIRoute) -> str:
@@ -71,19 +91,12 @@ def create_app(
             if owns_container:
                 await services.aclose()
 
-    app = FastAPI(
+    app = _CorsApp(
         title=APP_TITLE,
         lifespan=lifespan,
         generate_unique_id_function=route_operation_id,
     )
-    if settings.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.cors_origins,
-            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-            allow_headers=["Content-Type"],
-            allow_credentials=False,
-        )
+    app.cors_origins = tuple(settings.cors_origins)
     app.state.container = services
     app.include_router(health.router)
     app.include_router(todos.router, prefix=API_PREFIX)

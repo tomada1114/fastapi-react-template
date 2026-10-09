@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -55,7 +56,7 @@ class Settings(BaseSettings):
             origin = item.strip()
             if not origin:
                 continue
-            if CORS_ORIGIN_PATTERN.fullmatch(origin) is None:
+            if not _is_browser_origin(origin):
                 msg = f"invalid CORS origin {origin!r}: use http(s)://host[:port] without a path"
                 raise ValueError(msg)
             if origin not in origins:
@@ -120,3 +121,22 @@ def _check_sqlite_path(url: str, path: str) -> None:
     if path.endswith("/"):
         msg = f"must name a file, not a directory, got {url!r}"
         raise ValueError(msg)
+
+
+def _is_browser_origin(origin: str) -> bool:
+    """Reject origin strings a browser cannot send in its Origin header."""
+    if CORS_ORIGIN_PATTERN.fullmatch(origin) is None or "*" in origin or "\\" in origin:
+        return False
+    try:
+        parsed = urlsplit(origin)
+        # Access validates both the port range and its numeric spelling.
+        _ = parsed.port
+    except ValueError:
+        return False
+    return bool(parsed.hostname) and not (
+        parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.netloc.endswith(":")
+    )

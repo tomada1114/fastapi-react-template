@@ -124,6 +124,14 @@ def test_settings_cors_origins_are_stripped_and_deduplicated(monkeypatch):
         pytest.param("localhost:5173", id="no-scheme"),
         pytest.param("ftp://app.example.com", id="wrong-scheme"),
         pytest.param("https://bad host", id="whitespace"),
+        pytest.param("https://app.example.com?x=1", id="query"),
+        pytest.param("https://app.example.com#fragment", id="fragment"),
+        pytest.param("https://app.example.com:abc", id="non-numeric-port"),
+        pytest.param("https://app.example.com:65536", id="out-of-range-port"),
+        pytest.param("https://app.example.com:", id="empty-port"),
+        pytest.param("https://:", id="missing-host"),
+        pytest.param("https://user@app.example.com", id="userinfo"),
+        pytest.param("https://*.example.com", id="wildcard-host"),
     ],
 )
 def test_settings_invalid_cors_origin_names_the_item(monkeypatch, origin):

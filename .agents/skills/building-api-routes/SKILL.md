@@ -78,7 +78,9 @@ at startup. Its lifespan awaits `aclose()` only on the container it built; a sup
 shutdown.
 It includes resource routers under `API_PREFIX` (`/api`), leaves probes such as
 `/healthz` at the root, and registers the `AppError` handler. It reads HTTP settings
-also when a caller supplies a container; a non-empty `cors_origins` adds CORS.
+also when a caller supplies a container. A non-empty `cors_origins` wraps the complete
+middleware stack with CORS, including server-error responses; the stack is built
+lazily so a caller can still register middleware before startup.
 
 - A new router is a module under `api/routers/`, added to the imports and included with `app.include_router(router, prefix=API_PREFIX)`.
 - Each route function name is its public generated-client operation id; keep names
@@ -149,8 +151,7 @@ async def complete_todo(todo_id: UUID, service: TodoServiceDep) -> TodoResponse:
     return TodoResponse.from_domain(await service.complete(todo_id))
 ```
 
-FastAPI reads a route's annotations at run time, so the types they name stay real
-imports. The root `pyproject.toml`'s `runtime-evaluated-decorators` (which
+FastAPI reads route annotations at run time, so their types stay real imports. The root `pyproject.toml`'s `runtime-evaluated-decorators` (which
 `backend/pyproject.toml` extends) lists the `APIRouter` and `FastAPI` decorators in
 use; a route registered through a decorator not on that list needs it added there
 (`writing-python`).
