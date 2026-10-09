@@ -506,3 +506,29 @@ def test_openapi_documents_every_error_as_problem_details(client):
                         }
                     }
     assert seen_errors > 0
+
+
+@pytest.mark.parametrize("status", [499, 599])
+@pytest.mark.parametrize("detail", ["custom failure", {"private": "context"}])
+def test_http_exception_unregistered_status_keeps_status_detail_and_headers(
+    make_container, status, detail
+):
+    app = create_app(container=make_container())
+
+    @app.get("/custom-http")
+    async def custom_http() -> None:
+        raise HTTPException(status, detail=detail, headers={"X-Reason": "custom"})
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/custom-http")
+
+    assert response.status_code == status
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["x-reason"] == "custom"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unknown Status",
+        "status": status,
+        "detail": detail if isinstance(detail, str) else "Unknown Status",
+        "code": "http_error",
+    }

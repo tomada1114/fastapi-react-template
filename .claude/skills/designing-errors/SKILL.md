@@ -110,7 +110,8 @@ The factory also handles non-domain failures:
   `input`, `ctx`, and `url`. `ProblemFieldError` defines each item.
 - Starlette's `HTTPException`: 404 `not_found`, 405 `method_not_allowed`, otherwise
   `http_error`. Keep its headers (including `Allow`); a non-string detail becomes
-  the status phrase. Statuses forbidding a body, such as 204 and 304, stay empty.
+  the status phrase (`Unknown Status` for unregistered codes). Statuses forbidding
+  a body, such as 204 and 304, stay empty.
 - An unhandled `Exception`: 500 `internal_error` with the generic detail above.
   Never echo exception text; test with `raise_server_exceptions=False`.
 

@@ -39,13 +39,21 @@ class ProblemDetails(BaseModel):
     errors: list[ProblemFieldError] | None = None
 
 
+def status_phrase(status: int) -> str:
+    """Keep valid extension statuses usable when the stdlib has no phrase."""
+    try:
+        return HTTPStatus(status).phrase
+    except ValueError:
+        return "Unknown Status"
+
+
 def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     """Register error models; the factory publishes their Problem media type.
 
     ``Any`` matches FastAPI's ``responses=`` declaration type.
     """
     return {
-        status: {"model": ProblemDetails, "description": HTTPStatus(status).phrase}
+        status: {"model": ProblemDetails, "description": status_phrase(status)}
         for status in statuses
     }
 

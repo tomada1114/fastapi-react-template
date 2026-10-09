@@ -20,6 +20,7 @@ from my_app.api.schemas import (
     ProblemDetails,
     ProblemFieldError,
     problem_responses,
+    status_phrase,
 )
 from my_app.composition import Container, build_container
 from my_app.core.errors import (
@@ -175,7 +176,7 @@ def _problem_response(
 ) -> JSONResponse:
     """Serialize a client-safe error, omitting absent extensions."""
     body = ProblemDetails(
-        title=HTTPStatus(status).phrase,
+        title=status_phrase(status),
         status=status,
         detail=detail,
         code=code,
@@ -217,7 +218,7 @@ async def _handle_http_error(_: Request, error: HTTPException) -> Response:
     detail = (
         error.detail
         if isinstance(error.detail, str)
-        else HTTPStatus(error.status_code).phrase
+        else status_phrase(error.status_code)
     )
     return _problem_response(error.status_code, detail, code, headers=error.headers)
 
