@@ -121,7 +121,8 @@ checked.
 ## Independence and reliability
 
 - No shared mutable state and no ordering dependency. Each test passes alone
-  (`uv run --locked --directory backend pytest tests/<layer>/test_<module>.py::test_<name>`),
+  (`uv run --locked --directory backend pytest tests/<layer>/test_<module>.py::test_<name>`
+  for an app test, `uv run --locked pytest tests/test_<module>.py::test_<name>` for a root one),
   in any order, in any process: `just test` runs the suite with `pytest-xdist`
   (`-n auto`) and CI also runs it across processes, so a hidden dependency surfaces as
   an intermittent failure.
