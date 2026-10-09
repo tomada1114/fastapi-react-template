@@ -186,7 +186,7 @@ def test_core_module_calls_no_io_builtin(path):
             "from typer.testing import CliRunner", "typer.testing", id="typer"
         ),
         pytest.param("import uvicorn", "uvicorn", id="uvicorn"),
-        pytest.param("import sqlite3", "sqlite3", id="sqlite3"),
+        pytest.param("import sqlalchemy", "sqlalchemy", id="sqlalchemy"),
         pytest.param("import httpx", "httpx", id="httpx"),
         pytest.param("from pydantic import BaseModel", "pydantic", id="pydantic"),
         pytest.param("from .. import api", "my_app", id="relative-escape"),
@@ -204,7 +204,7 @@ def test_import_check_subpackage_relative_escape_is_rejected():
     subpackage_file = CORE_DIR / "billing" / "invoices.py"
 
     modules = _imported_modules(
-        "from ...adapters import sqlite", _package_of(subpackage_file)
+        "from ...adapters import sql", _package_of(subpackage_file)
     )
 
     assert modules == {"my_app.adapters"}
