@@ -29,7 +29,7 @@ class TodoService:
         self._repository = repository
         self._clock = clock
 
-    def create(self, raw_title: str) -> Todo:
+    async def create(self, raw_title: str) -> Todo:
         """Store a new, open to-do.
 
         Args:
@@ -43,17 +43,17 @@ class TodoService:
             InvalidTodoError: If the stripped title is empty or too long.
         """
         draft = TodoDraft(title=normalize_title(raw_title), created_at=self._clock())
-        return self._repository.add(draft)
+        return await self._repository.add(draft)
 
-    def list_todos(self) -> list[Todo]:
+    async def list_todos(self) -> list[Todo]:
         """List every to-do.
 
         Returns:
             The to-dos oldest first; an empty list when there are none.
         """
-        return self._repository.list_all()
+        return await self._repository.list_all()
 
-    def complete(self, todo_id: int) -> Todo:
+    async def complete(self, todo_id: int) -> Todo:
         """Mark a to-do as completed.
 
         Completing it again changes nothing, so a retried request is safe.
@@ -67,12 +67,12 @@ class TodoService:
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        todo = self._repository.get(todo_id)
+        todo = await self._repository.get(todo_id)
         if todo.is_completed:
             return todo
-        return self._repository.update(replace(todo, is_completed=True))
+        return await self._repository.update(replace(todo, is_completed=True))
 
-    def delete(self, todo_id: int) -> None:
+    async def delete(self, todo_id: int) -> None:
         """Remove a to-do.
 
         Args:
@@ -81,4 +81,4 @@ class TodoService:
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        self._repository.delete(todo_id)
+        await self._repository.delete(todo_id)

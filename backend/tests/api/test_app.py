@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import AsyncExitStack
 from http import HTTPStatus
 from importlib import metadata, reload
+from inspect import iscoroutinefunction
 
 import httpx2
+import pytest
+from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 
 import my_app
@@ -15,6 +18,8 @@ from my_app.core.errors import AppError
 from my_app.settings import Settings
 
 UNMAPPED_MESSAGE = "a rule with no status of its own"
+
+pytestmark = pytest.mark.anyio
 
 
 class _UnmappedError(AppError):
@@ -90,12 +95,30 @@ def test_create_app_with_sqlite_keeps_todos_across_apps(tmp_path):
     assert titles == ["survives"]
 
 
+def test_create_app_every_route_is_a_coroutine_function(make_container):
+    # app.routes holds each included router as one opaque entry (fastapi
+    # 0.141); iter_route_contexts flattens them the way the OpenAPI builder does.
+    app_routes = create_app(container=make_container()).routes
+    routes = [
+        context.original_route
+        for context in iter_route_contexts(app_routes)
+        if isinstance(context.original_route, APIRoute)
+    ]
+
+    sync_routes = [
+        route.path for route in routes if not iscoroutinefunction(route.endpoint)
+    ]
+
+    assert routes != []
+    assert sync_routes == []
+
+
 def test_create_app_shutdown_closes_factory_built_container(
     monkeypatch, make_container
 ):
     closed: list[str] = []
-    resources = ExitStack()
-    resources.callback(closed.append, "built")
+    resources = AsyncExitStack()
+    resources.push_async_callback(_record, closed, "built")
     container = Container(make_container().todos, _resources=resources)
     monkeypatch.setattr(app_module, "build_container", lambda _: container)
 
@@ -108,15 +131,22 @@ def test_create_app_shutdown_closes_factory_built_container(
     assert closed == ["built"]
 
 
-def test_create_app_shutdown_leaves_supplied_container_caller_owned(make_container):
+async def test_create_app_shutdown_leaves_supplied_container_caller_owned(
+    make_container,
+):
     closed: list[str] = []
-    resources = ExitStack()
-    resources.callback(closed.append, "supplied")
+    resources = AsyncExitStack()
+    resources.push_async_callback(_record, closed, "supplied")
     container = Container(make_container().todos, _resources=resources)
 
     with TestClient(create_app(container=container)) as client:
         assert client.get("/healthz").status_code == HTTPStatus.OK
 
     assert closed == []
-    container.close()
+    await container.aclose()
     assert closed == ["supplied"]
+
+
+async def _record(log: list[str], name: str) -> None:
+    """An async cleanup callback that records that it ran."""
+    log.append(name)

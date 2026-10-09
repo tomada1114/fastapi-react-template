@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from contextlib import closing, contextmanager
 from datetime import datetime
@@ -40,13 +41,19 @@ SQLITE_MAX_INTEGER = 2**63 - 1
 class SqliteTodoRepository:
     """Store to-dos in one SQLite table.
 
-    Each call opens and closes its own connection. That costs a little per
-    call, but a connection is never shared across the threads FastAPI runs
-    synchronous endpoints on, which ``sqlite3`` would otherwise refuse.
+    The stdlib driver blocks, so each method runs its database work in a worker
+    thread through ``asyncio.to_thread`` and the event loop keeps serving other
+    requests meanwhile. Each call opens and closes its own connection in that
+    thread: ``sqlite3`` refuses a connection used from a thread other than the
+    one that opened it, and the worker threads differ from call to call.
     """
 
     def __init__(self, path: Path) -> None:
         """Create the database file, its directory, and the table if missing.
+
+        Synchronous on purpose: ``build_container`` builds this at startup,
+        before any event loop serves a request, and must fail there on a bad
+        path.
 
         Args:
             path: The SQLite file; created on first use.
@@ -66,7 +73,7 @@ class SqliteTodoRepository:
         with closing(sqlite3.connect(self._path)) as connection, connection:
             yield connection
 
-    def add(self, draft: TodoDraft) -> Todo:
+    async def add(self, draft: TodoDraft) -> Todo:
         """Insert a draft.
 
         Args:
@@ -76,13 +83,10 @@ class SqliteTodoRepository:
             The stored to-do. ``AUTOINCREMENT`` keeps SQLite from reusing the
             id of a deleted row.
         """
-        with self._transaction() as connection:
-            (todo_id,) = connection.execute(
-                _INSERT, (draft.title, draft.created_at.isoformat())
-            ).fetchone()
+        todo_id = await asyncio.to_thread(self._insert, draft)
         return Todo(id=todo_id, title=draft.title, created_at=draft.created_at)
 
-    def get(self, todo_id: int) -> Todo:
+    async def get(self, todo_id: int) -> Todo:
         """Fetch one to-do.
 
         Args:
@@ -95,23 +99,21 @@ class SqliteTodoRepository:
             TodoNotFoundError: If no to-do has this id.
         """
         _require_storable_id(todo_id)
-        with self._transaction() as connection:
-            row = connection.execute(_SELECT_ONE, (todo_id,)).fetchone()
+        row = await asyncio.to_thread(self._select_one, todo_id)
         if row is None:
             raise TodoNotFoundError(todo_id)
         return _to_todo(row)
 
-    def list_all(self) -> list[Todo]:
+    async def list_all(self) -> list[Todo]:
         """Fetch every to-do.
 
         Returns:
             The to-dos in ascending id order.
         """
-        with self._transaction() as connection:
-            rows = connection.execute(_SELECT_ALL).fetchall()
+        rows = await asyncio.to_thread(self._select_all)
         return [_to_todo(row) for row in rows]
 
-    def update(self, todo: Todo) -> Todo:
+    async def update(self, todo: Todo) -> Todo:
         """Replace the stored to-do that has ``todo.id``.
 
         Args:
@@ -124,16 +126,11 @@ class SqliteTodoRepository:
             TodoNotFoundError: If no to-do has this id.
         """
         _require_storable_id(todo.id)
-        with self._transaction() as connection:
-            cursor = connection.execute(
-                _UPDATE,
-                (todo.title, todo.is_completed, todo.created_at.isoformat(), todo.id),
-            )
-        if cursor.rowcount == 0:
+        if await asyncio.to_thread(self._update_row, todo) == 0:
             raise TodoNotFoundError(todo.id)
         return todo
 
-    def delete(self, todo_id: int) -> None:
+    async def delete(self, todo_id: int) -> None:
         """Remove one to-do.
 
         Args:
@@ -143,10 +140,49 @@ class SqliteTodoRepository:
             TodoNotFoundError: If no to-do has this id.
         """
         _require_storable_id(todo_id)
+        if await asyncio.to_thread(self._delete_row, todo_id) == 0:
+            raise TodoNotFoundError(todo_id)
+
+    # The blocking halves below run in a worker thread, one connection each.
+
+    def _insert(self, draft: TodoDraft) -> int:
+        """Insert a row and return the id SQLite assigned it."""
+        with self._transaction() as connection:
+            (todo_id,) = connection.execute(
+                _INSERT, (draft.title, draft.created_at.isoformat())
+            ).fetchone()
+        return int(todo_id)
+
+    def _select_one(self, todo_id: int) -> tuple[int, str, int, str] | None:
+        """Return the row with this id, or ``None`` when there is none."""
+        with self._transaction() as connection:
+            row: tuple[int, str, int, str] | None = connection.execute(
+                _SELECT_ONE, (todo_id,)
+            ).fetchone()
+        return row
+
+    def _select_all(self) -> list[tuple[int, str, int, str]]:
+        """Return every row in id order."""
+        with self._transaction() as connection:
+            rows: list[tuple[int, str, int, str]] = connection.execute(
+                _SELECT_ALL
+            ).fetchall()
+        return rows
+
+    def _update_row(self, todo: Todo) -> int:
+        """Overwrite the row with ``todo.id`` and return how many rows changed."""
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                _UPDATE,
+                (todo.title, todo.is_completed, todo.created_at.isoformat(), todo.id),
+            )
+        return cursor.rowcount
+
+    def _delete_row(self, todo_id: int) -> int:
+        """Delete the row with this id and return how many rows went."""
         with self._transaction() as connection:
             cursor = connection.execute(_DELETE, (todo_id,))
-        if cursor.rowcount == 0:
-            raise TodoNotFoundError(todo_id)
+        return cursor.rowcount
 
 
 def _require_storable_id(todo_id: int) -> None:

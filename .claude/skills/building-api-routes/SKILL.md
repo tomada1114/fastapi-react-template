@@ -50,8 +50,9 @@ Then prune what sibling skills say about the API:
 
 - `designing-errors`: "The HTTP mapping", step 4 of "Adding a failure mode", and the
   API's part of "Two kinds of failure", "Configuration errors", and "Logging";
-- `designing-core-logic`: the `building-api-routes` pointers and the FastAPI
-  thread-pool reason under "Services are the use cases";
+- `designing-core-logic`: the `building-api-routes` pointers, and the routes and
+  `create_app` in what "Services are the use cases" and "An adapter that holds a
+  resource" say about the async path and the lifespan;
 - `running-the-app`: "Running a server of your own" and the server tier of "Evidence,
   cheapest first", which leaves a test as its only tier;
 - `writing-python`: the examples that quote `api/` files;
@@ -72,8 +73,9 @@ no `HTTPException` for a domain failure.
 per call; there is no module-level `app`. It builds a container from `settings` (read
 from the environment when omitted), or takes one a test built, and stores it on
 `app.state.container`. Building remains in the factory, so configuration errors fail
-at startup. Its lifespan closes only the container it built; a supplied `container=`
-stays caller-owned. Use `TestClient` as a context manager to run lifespan shutdown.
+at startup. Its lifespan awaits `aclose()` only on the container it built; a supplied
+`container=` stays caller-owned. Use `TestClient` as a context manager to run lifespan
+shutdown.
 It includes each router and registers the `AppError` handler.
 
 - A new router is a module under `api/routers/`, added to the
@@ -121,6 +123,10 @@ One module per resource, each with a single module-level `router = APIRouter(...
 `tags=`, plus a `prefix=` when every path in it shares one: `routers/todos.py` has
 `prefix="/todos"`, while `routers/health.py` serves `/healthz` with no prefix.
 
+- **A route is `async def`** and awaits the one service method it calls, so it runs on
+  the event loop rather than in FastAPI's worker threads.
+  `test_create_app_every_route_is_a_coroutine_function` in
+  `backend/tests/api/test_app.py` fails on a plain `def` route.
 - **Parameters are typed.** A path parameter typed `int` gives FastAPI's own 422 for a
   non-integer; the body is a request model; the service is the `...Dep` alias.
 - **The return annotation is the response model.** Return a response model built from
@@ -138,9 +144,9 @@ One module per resource, each with a single module-level `router = APIRouter(...
 
 ```python
 @router.post("/{todo_id}/complete", responses=_NOT_FOUND)
-def complete_todo(todo_id: int, service: TodoServiceDep) -> TodoResponse:
+async def complete_todo(todo_id: int, service: TodoServiceDep) -> TodoResponse:
     """Mark a to-do as completed."""
-    return TodoResponse.from_domain(service.complete(todo_id))
+    return TodoResponse.from_domain(await service.complete(todo_id))
 ```
 
 FastAPI reads a route's annotations at run time, so the types they name stay real
@@ -183,6 +189,9 @@ Take reading one item by id, `GET /<resource>/{id}`, as the worked case:
 
 ## Testing a route
 
+- Route tests stay plain `def`: `TestClient` is synchronous and runs the app on its own
+  event loop. Only a test that awaits something itself, such as a container's
+  `aclose()`, is `async def` (`writing-tests`' "Async tests").
 - Use the `client` fixture from `backend/tests/api/conftest.py`:
   `TestClient(create_app(container=make_container()))`, an empty in-memory store and
   the fixed clock, so `created_at` is known exactly. Tests go in

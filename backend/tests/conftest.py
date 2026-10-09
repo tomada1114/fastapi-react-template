@@ -18,6 +18,17 @@ def _fixed_clock() -> datetime:
     return FIXED_NOW
 
 
+@pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    """Run every ``anyio``-marked test on asyncio only.
+
+    AnyIO's own fixture is module-scoped and parametrized over every installed
+    backend; fixing it here keeps the run single-backend, and session scope
+    lets a module- or session-scoped async fixture use it.
+    """
+    return "asyncio"
+
+
 @pytest.fixture(autouse=True)
 def _isolate_settings_env(monkeypatch):
     """Keep every settings input from the developer's shell out of tests."""

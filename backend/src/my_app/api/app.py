@@ -39,8 +39,8 @@ def create_app(
             environment when omitted. Ignored when ``container`` is given.
         container: Services already built by the composition root. Tests pass
             one built with a fixed clock; production code leaves it out. The
-            caller owns a supplied container; lifespan shutdown closes only a
-            container this factory builds.
+            caller owns a supplied container; lifespan shutdown awaits
+            ``aclose()`` only on a container this factory builds.
 
     Returns:
         The application, ready for uvicorn or ``TestClient``.
@@ -56,7 +56,7 @@ def create_app(
             yield
         finally:
             if owns_container:
-                services.close()
+                await services.aclose()
 
     app = FastAPI(title=APP_TITLE, lifespan=lifespan)
     app.state.container = services
