@@ -33,8 +33,9 @@ A patch round or a repeat CI repair on the same tier **continues the same agent*
 the host allows it; spawn a fresh one only on a tier change — a fresh spawn re-reads the
 whole repository the first run already learned.
 
-**Reading its own issue is the one GitHub call a brief makes.** Pasting a full issue
-body into the prompt means the parent must first pull it into _this_ context — the exact
+**Reading its own issue — and the parent issue its `Part of: #<N>` line names, when it
+has one — is the only GitHub call a brief makes.** Pasting a full issue body into the
+prompt means the parent must first pull it into _this_ context — the exact
 cost `cost-discipline.md` exists to avoid, paid once per issue and again on every resume
 run. So every template below that reads an issue hands over its _number_ and lets the
 agent run `gh issue view <n> --repo <o/r> --json title,body,labels,comments` itself,

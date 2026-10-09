@@ -18,6 +18,9 @@ in the repository, and run no `rm`.
 Read, in this order:
   - the issue and its thread:
     gh issue view {n} --repo {owner}/{repo} --json title,body,labels,comments
+  - when its body has a `Part of: #<N>` line, that parent issue, read-only and
+    the same way — it holds the settled decisions the body defers to:
+    gh issue view <N> --repo {owner}/{repo} --json title,body,labels,comments
   - the project's own conventions: {workdir}/AGENTS.md (and the host's own
     instruction file, if any), plus the skills its Skills table names for the
     areas the issue touches
