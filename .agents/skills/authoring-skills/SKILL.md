@@ -13,8 +13,8 @@ description: >
 
 **Owns:** how a skill in this repository is authored, mirrored, and kept from silently
 failing to load. **Does not own:** the content of any individual skill; the conventions
-for code under `src/` and `scripts/` (`writing-python`, `writing-repo-scripts`); which
-document a change owes (`updating-docs`).
+for code under `backend/src/` and `scripts/` (`writing-python`, `writing-repo-scripts`);
+which document a change owes (`updating-docs`).
 
 ## The single source of truth
 
@@ -92,10 +92,12 @@ that date. A link that only explains a concept needs no date. An observed fact s
 "observed with `<command>`, YYYY-MM-DD". A claim that is neither is dropped.
 
 One home per rule: a rule stated in both `AGENTS.md` and a skill costs context twice and
-the two copies drift apart. `AGENTS.md` holds only what every task needs, in its nine
-sections — Overview, Product, Quick Reference, Validating a change, Architecture,
-Skills, Sub-agents, Security and human approval, Enforcement layers — and a procedure
-or a convention for one kind of change is a skill. The one exception is a prohibition
+the two copies drift apart. `AGENTS.md` holds only what every task needs, in its eight
+sections — Overview, Product, Quick Reference, Validating a change, Skills, Sub-agents,
+Security and human approval, Enforcement layers; an area's own `AGENTS.md`
+(`backend/AGENTS.md`) holds what every task in that area needs, its narrowest checks
+and its architecture; and a procedure or a convention for one kind of change is a
+skill. The one exception is a prohibition
 an agent needs even while its own declared task is something else entirely (for
 example, never lower the coverage threshold or weaken a gate to make a run pass) — that
 stays in `AGENTS.md`, where every agent reads it regardless of task, and a

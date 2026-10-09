@@ -43,8 +43,8 @@ you know exactly what to change and why it was there in the first place.
 
 ### Why `src/` layout?
 
-The `src/` layout prevents accidental imports of the local package during
-development and testing. It ensures that tests always run against the
+Keeping the app's package under `backend/src/my_app/` prevents accidental
+imports of the local package during development and testing. It ensures that tests always run against the
 *installed* package rather than the working tree, so a missing module or a
 broken package configuration fails the test run instead of the deployed app.
 

@@ -3,11 +3,11 @@ name: changing-gates
 description: >
   Covers changing a file that enforces rather than implements: .pre-commit-config.yaml,
   scripts/check_staged.py, a .github/workflows/*.yml job, .github/rulesets/main.json,
-  the justfile's verify, lint, and test recipes, typos.toml, and pyproject.toml's ruff,
-  mypy, pytest, and coverage tables - and what weakening a gate means here (a removed
-  ruff rule, a noqa without a reason, a lower coverage floor, a skipped test, a dropped
-  CI step). Use when changing hook configuration, a lint, type, or coverage setting, or
-  a CI job or required check. A hook refusing a commit is smart-commit's.
+  both justfiles' verify, lint, and test recipes, typos.toml, and both pyproject.toml
+  files' ruff, mypy, pytest, and coverage tables - and what weakening a gate means here
+  (a removed ruff rule, a noqa without a reason, a lower coverage floor, a skipped test,
+  a dropped CI step). Use when changing hook configuration, a lint, type, or coverage
+  setting, or a CI job or required check. A hook refusing a commit is smart-commit's.
 ---
 
 # Changing Gates
@@ -28,8 +28,8 @@ lowers the bar for every pull request after it, not only the one that touched it
 Each of these is a weakening. An agent never makes one to get a run green; it stops,
 says which gate looks wrong and why, and a human decides.
 
-- **Coverage:** lowering `--cov-fail-under=80` (justfile `test`) or
-  `--fail-under=80` (CI's `Coverage` job); adding a pattern to
+- **Coverage:** lowering `--cov-fail-under=80` (`backend/justfile`'s `test`, or CI's
+  `Coverage` job); adding a pattern to `backend/pyproject.toml`'s
   `[tool.coverage.report] exclude_lines`, an `omit`, or a `# pragma: no cover`.
 - **Ruff:** removing a prefix from `select`; adding a code to `ignore`; adding or
   widening a `per-file-ignores` entry without a reason comment; a `# noqa` without a
@@ -44,10 +44,10 @@ says which gate looks wrong and why, and a human decides.
   `xfail`, a deleted test, or a weakened assertion.
 - **The lock:** removing `--locked` from a recipe or a CI step, or `lock-check` from
   `just verify`.
-- **The supply-chain window:** shortening `[tool.uv] exclude-newer` in `pyproject.toml`
-  or a Dependabot `cooldown` in `.github/dependabot.yml` (the `uv` entry's must equal
-  `exclude-newer`), or a blanket or stale `exclude-newer-package` entry
-  (`managing-dependencies`).
+- **The supply-chain window:** shortening `[tool.uv] exclude-newer` in the root
+  `pyproject.toml` or a Dependabot `cooldown` in `.github/dependabot.yml` (the `uv`
+  entry's must equal `exclude-newer`), or a blanket or stale `exclude-newer-package`
+  entry (`managing-dependencies`).
 - **The pre-commit layer:** removing a hook, narrowing its `files`, `types`, or
   `stages`, loosening `scripts/check_staged.py`'s rules, adding an entry to
   `.check-staged-allow`, `--no-verify`, `SKIP=<id>`, or an edit to `.git/hooks/`.
@@ -63,16 +63,18 @@ things: which rule or option moved, why, and what now fails that did not before.
 
 ## Python baseline
 
-When changing the supported Python floor, update `pyproject.toml`'s `requires-python`
-and minor-version classifier, mypy's `python_version`, `.python-version`, and the
-Python tag in `.devcontainer/devcontainer.json` together. Any explicit Ruff target
+When changing the supported Python floor, update `backend/pyproject.toml`'s
+`requires-python` and minor-version classifier, mypy's `python_version` in both
+`pyproject.toml` files, the root's Ruff `target-version`, `.python-version`, and the
+Python tag in `.devcontainer/devcontainer.json` together. Any other explicit Ruff target
 or project CI Python pin must agree too. `tests/harness/test_python_baseline.py`
 rejects mismatches; run `just check-harness` after changing the baseline.
 
-Ruff infers its target from `requires-python` in this repository's discovered
-configuration. CI leaves `setup-uv`'s `python-version` unset so `uv sync` follows
-`.python-version`, rather than overriding it with `UV_PYTHON`. The separate stdlib
-skill compatibility job still explicitly runs Python 3.9 with `--no-project`.
+The root `pyproject.toml` states Ruff's `target-version` because the virtual workspace
+root has no `requires-python` for Ruff to infer it from. CI leaves `setup-uv`'s
+`python-version` unset so `uv sync` follows `.python-version`, rather than overriding
+it with `UV_PYTHON`. The separate stdlib skill compatibility job still explicitly runs
+Python 3.9 with `--no-project`.
 
 ## The layers and what each sees
 
@@ -81,11 +83,12 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
 | Check | pre-commit | `just verify` | CI |
 |---|---|---|---|
 | ruff check, ruff format | `ruff`, `ruff-format` | `lint` | `Lint & Type Check` |
-| mypy `src scripts tests` | `mypy` | `lint` | `Lint & Type Check` |
+| mypy, root (`scripts`, `tests`, skill scripts) | `mypy` | `lint` | `Lint & Type Check` |
+| mypy, `backend/` (`src`, `tests`) | `mypy-backend` | `lint` (`backend::lint`) | `Lint & Type Check` (in `backend/`) |
 | Skills mirror | `agents-check` (working tree) | `agents-check` (working tree) | `Lint & Type Check` (the commit) |
 | Skill script tests | — | `test-skills` | `Lint & Type Check` |
 | `uv lock --check` | — | `lock-check` | `--locked` on every `uv sync` |
-| Tests and the 80% floor | — | `test` | `Coverage` |
+| Tests, and the 80% floor over `backend/src` | — | `test` (`backend::test` for the floor) | `Coverage` |
 | Harness drift (`tests/harness`) and the Product section | — | `check-harness` | `Coverage` |
 | typos | `typos` | — | `Spell Check` |
 | zizmor | `zizmor` | — | `Workflow Security Lint` |
@@ -95,7 +98,8 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
 
 - A check added to `just verify` gets the matching CI step, and the reverse.
   `tests/harness/test_just_recipes.py` enforces parity for `agents-check`, `lint`,
-  `test-skills`, and `test`; the reviewer checks any additional gate.
+  `test-skills`, and `test`, `backend/justfile`'s lines included (CI runs those in a
+  `working-directory: backend` step); the reviewer checks any additional gate.
 - Ruff's local system hooks run `uv run --locked ruff`, sharing `uv.lock` with
   `lint` and CI. A Ruff update moves the existing dependency range and lock; there
   is no separate hook revision to align. **BACKGROUND:** `merging-dependency-prs`.
@@ -157,19 +161,24 @@ refuses, how merges and rebases interact with it, how `just install` verifies th
 hooks, and what replaced the old agent hooks:
 [references/pre-commit-layer.md](references/pre-commit-layer.md).
 
-## Tool configs in `pyproject.toml`
+## Tool configs in the two `pyproject.toml` files
 
-Read the current values in the file rather than a copy here. Traps that have cost time:
+Read the current values in the files rather than a copy here. The root `pyproject.toml`
+configures the repository's own code (`scripts/`, the root `tests/`, skill scripts) and
+holds the shared Ruff rule selection; `backend/pyproject.toml` configures the app: its
+Ruff config `extend`s the root's and replaces `per-file-ignores`, and it holds the
+`banned-api` table and the app's own mypy, pytest, and coverage tables. Traps that have
+cost time:
 
-- Ruff's `per-file-target-version` pins skill scripts to `py312` and
+- The root's Ruff `per-file-target-version` pins skill scripts to `py39` and
   `scripts/check_staged.py` to `py310`, because each runs under an interpreter older
   than the project's 3.14. Never let a newer syntax rule reach them.
-- `[tool.ruff.lint.flake8-tidy-imports.banned-api]` is a layer boundary, not a style
-  rule. **BACKGROUND:** `designing-core-logic`.
-- `[tool.ruff.lint.flake8-type-checking]`'s runtime-evaluated lists keep framework
-  annotations real imports. **BACKGROUND:** `writing-python`.
-- The coverage floor is not in `pyproject.toml`: it is the `80` in the justfile's `test`
-  recipe and in CI's `Coverage` job. Change both or neither.
+- `backend/pyproject.toml`'s `[tool.ruff.lint.flake8-tidy-imports.banned-api]` is a
+  layer boundary, not a style rule. **BACKGROUND:** `designing-core-logic`.
+- The root's `[tool.ruff.lint.flake8-type-checking]` runtime-evaluated lists keep
+  framework annotations real imports. **BACKGROUND:** `writing-python`.
+- The coverage floor is in neither `pyproject.toml`: it is the `80` in
+  `backend/justfile`'s `test` recipe and in CI's `Coverage` job. Change both or neither.
 
 ## What no gate sees
 

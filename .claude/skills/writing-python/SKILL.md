@@ -1,10 +1,10 @@
 ---
 name: writing-python
 description: >
-  Covers how one module, class, or function is written in any layer of src/my_app/ or
-  in scripts/: a commented Any, TYPE_CHECKING imports and the annotations Pydantic
-  and FastAPI read at run time, frozen dataclass versus Pydantic versus
-  TypedDict versus Protocol, enums and named constants, docstrings, EAFP, context
+  Covers how one module, class, or function is written in any layer of
+  backend/src/my_app/ or in scripts/: a commented Any, TYPE_CHECKING imports and the
+  annotations Pydantic and FastAPI read at run time, frozen dataclass versus Pydantic
+  versus TypedDict versus Protocol, enums and named constants, docstrings, EAFP, context
   managers, match, logger calls, and a justified noqa. Use when writing or reviewing
   Python code, or fixing a ruff or mypy finding. Whether to log an error at all is
   designing-errors'.
@@ -12,10 +12,10 @@ description: >
 
 # Writing Python
 
-**Owns:** how one module, class, or function is written, in any layer of `src/my_app/`
-and in `scripts/`, including two rules other skills point here for: one-line route
-docstrings, and never shadowing a builtin. **Does not own:** which layer code
-belongs in, and the shape of models, ports, services, and adapters
+**Owns:** how one module, class, or function is written, in any layer of
+`backend/src/my_app/` and in `scripts/`, including two rules other skills point here
+for: one-line route docstrings, and never shadowing a builtin. **Does not own:** which
+layer code belongs in, and the shape of models, ports, services, and adapters
 (`designing-core-logic`); the `AppError` hierarchy, how an entry point reports it, and
 whether an error is logged (`designing-errors`); a route (`building-api-routes`); how
 a test is written (`writing-tests`); the contract a
@@ -23,8 +23,9 @@ repository script keeps — imports, `main()`, `ERR_*` reports (`writing-repo-sc
 
 ## Gates first
 
-Enforced by: `pyproject.toml`'s `[tool.ruff.lint] select` list and `[tool.mypy]`
-`strict = true` — read the finding they report rather than a copy of their rules here.
+Enforced by: the root `pyproject.toml`'s `[tool.ruff.lint] select` list (which
+`backend/pyproject.toml` extends) and each file's `[tool.mypy]` `strict = true` — read
+the finding they report rather than a copy of their rules here.
 Two of them carry a policy on top:
 
 - mypy's `ignore-without-code` error code makes a `# type: ignore` name its error code.
@@ -43,7 +44,7 @@ Two of them carry a policy on top:
 With postponed annotations, a name used only in an annotation belongs under
 `if TYPE_CHECKING:`, and ruff's `TC` rules move it there. Pydantic models and FastAPI
 routes read their annotations at run time, so the types they name must stay real
-imports. `pyproject.toml`'s `[tool.ruff.lint.flake8-type-checking]`
+imports. The root `pyproject.toml`'s `[tool.ruff.lint.flake8-type-checking]`
 lists those base classes and decorators so ruff leaves them alone; a new framework hook
 that reads annotations is added to that list, never silenced with a `noqa`. A FastAPI
 dependency function has no decorator for that list to name — `building-api-routes`
@@ -138,8 +139,8 @@ if TYPE_CHECKING:
 - Catch the most specific exception that can happen, and handle it meaningfully or
   re-raise it; never swallow one, and never use one for ordinary control flow. Return
   `None` only when the caller expects absence.
-- No module under `src/my_app/` logs yet; uvicorn's own log is the only one. When one
-  does, it uses a module-level `logging.getLogger(__name__)` and calls
+- No module under `backend/src/my_app/` logs yet; uvicorn's own log is the only one.
+  When one does, it uses a module-level `logging.getLogger(__name__)` and calls
   `logger.exception(...)` inside the `except` block, which keeps the traceback — never
   `logger.error(str(error))`. **BACKGROUND:** `designing-errors` decides which errors
   are logged at all.
@@ -151,7 +152,7 @@ if TYPE_CHECKING:
 - SQL uses `?` parameters only, with the statement a module constant spelled out in
   full (`adapters/sqlite.py`'s `_SELECT_ONE` and siblings).
 - A subprocess takes a fixed argv list, never `shell=True`; its `# noqa: S603` names why
-  the argv is safe (`tests/test_composition.py`).
+  the argv is safe (`backend/tests/test_composition.py`).
 
 ## Performance
 

@@ -8,8 +8,8 @@ only what each refusal means and how to clear it without switching the hook off.
 ## How the hooks run
 
 - pre-commit sets aside unstaged edits to tracked files while the hooks run, so a hook
-  that reads files sees what is staged. An untracked file is not set aside: `mypy`,
-  which checks all of `src scripts tests` rather than the staged files, can still fail
+  that reads files sees what is staged. An untracked file is not set aside: `mypy` and
+  `mypy-backend`, which check whole trees rather than the staged files, can still fail
   on one.
 - Some hooks **rewrite** files: `trailing-whitespace`, `end-of-file-fixer`,
   `ruff --fix`, and `ruff-format`. When they change anything the commit fails, and
@@ -18,7 +18,8 @@ only what each refusal means and how to clear it without switching the hook off.
 - One failure aborts the commit, but every hook still runs; read the whole output,
   since more than one can fail at once.
 - `agents-check` runs only when a path under `.agents/skills/` or `.claude/skills/` is
-  staged; `mypy` only when a Python file is.
+  staged; `mypy` only when a Python file is, and `mypy-backend` only when one under
+  `backend/` is.
 
 ## When the hooks run
 
@@ -38,7 +39,7 @@ only what each refusal means and how to clear it without switching the hook off.
 | `trailing-whitespace`, `end-of-file-fixer` | It fixed the file. | Re-stage the file and commit again. |
 | `ruff` | A lint violation `--fix` could not fix, or one it did fix (the file changed). | Fix the code by hand where it reports; re-stage. Never a bare `noqa` and never a relaxed rule — a `noqa` carries a written reason (`writing-python`). |
 | `ruff-format` | It reformatted the file. With a partially staged file whose unstaged hunk overlaps a reformatted line, pre-commit prints "Stashed changes conflicted with hook auto-fixes... Rolling back fixes..." and discards the fixes, keeping your unstaged edits. | Re-stage the file. On an overlap: stage the whole file, or run `uv run --locked ruff format <file>` first and stage the hunks again. |
-| `mypy` | The whole of `src scripts tests` failed to type-check, not only the staged files; the error can sit in a file this commit does not touch, or in an untracked one. | Fix the type where it is. When the error lives in a change that belongs to a later group, set it aside (`git stash push --keep-index --include-untracked`), commit, and `git stash pop`. Never a `# type: ignore` without its code and a reason. |
+| `mypy`, `mypy-backend` | A whole tree failed to type-check, not only the staged files: the root's `scripts`, `tests`, and skill scripts (`mypy`), or `backend/src` and `backend/tests` (`mypy-backend`, run from `backend/`); the error can sit in a file this commit does not touch, or in an untracked one. | Fix the type where it is. When the error lives in a change that belongs to a later group, set it aside (`git stash push --keep-index --include-untracked`), commit, and `git stash pop`. Never a `# type: ignore` without its code and a reason. |
 | `typos` | A misspelling in a staged file. | Fix the word. Add a genuine technical term to `typos.toml`'s `default.extend-words`, never a real misspelling. |
 | `zizmor` | A workflow under `.github/workflows/` breaks a security rule. | Fix the workflow (`changing-gates`' "CI workflows and required checks"). |
 | `check-yaml`, `check-toml`, `check-json` | The file does not parse. | Fix the syntax. |

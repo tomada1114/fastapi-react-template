@@ -26,9 +26,9 @@ uv run --locked python scripts/bootstrap.py todo-api \
 
 | Flag | Required | Replaces | Rules |
 |---|---|---|---|
-| `name` (positional) | yes | `my-app` (distribution, README text), `my_app` (the package, renamed `src/my_app` → `src/todo_api`), `MY_APP_` (the settings' environment prefix, `TODO_API_`) | lower-case letters and digits in words joined by single hyphens, starting with a letter, at most 40 characters |
-| `--author` | yes | `Your Name` in `pyproject.toml` (TOML-quoted) and `LICENSE` | one line, at most 100 characters |
-| `--description` | yes | the two "A short description …" sentences (`pyproject.toml`, README) | one line, at most 200 characters |
+| `name` (positional) | yes | `my-app` (distribution, README text), `my_app` (the package, renamed `backend/src/my_app` → `backend/src/todo_api`), `MY_APP_` (the settings' environment prefix, `TODO_API_`) | lower-case letters and digits in words joined by single hyphens, starting with a letter, at most 40 characters |
+| `--author` | yes | `Your Name` in `backend/pyproject.toml` (TOML-quoted) and `LICENSE` | one line, at most 100 characters |
+| `--description` | yes | the two "A short description …" sentences (`backend/pyproject.toml`, README) | one line, at most 200 characters |
 | `--github-user` | yes | the owner in `your-username/fastapi-react-template` | a GitHub user or organization name |
 | `--github-repository` | no | the repository in `your-username/fastapi-react-template` | `NAME` or `OWNER/NAME`; the owner must equal `--github-user`; defaults to the slug |
 | `--display-name` | no | `My App` (README's title, the API's OpenAPI title, the devcontainer) | one line, at most 60 characters; defaults to the slug |
@@ -67,7 +67,7 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
   `your-username`, `you@example.com`, any case), or equal to a placeholder phrase
   (`My App`, `Your Name`, any case), which the leftover scan would report. A value that
   only contains such a phrase inside other words ("Sync my apps") is fine;
-- `src/my_app` missing or the destination package already present;
+- `backend/src/my_app` missing or the destination package already present;
 - a site that no longer has the shape the script expects: a contact sentence, the
   copyright line, the metadata lines, or a template-only block left open or closed
   twice. The template changed; fix the script's site list, not the file.
@@ -81,12 +81,12 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
    `#`), edits the known sites, and replaces the placeholders in one pass, so a new
    value is never rewritten again. `uv.lock`, the files it is about to delete, and
    secret-shaped paths are left alone.
-3. Writes, the step most likely to fail first and itself last: renames `src/my_app`,
-   writes the edited files, writes `.template-origin`, then deletes `TEMPLATE.md`,
-   `tests/test_bootstrap.py`, this page in both skill trees, and `scripts/bootstrap.py`
-   (none of them with `--keep-bootstrap`). On top of the placeholders,
-   `LICENSE` gets the run's year and the author. `pyproject.toml`'s `exclude-newer`
-   is a relative `"14 days"` and is left as it is.
+3. Writes, the step most likely to fail first and itself last: renames
+   `backend/src/my_app`, writes the edited files, writes `.template-origin`, then
+   deletes `TEMPLATE.md`, `tests/test_bootstrap.py`, this page in both skill trees, and
+   `scripts/bootstrap.py` (none of them with `--keep-bootstrap`). On top of the
+   placeholders, `LICENSE` gets the run's year and the author. The root
+   `pyproject.toml`'s `exclude-newer` is a relative `"14 days"` and is left as it is.
    CI's `Template Bootstrap Smoke` job sits in a template-only block, so it goes too.
    If a write fails part-way, it exits 1 with an `error:` line naming the steps already
    done; see "A failed write" below.
@@ -115,7 +115,7 @@ git restore --staged --worktree :/ && git clean -fd
 
 This discards the partial rewrite — every edited, renamed, and new file — and restores
 the template, ready for a second run once the cause is fixed. `git clean -fd` leaves
-ignored files alone, so if `src/<module>/` survives holding only caches such as
+ignored files alone, so if `backend/src/<module>/` survives holding only caches such as
 `__pycache__/`, delete that directory too before running again.
 
 ## How it is proven

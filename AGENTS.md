@@ -149,7 +149,7 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `smart-commit` | grouping working-tree changes into commits, or a pre-commit hook refuses a commit |
 | `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the API or the sample domain, the first ADRs; the template rename step |
 | `steering-the-roadmap` | asked what to work on next, or the Now / Next / Later roadmap moves |
-| `tdd` | changing behavior under `src/` or `scripts/`, or fixing a bug: the failing test comes first |
+| `tdd` | changing behavior under `backend/src/` or `scripts/`, or fixing a bug: the failing test comes first |
 | `triaging-issues` | filing, labelling, or prioritizing an issue, or recording a problem found outside the task |
 | `updating-docs` | deciding whether a change owes a README, AGENTS.md, or other document update |
 | `writing-python` | writing or reviewing any Python module, class, or function: typing, imports, docstrings, idioms |

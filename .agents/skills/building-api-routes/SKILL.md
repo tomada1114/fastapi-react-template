@@ -1,19 +1,20 @@
 ---
 name: building-api-routes
 description: >
-  Covers the FastAPI entry point in src/my_app/api/: the create_app factory and
+  Covers the FastAPI entry point in backend/src/my_app/api/: the create_app factory and
   app.state.container, service dependencies in dependencies.py, one APIRouter per
   resource under routers/, Pydantic request and response models in schemas.py, success
   status codes and the responses= declaration, and TestClient tests through the client
   fixture. Use when adding or changing an HTTP route, a request or response body, a
   dependency, or a router, or when removing the API. Which status a domain error
-  becomes is designing-errors'. The skill is deleted along with src/my_app/api/.
+  becomes is designing-errors'. The skill is deleted along with backend/src/my_app/api/.
 ---
 
 # Building API Routes
 
-**Owns:** everything under `src/my_app/api/` and `tests/api/` — the factory, the
-dependencies, the routers, the wire-format models, and how a route is tested.
+**Owns:** everything under `backend/src/my_app/api/` and `backend/tests/api/` — the
+factory, the dependencies, the routers, the wire-format models, and how a route is
+tested.
 **Does not own:** which status a domain error becomes (`designing-errors`); the service
 a route calls (`designing-core-logic`); trying a route against a live server
 (`running-the-app`); module-level Python style (`writing-python`).
@@ -24,18 +25,20 @@ This skill describes the HTTP entry point, the only one the template ships. Drop
 is a deletion, never a core change, and leaves the core as a library with no entry
 point of its own:
 
-- delete `src/my_app/api/` and `tests/api/`, and the `create_app` lines of the probes in
-  `tests/test_composition.py`;
-- remove the `fastapi` and `uvicorn` runtime dependencies and the `httpx2` dev
-  dependency `TestClient` runs on (and the `httpx` one too, unless you keep the LLM
-  layer, whose adapter tests use it), then run `uv lock`;
-- remove the `just dev` recipe and the lines that name it (README's Quickstart and
-  Development block, AGENTS.md's Quick Reference and the paragraph under it;
-  `just check-harness` fails while one remains), and in `pyproject.toml`'s ruff config
-  the `fastapi` and `uvicorn` entries and the `src/my_app/api/**` per-file-ignore;
-- update AGENTS.md's Overview and Architecture tree and bullets to describe the core
-  alone; in the paragraph after Quick Reference, remove the server instructions that
-  require the deleted API;
+- delete `backend/src/my_app/api/` and `backend/tests/api/`, and the `create_app` lines
+  of the probes in `backend/tests/test_composition.py`;
+- remove the `fastapi` and `uvicorn` runtime dependencies from `backend/pyproject.toml`
+  and the `httpx2` dev dependency `TestClient` runs on from the root `pyproject.toml`
+  (and the `httpx` one too, unless you keep the LLM layer, whose adapter tests use it),
+  then run `uv lock`;
+- remove the `dev` recipes, `backend/justfile`'s and the root's `dev: backend::dev`, and
+  the lines that name them (README's Quickstart and Development block, AGENTS.md's
+  Quick Reference and the paragraph under it, `backend/AGENTS.md`;
+  `just check-harness` fails while one remains), and in `backend/pyproject.toml`'s
+  ruff config the `fastapi` and `uvicorn` entries and the API package's per-file-ignore;
+- update `backend/AGENTS.md`'s opening paragraph and its Architecture tree and bullets
+  to describe the core alone; in the paragraph after AGENTS.md's Quick Reference,
+  remove the server instructions that require the deleted API;
 - update README: remove Quickstart's `just dev`, curl, API docs and HTTP table, all
   HTTP status/`detail` prose, LLM-backed route guidance, and the server Configuration
   note; rewrite Architecture for the core alone and remove the pointer to this deleted
@@ -55,7 +58,7 @@ Then prune what sibling skills say about the API:
   cheapest first", which leaves a test as its only tier;
 - `writing-python`: the examples that quote `api/` files;
 - `writing-tests`, `placing-tests`, `tdd`, and `updating-docs`: their mentions of the
-  `client` fixture, `tests/api/`, a route, or an HTTP status.
+  `client` fixture, `backend/tests/api/`, a route, or an HTTP status.
 
 ## How a request flows
 
@@ -143,9 +146,10 @@ def complete_todo(todo_id: int, service: TodoServiceDep) -> TodoResponse:
 ```
 
 FastAPI reads a route's annotations at run time, so the types they name stay real
-imports. `pyproject.toml`'s `runtime-evaluated-decorators` lists the `APIRouter` and
-`FastAPI` decorators in use; a route registered through a decorator not on that list
-needs it added there (`writing-python`).
+imports. The root `pyproject.toml`'s `runtime-evaluated-decorators` (which
+`backend/pyproject.toml` extends) lists the `APIRouter` and `FastAPI` decorators in
+use; a route registered through a decorator not on that list needs it added there
+(`writing-python`).
 
 ## Schemas are the wire format
 
@@ -181,17 +185,17 @@ Take reading one item by id, `GET /<resource>/{id}`, as the worked case:
 
 ## Testing a route
 
-- Use the `client` fixture from `tests/api/conftest.py`:
+- Use the `client` fixture from `backend/tests/api/conftest.py`:
   `TestClient(create_app(container=make_container()))`, an empty in-memory store and
   the fixed clock, so `created_at` is known exactly. Tests go in
-  `tests/api/test_<router>.py`.
-- Create state through the API — `tests/api/test_todos.py`'s `make_todo` factory
-  fixture posts and returns the body — rather than reaching into the container.
+  `backend/tests/api/test_<router>.py`.
+- Create state through the API — `backend/tests/api/test_todos.py`'s `make_todo`
+  factory fixture posts and returns the body — rather than reaching into the container.
 - Assert the status against an `HTTPStatus` member and the whole JSON body; an error
   asserts `{"detail": "..."}` exactly.
 - `test_openapi_documents_domain_errors_with_error_response` checks that each
   documented error points at `ErrorResponse`; add a `pytest.param` per new route.
 - A behavior of the factory itself (the 400 fallback, reading the environment) is
-  tested in `tests/api/test_app.py`, on its own `create_app` call.
-- Run `uv run --locked pytest tests/api/`; a live server is the last resort, not the
-  test (`running-the-app`).
+  tested in `backend/tests/api/test_app.py`, on its own `create_app` call.
+- Run `uv run --locked --directory backend pytest tests/api/` from the repository root;
+  a live server is the last resort, not the test (`running-the-app`).

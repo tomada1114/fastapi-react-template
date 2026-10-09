@@ -63,13 +63,13 @@ one-package exception.
 ## F4 — A Python dependency PR fails at `uv sync --locked`
 
 **Symptom:** every job fails at `uv sync --group dev --locked`, exit code 1. The PR
-touches `pyproject.toml` or `uv.lock`.
+touches a `pyproject.toml` (the root's or `backend/`'s) or `uv.lock`.
 
 **Cause:** CI installs with `--locked`, which refuses a lock that disagrees with the
 manifest. Two shapes:
 
 - **`ecosystem=other`** — a security update the repository settings enabled outside the
-  `uv` entry, typically a `pyproject.toml`-only change with no regenerated lock.
+  `uv` entry, typically a manifest-only change with no regenerated lock.
 - **A `uv` PR whose lock went stale** — another `uv` PR merged first and moved
   `uv.lock` under it; the merge state is usually `BEHIND` or `DIRTY`.
 

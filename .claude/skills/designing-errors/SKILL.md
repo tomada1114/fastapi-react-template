@@ -1,7 +1,7 @@
 ---
 name: designing-errors
 description: >
-  Covers the AppError hierarchy in src/my_app/core/errors.py and how the API reports
+  Covers the AppError hierarchy in backend/src/my_app/core/errors.py and how the API reports
   it: when a failure earns a subclass, what its message and attributes carry,
   translating a driver error in an adapter, and the HTTP status _status_for in
   api/app.py gives it with an ErrorResponse body (404, 422, the LLM errors' 503, 429,
@@ -42,9 +42,9 @@ caller needs data it carries. Otherwise raise an existing class with a new messa
 
 - Keep the data a caller needs as attributes, so nobody parses the message.
 - Pass exactly the constructor's arguments to `super().__init__`, so pickling (process
-  pools, task queues) rebuilds an equal error. `tests/core/test_errors.py` checks the
-  round trip only for the subclasses listed in its parametrized tests, so each new one
-  is added there (step 5 below).
+  pools, task queues) rebuilds an equal error. `backend/tests/core/test_errors.py`
+  checks the round trip only for the subclasses listed in its parametrized tests, so
+  each new one is added there (step 5 below).
 - `str(error)` is the user-facing sentence, and the API shows it verbatim as `detail`.
   It must be safe to hand a client: never a credential, a SQL statement, a server path,
   or a stack detail.
@@ -70,8 +70,9 @@ A message-only error takes the message as its one argument, built in a variable 
 
 The core raises a domain error where it checks the rule. An adapter translates its
 driver's failure into the error the port's `Raises:` section promises, because the
-port's docstring is the contract and `tests/adapters/test_repository_contract.py` holds
-every adapter to it. `InMemoryTodoRepository` turns a `KeyError` into
+port's docstring is the contract and
+`backend/tests/adapters/test_repository_contract.py` holds every adapter to it.
+`InMemoryTodoRepository` turns a `KeyError` into
 `TodoNotFoundError`; `SqliteTodoRepository` answers an id outside SQLite's 64-bit range
 (`SQLITE_MIN_INTEGER`, `SQLITE_MAX_INTEGER`) as not found before binding it, instead of
 letting `OverflowError` escape. A driver failure with no domain meaning — a locked
@@ -108,7 +109,7 @@ header is sent with a 429.
 
 400 is only the fallback for an `AppError` that has no case yet: it keeps an unmapped
 subclass the client's problem, never an unhandled 500, and
-`tests/api/test_app.py::test_unmapped_app_error_returns_400_not_500` pins it. Never
+`backend/tests/api/test_app.py::test_unmapped_app_error_returns_400_not_500` pins it. Never
 choose 400 on purpose for a new error; give it the status that names its cause.
 
 Adding a status for a new error:
@@ -117,7 +118,8 @@ Adding a status for a new error:
 2. List the status, with `ErrorResponse` as its model, in `responses=` on every route
    that can raise the error.
 3. Assert the status and the exact `{"detail": ...}` in a `TestClient` test, and add
-   the route's status to the parametrized OpenAPI test in `tests/api/test_todos.py`.
+   the route's status to the parametrized OpenAPI test in
+   `backend/tests/api/test_todos.py`.
 4. Describe the status in the README beside the existing 404 and 422.
 
 ```python
@@ -163,6 +165,6 @@ unexpected error keeps its traceback; code that catches one to add context logs 
 4. If the project has the API: give it a status by the steps in "The HTTP mapping",
    with a mapping test. **REQUIRED:** `building-api-routes`.
 5. Required, not optional: add a `pytest.param` for it to both parametrized tests in
-   `tests/core/test_errors.py` (it is an `AppError`; its pickle round trip keeps type,
-   message, and args), plus a test for any attribute it carries.
+   `backend/tests/core/test_errors.py` (it is an `AppError`; its pickle round trip keeps
+   type, message, and args), plus a test for any attribute it carries.
 6. Update the README where it describes the API's error statuses.

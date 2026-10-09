@@ -1,12 +1,13 @@
 ---
 name: writing-tests
 description: >
-  Covers how one pytest test is written under tests/: its test_<what>_<scenario>_<expected>
-  name, Arrange-Act-Assert, testing behavior through a layer's public module, edge cases
-  to sweep, pytest.raises with match=, parametrize with pytest.param ids, factory
-  fixtures, tmp_path and monkeypatch, fakes over mocks, no sleep, skip, or order
-  dependency, and the anti-patterns to reject in review. Use when writing or reviewing a
-  test, choosing what to assert or what to fake, or fixing a flaky or skipped test.
+  Covers how one pytest test is written under backend/tests/ or the root tests/: its
+  test_<what>_<scenario>_<expected> name, Arrange-Act-Assert, testing behavior through
+  a layer's public module, edge cases to sweep, pytest.raises with match=, parametrize
+  with pytest.param ids, factory fixtures, tmp_path and monkeypatch, fakes over mocks,
+  no sleep, skip, or order dependency, and the anti-patterns to reject in review. Use
+  when writing or reviewing a test, choosing what to assert or what to fake, or fixing
+  a flaky or skipped test.
 ---
 
 # Writing Tests
@@ -95,7 +96,7 @@ checked.
 
 - Prefer a factory fixture to a static one: it returns a callable that builds a
   customizable object (`def make_user(**overrides)`). `make_container` and
-  `tests/api/test_todos.py`'s `make_todo` are the shape.
+  `backend/tests/api/test_todos.py`'s `make_todo` are the shape.
 - `tmp_path` for every file the test writes; never write into the repository tree.
 - `monkeypatch` for environment variables and attributes — `monkeypatch.setenv`,
   never `os.environ[...] =` — so the change is undone after the test.
@@ -120,9 +121,11 @@ checked.
 ## Independence and reliability
 
 - No shared mutable state and no ordering dependency. Each test passes alone
-  (`uv run --locked pytest tests/<layer>/test_<module>.py::test_<name>`), in any order,
-  in any process: `just test` runs the suite with `pytest-xdist` (`-n auto`) and CI
-  also runs it across processes, so a hidden dependency surfaces as an intermittent failure.
+  (`uv run --locked --directory backend pytest tests/<layer>/test_<module>.py::test_<name>`
+  for an app test, `uv run --locked pytest tests/test_<module>.py::test_<name>` for a root one),
+  in any order, in any process: `just test` runs the suite with `pytest-xdist`
+  (`-n auto`) and CI also runs it across processes, so a hidden dependency surfaces as
+  an intermittent failure.
 - No `time.sleep()`: inject the clock (`fixed_clock`) or patch it with `monkeypatch`.
 - No `@pytest.mark.skip`, `xfail`, or TODO test on `main` — fix the test or delete it.
   Skipping a test is weakening a gate (AGENTS.md's "Security and human approval").

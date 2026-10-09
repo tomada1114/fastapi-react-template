@@ -1,12 +1,13 @@
 ---
 name: placing-tests
 description: >
-  Decides where a new test file goes under tests/ (tests/<layer>/test_<module>.py for
-  src/my_app/<layer>/, tests/test_<module>.py for settings, composition, and scripts),
-  where a fixture goes (tests/conftest.py, a layer conftest.py, or the test file), which
-  command runs it, how the suite runs in parallel in CI, and the 80%
-  branch-coverage floor over src/. Use when adding a test file or a fixture, running one
-  test, a coverage run drops below the floor, or CI test jobs slow down.
+  Decides where a new test file goes in the two test trees (backend/tests/ for the app:
+  backend/tests/<layer>/test_<module>.py for backend/src/my_app/<layer>/; the root
+  tests/ for scripts and the harness), where a fixture goes (backend/tests/conftest.py,
+  a layer conftest.py, or the test file), which command runs it, how the suite runs in
+  parallel in CI, and the 80% branch-coverage floor over backend/src. Use when adding a
+  test file or a fixture, running one test, a coverage run drops below the floor, or CI
+  test jobs slow down.
 ---
 
 # Placing Tests
@@ -17,68 +18,83 @@ them, and which coverage floor governs them. **Does not own:** how a test is wri
 (`authoring-skills`); changing the floor, the pytest options, or the coverage config
 (`changing-gates`).
 
-## The tree mirrors the source
+## Two trees, each mirroring its source
+
+The app's suite is `backend/tests/`, run from `backend/` with `backend/pyproject.toml`'s
+pytest and coverage settings. The root `tests/` holds the repository's own code: the
+scripts' tests and the harness, run with the root `pyproject.toml`'s pytest settings.
+Both hold a `tests` package, so each tree runs on its own.
 
 | Code under test | Its test file |
 |---|---|
-| `src/my_app/<layer>/<module>.py` (`core`, `adapters`, `api`) | `tests/<layer>/test_<module>.py` |
-| A top-level module (`settings.py`, `composition.py`) | `tests/test_<module>.py` |
+| `backend/src/my_app/<layer>/<module>.py` (`core`, `adapters`, `api`) | `backend/tests/<layer>/test_<module>.py` |
+| A top-level app module (`settings.py`, `composition.py`) | `backend/tests/test_<module>.py` |
 | `scripts/<script>.py` | `tests/test_<script>.py` |
 | Agent tier definitions in `.claude/agents/` and `.codex/agents/` | `tests/test_agent_tiers.py` |
 | A cross-file rule of the agent harness (skills, AGENTS.md's Skills table, `just` recipes named in docs, ruleset contexts, labels, workflow hygiene) | `tests/harness/test_<family>.py`, run by `just check-harness` |
 
 - A new module gets its test file in the same commit as the module. **BACKGROUND:**
   `tdd`.
-- Every directory under `tests/` carries an `__init__.py`; a new layer directory does
-  too.
+- Every directory under either `tests/` tree carries an `__init__.py`; a new layer
+  directory does too.
 
 Three files hold a rule for a whole layer rather than one module, and grow by a new case
 rather than by a new file:
 
-- `tests/adapters/test_repository_contract.py` — the one contract suite every
+- `backend/tests/adapters/test_repository_contract.py` — the one contract suite every
   repository adapter runs; how an adapter joins it, and what goes in its own file
   instead. **REQUIRED:** `designing-core-logic`.
-- `tests/core/test_imports.py` — the core's import boundary. **BACKGROUND:**
+- `backend/tests/core/test_imports.py` — the core's import boundary. **BACKGROUND:**
   `designing-core-logic`.
-- `tests/core/test_errors.py` — every `AppError` subclass joins its parametrized tests.
-  **REQUIRED:** `designing-errors`.
+- `backend/tests/core/test_errors.py` — every `AppError` subclass joins its
+  parametrized tests. **REQUIRED:** `designing-errors`.
 
 ## Where a fixture goes
 
-- Used by every layer: `tests/conftest.py`. It holds `make_container`, `fixed_clock`,
-  `fixed_now`, and the autouse fixture that keeps a developer's `MY_APP_*` variables
-  out of every test. `tests/settings_env.py` derives the cleanup from the settings
-  prefix and model aliases, shared with subprocess probes.
-- Used by one layer: that layer's `conftest.py` — `tests/api/conftest.py` holds
-  `client`.
+- Used by every layer: `backend/tests/conftest.py`. It holds `make_container`,
+  `fixed_clock`, `fixed_now`, and the autouse fixture that keeps a developer's
+  `MY_APP_*` variables out of every test. `backend/tests/settings_env.py` derives the
+  cleanup from the settings prefix and model aliases, shared with subprocess probes.
+- Used by one layer: that layer's `conftest.py` — `backend/tests/api/conftest.py`
+  holds `client`.
 - Used by one file: that file. A fixture moves up only when a second file needs it.
 - The narrowest scope that works (`writing-tests`' "Fixtures").
 
 ## Running tests
 
+From the repository root:
+
 ```bash
-uv run --locked pytest tests/<layer>/test_<module>.py::test_<name>   # one test
-uv run --locked pytest tests/<layer>/                                  # one layer
-just test                                                              # whole suite, coverage floor
+uv run --locked --directory backend pytest tests/<layer>/test_<module>.py::test_<name>  # one app test
+uv run --locked --directory backend pytest tests/<layer>/   # one app layer
+just backend test                                           # the app's suite, coverage floor
+uv run --locked pytest tests/test_<script>.py               # one root test file
+just test                                                   # both suites
 ```
 
-`[tool.pytest.ini_options]` runs with `--import-mode=importlib`, `--strict-markers`,
-and `--strict-config`: an unregistered marker or a misspelled option is an error, not a
-warning. `filterwarnings = ["error"]` makes any warning, a `DeprecationWarning` above
-all, fail the test that raised it. `just test` adds `-n auto`, so the suite runs across processes. The map from a
-changed path to its narrowest check is AGENTS.md's "Validating a change".
+`--directory backend` runs pytest in `backend/`, so the paths after it are relative to
+`backend/`. Each tree's `[tool.pytest.ini_options]` runs with
+`--import-mode=importlib`, `--strict-markers`, and `--strict-config`: an unregistered
+marker or a misspelled option is an error, not a warning. `filterwarnings = ["error"]`
+makes any warning, a `DeprecationWarning` above all, fail the test that raised it.
+`just test` adds `-n auto`, so both suites run across processes. The map from a changed
+path to its narrowest check is `backend/AGENTS.md`'s "Validating a change" for the app,
+AGENTS.md's for the rest.
 
 ## CI test runner
 
-CI's `Coverage` job runs the same parallel suite and coverage command as `just test`.
-The recipe parity check in `tests/harness/test_just_recipes.py` rejects command drift.
+CI's `Coverage` job runs the same two commands as `just test`: the root suite, then the
+app's suite with the coverage floor in `backend/`. The recipe parity check in
+`tests/harness/test_just_recipes.py` rejects command drift.
 
 ## The coverage floor
 
-- **80%, with branch coverage, over `src/` only.** `[tool.coverage.run]` sets
-  `branch = true` and `source = ["src"]`; `just test` enforces the floor with
-  `--cov-fail-under=80`, and CI's `Coverage` job with the same command. Neither `scripts/` nor
-  `tests/` is measured, so a script's tests guard behavior but move no number.
+- **80%, with branch coverage, over `backend/src` only.** `backend/pyproject.toml`'s
+  `[tool.coverage.run]` sets `branch = true` and `source = ["src"]`; `backend/justfile`'s
+  `test` (`just backend test`, which `just test` runs) enforces the floor with
+  `--cov-fail-under=80`, and CI's `Coverage` job with the same command. Neither
+  `scripts/` nor either `tests/` tree is measured, so a script's tests guard behavior
+  but move no number.
 - **A floor, not a ceiling.** It is never lowered (AGENTS.md's "Security and human
   approval"), and no line leaves the measurement to move the number — a
   `# pragma: no cover`, an `omit`, or an `exclude_lines` entry is a weakened gate, as
@@ -90,5 +106,5 @@ The recipe parity check in `tests/harness/test_just_recipes.py` rejects command 
 - **Never write a trivial test to hit the number.** Cover an edge case or an error path
   instead.
 
-When `just test` fails on the floor, read the `term-missing` report it prints, add real
-coverage for the uncovered branch, and run it again.
+When `just backend test` fails on the floor, read the `term-missing` report it prints,
+add real coverage for the uncovered branch, and run it again.

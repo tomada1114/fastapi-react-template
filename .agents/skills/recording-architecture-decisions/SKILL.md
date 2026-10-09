@@ -3,11 +3,11 @@ name: recording-architecture-decisions
 description: >
   Covers the ADR tree under docs/architecture/: its README.md index, adr/template.md,
   and the numbered adr/NNNN-*.md records. Use when a change adds a runtime dependency,
-  a new top-level package or layer under src/, a persistence or data format choice, an
-  external service or network boundary, a change to requires-python, or a distribution
-  change; when proposing, accepting, amending, rejecting, or superseding an ADR; when
-  writing a version, an availability, a price, or a vendor policy into a document; or
-  when deciding whether a change owes an ADR at all.
+  a new top-level package or layer under backend/src/, a persistence or data format
+  choice, an external service or network boundary, a change to requires-python, or a
+  distribution change; when proposing, accepting, amending, rejecting, or superseding
+  an ADR; when writing a version, an availability, a price, or a vendor policy into a
+  document; or when deciding whether a change owes an ADR at all.
 ---
 
 # Recording Architecture Decisions
@@ -26,10 +26,10 @@ skill is written (`authoring-skills`); whether a dependency may be added
 - `docs/architecture/adr/template.md` is the shape every ADR copies.
 - `docs/architecture/adr/NNNN-<kebab-case-title>.md` records one decision each.
 
-`AGENTS.md`'s "Architecture" section describes the layout every project starts with. It
-is not an ADR and takes no status: when an ADR moves a boundary it describes, the ADR
-records why and the "Architecture" section is updated to describe the result, in the
-same pull request.
+`backend/AGENTS.md`'s "Architecture" section describes the app's layout every project
+starts with. It is not an ADR and takes no status: when an ADR moves a boundary it
+describes, the ADR records why and the "Architecture" section is updated to describe
+the result, in the same pull request.
 
 <!-- template-only -->
 ## The template or a project
@@ -52,8 +52,9 @@ will build on it. The triggers, each with why it is expensive:
   every user and constrains every later upgrade; the review record in
   `managing-dependencies` is the evidence the ADR cites. A dev-only tool in
   `[dependency-groups]` owes none unless it changes a gate.
-- **A package boundary** — a new top-level package or layer under `src/`, or a change to
-  what may import what. It fixes a dependency direction every later module obeys.
+- **A package boundary** — a new top-level package or layer under `backend/src/`, or a
+  change to what may import what. It fixes a dependency direction every later module
+  obeys.
 - **The public contract** — what `__init__.py`'s `__all__` promises, or the shape of a
   CLI command, an HTTP route, or a file format other programs read. Callers outside the
   repository build on it, so a change later is a breaking release.
@@ -63,8 +64,8 @@ will build on it. The triggers, each with why it is expensive:
 - **An external service** — a network API, a cloud provider, a message queue — and how
   its credentials reach the process. It decides failure modes, cost, and what a test
   must fake.
-- **`requires-python`** — the interpreter floor in `pyproject.toml`. Raising it drops
-  users; every syntax and library choice below it assumes it.
+- **`requires-python`** — the interpreter floor in `backend/pyproject.toml`. Raising it
+  drops users; every syntax and library choice below it assumes it.
 - **Distribution** — a wheel on a package index, a container image, a tool installed
   with `uv tool`, a hosted service. It constrains packaging, the release workflow, and
   what a user must have installed.

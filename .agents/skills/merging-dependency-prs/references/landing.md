@@ -44,8 +44,8 @@ Apply one approved change at a time:
 - For a pre-commit hook approved in the plan, set its `rev:` in
   `.pre-commit-config.yaml` to the reviewed revision. Nothing else in that file changes.
 - For a `uv` package the plan puts on the combined branch, apply the reviewed PR's
-  `pyproject.toml` range change, if it has one, by hand,
-  then regenerate the lock with `uv lock --upgrade-package <package>==<version>` for
+  range change to `backend/pyproject.toml` or the root `pyproject.toml`, if it has one,
+  by hand, then regenerate the lock with `uv lock --upgrade-package <package>==<version>` for
   each approved package and version. A `python-minor-patch` group holding `ruff` moves
   whole: every member and every range edit the group PR made; the
   group PR closes as superseded only after the combined PR merges. `uv.lock` is never
