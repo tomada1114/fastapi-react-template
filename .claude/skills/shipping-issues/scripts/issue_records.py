@@ -901,7 +901,7 @@ def squeeze(text: str | None, limit: int) -> str:
 
 def extract_deps(body: str, title: str, self_number: int) -> dict[str, list[int]]:
     haystack = f"{title}\n{body or ''}"
-    prose = closing_text(haystack, boundary="|")
+    prose = "\n".join(closing_text(part, boundary="|") for part in (title, body or ""))
     deps: dict[str, set[int]] = {
         "depends_on": set(),
         "blocks": set(),

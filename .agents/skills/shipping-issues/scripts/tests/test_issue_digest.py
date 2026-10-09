@@ -134,6 +134,18 @@ class ExtractDepsTest(unittest.TestCase):
                 self.assertEqual(deps["depends_on"], [3])
                 self.assertEqual(deps["blocks"], [4])
 
+    def test_title_delimiters_do_not_hide_body_dependencies(self):
+        for title in ("Document <!-- syntax", "Document ` syntax"):
+            with self.subTest(title=title):
+                deps = idg.extract_deps(
+                    "Blocked by #3. Use `code` examples.", title, self_number=1
+                )
+                self.assertEqual(deps["depends_on"], [3])
+
+    def test_title_and_body_prose_dependencies_are_both_kept(self):
+        deps = idg.extract_deps("Blocked by #3", "Requires #4", self_number=1)
+        self.assertEqual(deps["depends_on"], [3, 4])
+
     def test_ignored_regions_do_not_join_dependency_phrases(self):
         for region in (
             "`example`",
