@@ -71,7 +71,21 @@ error occurred`, while the traceback is logged on `my_app.api.errors`.
 
 ## Configuration
 
-Settings are read from environment variables prefixed with `MY_APP_`.
+Settings read environment variables prefixed with `MY_APP_`, then optional UTF-8
+`backend/.env`. The file's path is resolved from the module, so changing the
+working directory does not change which file is read. A missing file is fine.
+
+To start with a local copy (gitignored):
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+The sample lists every setting with an empty value and its default. Environment
+values take precedence over the file, including an explicit empty value: blanks
+mean unset/default. Quoted file values are supported. Unknown `MY_APP_` keys in
+the file fail at startup (Pydantic names the normalized field); unrelated,
+unprefixed keys are ignored.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -80,15 +94,19 @@ Settings are read from environment variables prefixed with `MY_APP_`.
 
 The database must be migrated before the API uses it: the app never creates or
 alters a table. `just backend db-upgrade` migrates the database
-`MY_APP_DATABASE_URL` names to the newest revision, and `just dev` runs it first
-(see AGENTS.md's Quick Reference for `db-revision`, which writes a new one).
-With neither the variable nor `just dev`, the API runs on the in-memory store.
+the environment or `backend/.env` selects to the newest revision, and `just dev`
+runs it first (see AGENTS.md's Quick Reference for `db-revision`, which writes
+a new one).
+The database recipes resolve the URL once using `Settings` and give that same
+URL to both migration and server. If the result is unset or empty, they use
+`sqlite+aiosqlite:///./var/dev.db`, including when `.env` is a copy of the sample.
+A direct API factory or uvicorn run with no resolved URL uses the in-memory store.
 
 > [!NOTE]
 > `just dev` keeps to-dos in `backend/var/dev.db` (gitignored) unless
-> `MY_APP_DATABASE_URL` is set, so they survive the restart on every source
-> change. A server started without the variable forgets every to-do when it
-> stops.
+> `MY_APP_DATABASE_URL` in the environment or `backend/.env` selects another file,
+> so they survive the restart on every source change. A direct server run with
+> `MY_APP_DATABASE_URL=` overrides the file and forgets its to-dos when it stops.
 
 > [!WARNING]
 > A database file the app's earlier stdlib-`sqlite3` store wrote is not
@@ -103,7 +121,7 @@ backend/src/my_app/
 ├── core/            # Domain model, ports (typing.Protocol), services, errors — no frameworks
 ├── adapters/        # In-memory and SQL repositories (SQLAlchemy asyncio Core; SQLite or PostgreSQL)
 ├── api/             # FastAPI app factory, routers, request/response models
-├── settings.py      # MY_APP_* environment variables
+├── settings.py      # MY_APP_* environment variables and backend/.env
 └── composition.py   # The one place adapters are wired into services
 ```
 

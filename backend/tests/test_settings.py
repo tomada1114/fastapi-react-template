@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+import my_app
+from my_app import settings as settings_module
 from my_app.settings import Settings
+from tests.settings_env import settings_from_env_file
 
 
 def test_settings_database_url_unset_selects_in_memory_store():
@@ -182,3 +187,81 @@ def test_settings_cors_origins_deduplicate_after_normalization():
     assert Settings(
         cors_origins=["https://APP.EXAMPLE.COM:443", "https://app.example.com"]
     ).cors_origins == ["https://app.example.com"]
+
+
+def test_settings_env_file_value_is_read(tmp_path):
+    file = tmp_path / ".env"
+    file.write_text(
+        'MY_APP_DATABASE_URL="sqlite+aiosqlite:///./var/from-file.db"\nMY_APP_CORS_ORIGINS="https://app.example.com"\n',
+        encoding="utf-8",
+    )
+
+    settings = settings_from_env_file(file)
+
+    assert settings.database_url == "sqlite+aiosqlite:///./var/from-file.db"
+    assert settings.cors_origins == ["https://app.example.com"]
+
+
+@pytest.mark.parametrize("value", ["sqlite+aiosqlite:///from-env.db", ""])
+def test_settings_environment_wins_over_env_file(tmp_path, monkeypatch, value):
+    file = tmp_path / ".env"
+    file.write_text(
+        "MY_APP_DATABASE_URL=sqlite+aiosqlite:///from-file.db\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("MY_APP_DATABASE_URL", value)
+
+    assert settings_from_env_file(file).database_url == (value or None)
+
+
+def test_settings_env_file_unknown_prefixed_key_fails(tmp_path):
+    file = tmp_path / ".env"
+    file.write_text(
+        "MY_APP_DATABASE_LINK=sqlite+aiosqlite:///x.db\nVITE_PORT=5174\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="database_link") as raised:
+        settings_from_env_file(file)
+
+    assert [error["loc"] for error in raised.value.errors()] == [("database_link",)]
+
+
+def test_settings_env_file_unknown_unprefixed_key_is_ignored(tmp_path):
+    file = tmp_path / ".env"
+    file.write_text(
+        "VITE_PORT=5174\nDATABASE_URL=sqlite+aiosqlite:///foreign.db\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        settings_from_env_file(file).model_dump()
+        == settings_from_env_file(None).model_dump()
+    )
+
+
+def test_settings_env_file_path_is_backend_relative_after_chdir(tmp_path, monkeypatch):
+    expected = Path(my_app.__file__).resolve().parents[2] / ".env"
+    assert expected == settings_module.ENV_FILE
+    monkeypatch.chdir(tmp_path)
+    assert expected == settings_module.ENV_FILE
+
+
+def test_settings_tests_disable_the_developer_env_file():
+    assert Settings.model_config["env_file"] is None
+
+
+def test_settings_missing_env_file_uses_defaults(tmp_path):
+    assert (
+        settings_from_env_file(tmp_path / "missing.env").model_dump()
+        == settings_from_env_file(None).model_dump()
+    )
+
+
+def test_settings_blank_env_file_values_use_defaults(tmp_path):
+    file = tmp_path / ".env"
+    file.write_text("MY_APP_DATABASE_URL=\nMY_APP_CORS_ORIGINS=\n", encoding="utf-8")
+
+    assert (
+        settings_from_env_file(file).model_dump()
+        == settings_from_env_file(None).model_dump()
+    )

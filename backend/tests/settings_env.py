@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import AliasChoices, AliasPath
 
@@ -10,6 +10,7 @@ from my_app.settings import ENV_PREFIX, Settings
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
 
 def without_settings_env(environment: Mapping[str, str]) -> dict[str, str]:
@@ -34,3 +35,11 @@ def without_settings_env(environment: Mapping[str, str]) -> dict[str, str]:
         if not name.casefold().startswith(ENV_PREFIX.casefold())
         and name.casefold() not in aliases
     }
+
+
+def settings_from_env_file(path: Path | None) -> Settings:
+    """Pass dotenv controls that Pydantic's mypy plugin omits from model fields."""
+    # Any is limited to the framework's private constructor keyword. The
+    # plugin types Settings' model fields but not BaseSettings' _env_file.
+    options: dict[str, Any] = {"_env_file": path}
+    return Settings(**options)

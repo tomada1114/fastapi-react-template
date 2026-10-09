@@ -49,14 +49,16 @@ Stop at the first tier that shows what the change does.
 ## Set every `MY_APP_*` setting explicitly
 
 The developer's shell may export `MY_APP_*` variables — `MY_APP_DATABASE_URL` pointing
-at their real data, for one. Every run clears the whole prefix and sets exactly the
-settings it depends on:
+at their real data, for one. `Settings` also reads module-relative `backend/.env`.
+An unset variable can be filled from that file, so clear inherited prefixed variables
+and then set every current setting explicitly: database URL and CORS origins. An
+empty value wins over the file and selects the default. Add each future setting here.
 
 ```bash
-env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port"
+env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port"
 ```
 
-Leave `MY_APP_DATABASE_URL` out for the in-memory store, or point it at a file in a
+Set `MY_APP_DATABASE_URL=` for the in-memory store, or point it at a file in a
 directory from `mktemp -d`, outside the checkout
 (`db="sqlite+aiosqlite:///$(mktemp -d)/todos.db"`); a relative path would create the
 file in the working directory. Never point it at `backend/var/dev.db`, the developer's
@@ -64,7 +66,7 @@ database. The app never creates its schema, so migrate the scratch file first, i
 same shell command (**BACKGROUND:** `persisting-data`):
 
 ```bash
-env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" uv run --locked alembic -c backend/alembic.ini upgrade head
+env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= uv run --locked alembic -c backend/alembic.ini upgrade head
 ```
 
 Set the variable in the same shell command that starts the server: an agent's shell
@@ -94,12 +96,12 @@ port=$(uv run --locked python -c 'import socket; s = socket.socket(); s.bind(("1
 log=$(mktemp)
 uv run --locked python -c "$probe" "$port"; rc=$?
 if [ "$rc" = 1 ]; then
-  env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port" >"$log" 2>&1 &
+  env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL= MY_APP_CORS_ORIGINS= uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port" >"$log" 2>&1 &
   pid=$!
   trap 'kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null' EXIT
   if uv run --locked python -c "$ready" "$log" "$port" && kill -0 "$pid" 2>/dev/null; then
     curl -sS -i "http://127.0.0.1:$port/healthz"; echo
-    curl -sS -i -X POST "http://127.0.0.1:$port/todos" -H 'content-type: application/json' -d '{"title": "buy milk"}'; echo
+    curl -sS -i -X POST "http://127.0.0.1:$port/api/todos" -H 'content-type: application/json' -d '{"title": "buy milk"}'; echo
   else
     echo "the server did not start; nothing was sent"
   fi
@@ -155,8 +157,8 @@ INFO:     Finished server process [98971]
 
 The server command is the one `just backend dev` serves with, minus `--reload`, plus
 `--port`; unlike `just dev`, it migrates nothing and, with `MY_APP_DATABASE_URL`
-cleared, keeps to-dos in memory. That store starts empty on every start; create what a
-request needs with a `POST` first.
+explicitly empty, keeps to-dos in memory even when `backend/.env` sets a URL. That
+store starts empty on every start; create what a request needs with a `POST` first.
 
 ## The evidence a pull request carries
 
