@@ -43,7 +43,8 @@ def anyio_backend() -> str:
 
 @pytest.fixture(autouse=True)
 def _isolate_settings_env(monkeypatch):
-    """Keep every settings input from the developer's shell out of tests."""
+    """Keep the developer's shell and dotenv file out of tests."""
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     cleaned = without_settings_env(os.environ)
     for name in set(os.environ) - cleaned.keys():
         monkeypatch.delenv(name, raising=False)

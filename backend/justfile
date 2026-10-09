@@ -20,23 +20,24 @@ fmt:
 test:
     uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
-# The database db-upgrade, db-revision, and dev work on: MY_APP_DATABASE_URL,
-# or the SQLite file backend/var/dev.db when it is unset or empty. Each recipe
-# line sets it for its own command rather than exporting it, so `lint` and
-# `test` run with the environment as it is.
-database_url := if env("MY_APP_DATABASE_URL", "") == "" { "sqlite+aiosqlite:///./var/dev.db" } else { env("MY_APP_DATABASE_URL") }
+# Resolve only for a database recipe, once at its entry. A dependent migration
+# receives that same URL; lint/test never read the developer's dotenv file.
+# Settings applies environment > backend/.env; a blank URL uses the dev default.
+database_url_command := '''
+    uv run --locked python -c 'from my_app.settings import Settings; print(Settings().database_url or "sqlite+aiosqlite:///./var/dev.db")'
+'''
 
 # Migrate the database to the newest revision (default: backend/var/dev.db).
 # A SQLite file's parent directory is created first; SQLite will not create it.
-db-upgrade:
-    url={{ quote(database_url) }}; case "$url" in sqlite+aiosqlite:///*) path="${url#sqlite+aiosqlite:///}"; mkdir -p "$(dirname "${path%%\?*}")" ;; esac
-    MY_APP_DATABASE_URL={{ quote(database_url) }} uv run --locked alembic upgrade head
+db-upgrade url=(shell(database_url_command)):
+    url={{ quote(url) }}; case "$url" in sqlite+aiosqlite:///*) path="${url#sqlite+aiosqlite:///}"; mkdir -p "$(dirname "${path%%\?*}")" ;; esac
+    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked alembic upgrade head
 
 # Autogenerate a revision from the change to adapters/sql/tables.py, against the migrated database
-db-revision MESSAGE: db-upgrade
-    MY_APP_DATABASE_URL={{ quote(database_url) }} uv run --locked alembic revision --autogenerate -m {{ quote(MESSAGE) }}
+db-revision MESSAGE url=(shell(database_url_command)): (db-upgrade url)
+    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked alembic revision --autogenerate -m {{ quote(MESSAGE) }}
 
 # Never ends on its own; an agent runs its own server on a free port instead (running-the-app).
 # Human-run: migrate the database, then serve the API on http://127.0.0.1:8000, reloading on source changes
-dev: db-upgrade
-    MY_APP_DATABASE_URL={{ quote(database_url) }} uv run --locked uvicorn my_app.api.app:create_app --factory --reload
+dev url=(shell(database_url_command)): (db-upgrade url)
+    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked uvicorn my_app.api.app:create_app --factory --reload

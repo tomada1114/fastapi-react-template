@@ -1,8 +1,9 @@
-"""Runtime configuration read from ``MY_APP_``-prefixed environment variables."""
+"""Runtime configuration from ``MY_APP_`` environment variables and backend/.env."""
 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -10,6 +11,7 @@ from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_PREFIX = "MY_APP_"
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 SQLITE_URL_PREFIX = "sqlite+aiosqlite:///"
 POSTGRESQL_URL_PREFIX = "postgresql+asyncpg://"
 # The blocking driver's form, refused with a pointer to the async one.
@@ -22,7 +24,7 @@ class Settings(BaseSettings):
     """Configuration shared by every entry point.
 
     Pydantic belongs here because this is a deserialization boundary: strings
-    from the environment become typed, validated values before the
+    from the environment or optional backend/.env become typed values before the
     composition root sees them.
 
     Attributes:
@@ -37,7 +39,12 @@ class Settings(BaseSettings):
             comma-separated ``MY_APP_CORS_ORIGINS``; empty disables CORS.
     """
 
-    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX)
+    model_config = SettingsConfigDict(
+        env_prefix=ENV_PREFIX,
+        env_file=ENV_FILE,
+        env_file_encoding="utf-8",
+        dotenv_filtering="match_prefix",
+    )
 
     database_url: str | None = None
     cors_origins: Annotated[list[str], NoDecode] = []
