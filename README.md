@@ -73,7 +73,7 @@ the fake, and removing it.
 ## Architecture
 
 ```
-src/my_app/
+backend/src/my_app/
 ├── core/            # Domain model, ports (typing.Protocol), services, errors — no frameworks
 ├── adapters/        # In-memory and SQLite repositories; fake, closed, and OpenRouter LLM adapters
 ├── api/             # FastAPI app factory, routers, request/response models

@@ -7,13 +7,14 @@ from now — and assumes no context beyond the repository.
 
 Three places hold the reasoning, and each has one job:
 
-- `AGENTS.md`'s "Architecture" section describes the layout every project starts with —
-  the `src/` package layout and where new code goes. It is
-  the ground the ADRs build on, not a record of choices.
+- `backend/AGENTS.md`'s "Architecture" section describes the layout every project
+  starts with — the `backend/src/` package layout and where new code goes. It is the
+  ground the ADRs build on, not a record of choices.
 <!-- template-only -->
-- `TEMPLATE.md`'s "Design Philosophy" holds the template's own reasoning: why the `src/`
-  layout, strict mypy and Ruff, Just, the coverage floor. The template ships no ADRs of
-  its own, and `scripts/bootstrap.py` deletes `TEMPLATE.md` from a new project.
+- `TEMPLATE.md`'s "Design Philosophy" holds the template's own reasoning: why the
+  `backend/src/` layout, strict mypy and Ruff, Just, the coverage floor. The template
+  ships no ADRs of its own, and `scripts/bootstrap.py` deletes `TEMPLATE.md` from a new
+  project.
 <!-- /template-only -->
 - `.template-origin` identifies the template repository and revision for an app
   that needs to look up the original layout rationale.
