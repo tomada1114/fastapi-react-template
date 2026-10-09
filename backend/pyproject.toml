@@ -1,0 +1,145 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# A member of the uv workspace the repository root declares: uv reads
+# `[tool.uv]` and the `dev` dependency group from the root pyproject.toml only,
+# and the workspace shares the root uv.lock.
+[project]
+name = "my-app"
+# Static build metadata required to install the package; never bumped.
+version = "0.1.0"
+description = "A short description of the project."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "uvicorn>=0.53.0",
+]
+# No `readme` or `license-files`: both live at the repository root, which a
+# member may not reach ("..") under the packaging glob rules, and the backend
+# is never published.
+license = "MIT"
+authors = [{ name = "Your Name" }]
+keywords = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+]
+
+[project.optional-dependencies]
+# The OpenRouter LLM adapter (src/my_app/adapters/openrouter.py). Without it the
+# app runs with the LLM closed; see the integrating-llm skill.
+ai = ["httpx>=0.28"]
+
+[project.urls]
+Homepage = "https://github.com/your-username/fastapi-react-template"
+Repository = "https://github.com/your-username/fastapi-react-template"
+Issues = "https://github.com/your-username/fastapi-react-template/issues"
+
+# --------------------------------------------------------------------------- #
+#  Build
+# --------------------------------------------------------------------------- #
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/my_app"]
+
+# --------------------------------------------------------------------------- #
+#  Ruff – linter & formatter
+# --------------------------------------------------------------------------- #
+
+# Ruff reads only the closest config file and never merges two, so this one
+# extends the root's: the rule selection, formatter, and every shared setting
+# come from ../pyproject.toml. Below are only the app's own settings.
+[tool.ruff]
+extend = "../pyproject.toml"
+src = ["src", "tests"]
+
+# The core (src/my_app/core) must stay framework- and I/O-free so every entry
+# point and adapter can share it. ALLOWED_STDLIB in tests/core/test_imports.py
+# is the authoritative import rule; these editor-time checks are a fast subset.
+# These modules are banned everywhere, then allowed back below only in the
+# layers that exist to use them.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"fastapi".msg = "the core is framework-free; use fastapi only in my_app.api"
+"uvicorn".msg = "uvicorn serves the app from the command line (just dev); no module imports it"
+"sqlite3".msg = "the core is I/O-free; use sqlite3 only in my_app.adapters"
+"httpx".msg = "the core is I/O-free; use httpx only in an adapter or a test"
+
+# Replaces, never merges with, the root's per-file-ignores: the root's entries
+# name root paths (scripts/, tests/, .agents/skills/), none of which is here.
+[tool.ruff.lint.per-file-ignores]
+# The outer layers exist to use the frameworks and drivers the core may not.
+"src/my_app/api/**" = ["TID251"]     # FastAPI is the HTTP entry point
+"src/my_app/adapters/**" = ["TID251"] # adapters wrap sqlite3 and other I/O
+"tests/**" = [
+    "TID251",  # tests drive the API (TestClient/httpx)
+    "S101",    # assert is fine in tests
+    "ARG001",  # unused arguments (fixtures)
+    "PLR2004", # magic numbers in tests
+    "T20",     # print in tests
+    "D1",      # missing docstrings — test names are self-documenting
+]
+
+# --------------------------------------------------------------------------- #
+#  mypy – strict type checking
+# --------------------------------------------------------------------------- #
+
+[tool.mypy]
+# Run from this directory (`uv run --locked --directory backend mypy`); the
+# root pyproject.toml checks scripts/, the root tests/, and skill scripts.
+files = ["src", "tests"]
+python_version = "3.14"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+show_error_codes = true
+enable_error_code = ["ignore-without-code", "redundant-cast", "truthy-bool"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+
+# --------------------------------------------------------------------------- #
+#  pytest
+# --------------------------------------------------------------------------- #
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--strict-config",
+]
+# Any warning fails the run, so a deprecation surfaces here before the upgrade
+# that removes the deprecated path. Silence one only by a narrow entry with a
+# reason comment and a follow-up issue (changing-gates).
+filterwarnings = ["error"]
+
+# --------------------------------------------------------------------------- #
+#  coverage
+# --------------------------------------------------------------------------- #
+
+[tool.coverage.run]
+branch = true
+# Single-sources the measured package: `--cov` alone then needs no name, so
+# the justfile / CI / CONTRIBUTING commands survive the bootstrap rename.
+source = ["src"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+show_missing = true

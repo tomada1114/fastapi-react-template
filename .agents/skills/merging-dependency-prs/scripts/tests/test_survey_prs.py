@@ -258,6 +258,29 @@ class MainTest(unittest.TestCase):
         self.assertIn("land one at a time", out)
         self.assertIn("uv.lock: #1, #2", out)
 
+    def test_text_report_lands_workspace_member_manifest_one_at_a_time(self):
+        rc, out, _, _ = self._run(
+            [],
+            [
+                pr(
+                    1,
+                    "bump a from 1.0.0 to 1.0.1",
+                    branch="dependabot/uv/a-1.0.1",
+                    files=["backend/pyproject.toml", "uv.lock"],
+                ),
+                pr(
+                    2,
+                    "bump b from 1.0.0 to 2.0.0",
+                    branch="dependabot/uv/b-2.0.0",
+                    files=["backend/pyproject.toml", "uv.lock"],
+                ),
+            ],
+        )
+        self.assertEqual(rc, 0)
+        self.assertNotIn("favor a combined branch", out)
+        self.assertIn("land one at a time", out)
+        self.assertIn("backend/pyproject.toml: #1, #2", out)
+
     def test_text_report_favors_combined_branch_for_workflow_overlap(self):
         rc, out, _, _ = self._run(
             [],

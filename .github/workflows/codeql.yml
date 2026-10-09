@@ -42,12 +42,12 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: none
           # List the trees explicitly so the skill scripts under the hidden
-          # .agents/ directory are analyzed alongside src/ and scripts/. The
+          # .agents/ directory are analyzed alongside backend/ and scripts/. The
           # .claude/skills mirror is left out on purpose to avoid duplicate
           # alerts. Add any new top-level code directory here.
           config: |
             paths:
-              - src
+              - backend
               - scripts
               - tests
               - .agents/skills

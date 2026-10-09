@@ -44,6 +44,7 @@ jobs:
             uv run --locked ruff check .
             uv run --locked ruff format --check .
             uv run --locked mypy
+            uv run --locked --directory backend mypy
             uv run --locked pre-commit run shellcheck --all-files
           ) &
           lint_pid=$!
@@ -95,8 +96,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --locked
 
+      # The root suite, then the app's suite with the coverage floor, as `just test`.
       - name: Run tests and enforce coverage
-        run: uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
+        run: |
+          uv run --locked pytest -n auto
+          uv run --locked --directory backend pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
   spell-check:
     name: Spell Check
@@ -184,12 +188,12 @@ jobs:
           if git grep --cached -n -I -i -w -E 'My\ App|Your\ Name|A\ short\ description\ of\ the\ project\.|A\ short\ description\ of\ what\ this\ application\ does\.' -- . ':!.template-origin'; then
             echo "::error::the bootstrap left a display placeholder on the lines above"; status=1
           fi
-          for path in TEMPLATE.md scripts/bootstrap.py tests/test_bootstrap.py src/my_app \
+          for path in TEMPLATE.md scripts/bootstrap.py tests/test_bootstrap.py backend/src/my_app \
             .agents/skills/starting-an-app/references/bootstrap.md \
             .claude/skills/starting-an-app/references/bootstrap.md; do
             if [ -e "$path" ]; then echo "::error::$path survived the bootstrap"; status=1; fi
           done
-          grep -qx 'ENV_PREFIX = "TODO_API_"' src/todo_api/settings.py || { echo "::error::env prefix not renamed"; status=1; }
+          grep -qx 'ENV_PREFIX = "TODO_API_"' backend/src/todo_api/settings.py || { echo "::error::env prefix not renamed"; status=1; }
           grep -qE '^commit: [0-9a-f]{40}$' .template-origin || { echo "::error::.template-origin lacks the template commit"; status=1; }
           if grep -rn -e 'template-only' -e 'Template Bootstrap Smoke' .github .agents .claude AGENTS.md README.md; then
             echo "::error::template-only material survived"; status=1

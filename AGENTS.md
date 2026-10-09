@@ -96,14 +96,14 @@ being run at all.
 
 | What you changed | The narrowest check that can fail |
 |---|---|
-| A module under `src/my_app/<layer>/` | `uv run --locked pytest tests/<layer>/` |
-| `settings.py` or `composition.py` | `uv run --locked pytest tests/test_settings.py tests/test_composition.py` |
-| A repository adapter | `uv run --locked pytest tests/adapters/test_repository_contract.py` |
+| A module under `backend/src/my_app/<layer>/` | `uv run --locked --directory backend pytest tests/<layer>/` |
+| `settings.py` or `composition.py` | `uv run --locked --directory backend pytest tests/test_settings.py tests/test_composition.py` |
+| A repository adapter | `uv run --locked --directory backend pytest tests/adapters/test_repository_contract.py` |
 | One test | `uv run --locked pytest tests/test_<module>.py::test_<name>` |
-| Any Python file's lint or types | `uv run --locked ruff check <file>`, then `uv run --locked mypy` |
+| Any Python file's lint or types | `uv run --locked ruff check <file>`, then `uv run --locked mypy` and `uv run --locked --directory backend mypy` |
 | A script under `scripts/` | `uv run --locked pytest tests/test_<script>.py` |
 | A skill under `.agents/skills/` | `just agents-sync && just agents-check && just check-harness && just test-skills` |
-| Dependencies in `pyproject.toml` | `uv lock`, `uv sync --all-groups --locked`, then `just verify` |
+| Dependencies in `pyproject.toml` or `backend/pyproject.toml` | `uv lock`, `uv sync --all-groups --locked`, then `just verify` |
 | A workflow under `.github/workflows/`, or an action under `.github/actions/` | `uv run --locked pre-commit run zizmor --all-files`, then `just check-harness` |
 | Markdown or other prose | `uv run --locked pre-commit run typos --files <file>`, then `just check-harness` (it checks each `just <recipe>` named) |
 

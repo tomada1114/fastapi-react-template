@@ -10,6 +10,24 @@ resolution-markers = [
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P14D"
 
+[manifest]
+members = [
+    "my-app",
+]
+
+[manifest.dependency-groups]
+dev = [
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "httpx2", specifier = ">=2.13" },
+    { name = "mypy", specifier = ">=2.3.1" },
+    { name = "pre-commit", specifier = ">=4.6.2" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "pytest-xdist", specifier = ">=3.6" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "ruff", specifier = ">=0.16.8" },
+]
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -342,7 +360,7 @@ wheels = [
 [[package]]
 name = "my-app"
 version = "0.1.0"
-source = { editable = "." }
+source = { editable = "backend" }
 dependencies = [
     { name = "fastapi" },
     { name = "pydantic-settings" },
@@ -354,19 +372,6 @@ ai = [
     { name = "httpx" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "httpx2" },
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pytest-xdist" },
-    { name = "pyyaml" },
-    { name = "ruff" },
-]
-
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.141.1" },
@@ -375,19 +380,6 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.53.0" },
 ]
 provides-extras = ["ai"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "httpx2", specifier = ">=2.13" },
-    { name = "mypy", specifier = ">=2.3.1" },
-    { name = "pre-commit", specifier = ">=4.6.2" },
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "pytest-xdist", specifier = ">=3.6" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "ruff", specifier = ">=0.16.8" },
-]
 
 [[package]]
 name = "mypy"

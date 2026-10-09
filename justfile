@@ -63,15 +63,21 @@ fmt:
     uv run --locked ruff check --fix .
     uv run --locked ruff format .
 
+# mypy runs twice: the root config checks scripts/, tests/, and skill scripts;
+# backend/pyproject.toml checks the app. Both trees hold a `tests` package.
 # Run linters and type checker
 lint:
     uv run --locked ruff check .
     uv run --locked ruff format --check .
     uv run --locked mypy
+    uv run --locked --directory backend mypy
 
+# The root suite and the app's suite run separately (each has a `tests`
+# package); the 80% branch-coverage floor measures backend/src.
 # Run tests in parallel with coverage
 test:
-    uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
+    uv run --locked pytest -n auto
+    uv run --locked --directory backend pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
 # Never ends on its own; an agent starts its own uvicorn on a free port instead and stops it.
 # Human-run: serve the HTTP API on http://127.0.0.1:8000, reloading on source changes
@@ -126,6 +132,7 @@ ruleset *ARGS:
 # Remove build artifacts
 clean:
     rm -rf dist/ build/ .mypy_cache/ .ruff_cache/ .pytest_cache/ htmlcov/ .coverage .coverage.* coverage.xml
+    rm -rf backend/.coverage backend/.coverage.* backend/htmlcov/ backend/.pytest_cache/ backend/.mypy_cache/ backend/.ruff_cache/
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
     find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 

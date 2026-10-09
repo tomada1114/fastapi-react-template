@@ -1,39 +1,9 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
-name = "my-app"
-# Static build metadata required to install the package; never bumped.
-version = "0.1.0"
-description = "A short description of the project."
-readme = "README.md"
-requires-python = ">=3.14"
-dependencies = [
-    "fastapi>=0.141.1",
-    "pydantic-settings>=2.15.0",
-    "uvicorn>=0.53.0",
-]
-license = "MIT"
-license-files = ["LICENSE"]
-authors = [{ name = "Your Name" }]
-keywords = []
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.14",
-]
-
-[project.optional-dependencies]
-# The OpenRouter LLM adapter (src/my_app/adapters/openrouter.py). Without it the
-# app runs with the LLM closed; see the integrating-llm skill.
-ai = ["httpx>=0.28"]
-
-[project.urls]
-Homepage = "https://github.com/your-username/fastapi-react-template"
-Repository = "https://github.com/your-username/fastapi-react-template"
-Issues = "https://github.com/your-username/fastapi-react-template/issues"
+# The uv workspace root. It is virtual: no `[project]` and no `[build-system]`,
+# so there is no root package. The app is the `backend` member
+# (backend/pyproject.toml); the workspace shares this file's `[tool.uv]`, its
+# `dev` group (the repository's tooling, and everything the app's tests need),
+# and one uv.lock. The tool tables below configure the repository's own code:
+# scripts/, the root tests/, and the skill scripts under .agents/skills/.
 
 [dependency-groups]
 dev = [
@@ -64,12 +34,8 @@ required-version = ">=0.11.8"
 # Dependabot almost never proposes a version this window refuses to lock.
 exclude-newer = "14 days"
 
-# --------------------------------------------------------------------------- #
-#  Build
-# --------------------------------------------------------------------------- #
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/my_app"]
+[tool.uv.workspace]
+members = ["backend"]
 
 # --------------------------------------------------------------------------- #
 #  Ruff – linter & formatter
@@ -77,7 +43,11 @@ packages = ["src/my_app"]
 
 [tool.ruff]
 line-length = 88
-src = ["src", "tests", "scripts"]
+# Ruff infers its target from `requires-python`, which this virtual root has
+# none of (the app's is in backend/pyproject.toml), so it is stated here. It
+# must agree with that floor (tests/harness/test_python_baseline.py).
+target-version = "py314"
+src = ["scripts", "tests"]
 # The generated skills mirror is linted through its source, .agents/skills.
 extend-exclude = [".claude/skills"]
 
@@ -178,21 +148,9 @@ runtime-evaluated-decorators = [
     "fastapi.FastAPI.exception_handler",
 ]
 
-# The core (src/my_app/core) must stay framework- and I/O-free so every entry
-# point and adapter can share it. ALLOWED_STDLIB in tests/core/test_imports.py
-# is the authoritative import rule; these editor-time checks are a fast subset.
-# These modules are banned everywhere, then allowed back below only in the
-# layers that exist to use them.
-[tool.ruff.lint.flake8-tidy-imports.banned-api]
-"fastapi".msg = "the core is framework-free; use fastapi only in my_app.api"
-"uvicorn".msg = "uvicorn serves the app from the command line (just dev); no module imports it"
-"sqlite3".msg = "the core is I/O-free; use sqlite3 only in my_app.adapters"
-"httpx".msg = "the core is I/O-free; use httpx only in an adapter or a test"
-
+# backend/pyproject.toml replaces this table with the app's own entries and
+# its banned-api layer boundary.
 [tool.ruff.lint.per-file-ignores]
-# The outer layers exist to use the frameworks and drivers the core may not.
-"src/my_app/api/**" = ["TID251"]     # FastAPI is the HTTP entry point
-"src/my_app/adapters/**" = ["TID251"] # adapters wrap sqlite3 and other I/O
 "tests/**" = [
     "TID251",  # tests drive the API (TestClient/httpx)
     "S101",    # assert is fine in tests
@@ -209,7 +167,7 @@ runtime-evaluated-decorators = [
 # section records ownership and deliberate per-change porting to other templates.
 # They are stdlib-only CLI tools run with the system `python3` and tested with
 # unittest, never part of the package's public API. These scoped waivers do not
-# affect src/, scripts/ or tests/.
+# affect backend/, scripts/ or tests/.
 ".agents/skills/**/scripts/**" = [
     "D1",      # missing docstrings — CLI helpers, not a public API
     "T20",     # print is the CLI's output channel
@@ -255,7 +213,9 @@ indent-style = "space"
 [tool.mypy]
 # One target list for local verification, CI and the non-shell pre-commit entry.
 # Authored production modules only; skill unittest fixtures keep their own runner.
-files = ["src", "scripts", "tests", ".agents/skills/*/scripts/*.py"]
+# The app is checked by its own run from backend/ (`uv run --locked --directory
+# backend mypy`), whose `tests` package would collide with this one.
+files = ["scripts", "tests", ".agents/skills/*/scripts/*.py"]
 python_version = "3.14"
 strict = true
 warn_return_any = true
@@ -286,25 +246,3 @@ addopts = [
 # that removes the deprecated path. Silence one only by a narrow entry with a
 # reason comment and a follow-up issue (changing-gates).
 filterwarnings = ["error"]
-
-# --------------------------------------------------------------------------- #
-#  coverage
-# --------------------------------------------------------------------------- #
-
-[tool.coverage.run]
-branch = true
-# Single-sources the measured package: `--cov` alone then needs no name, so
-# the justfile / CI / CONTRIBUTING commands survive the bootstrap rename.
-source = ["src"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-    "@abstractmethod",
-]
-show_missing = true

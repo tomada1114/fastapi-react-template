@@ -192,7 +192,7 @@ class Identity:
     Attributes:
         slug: Distribution, console-script, and (with underscores) module name.
         author: Copyright holder and package author; never an email address.
-        description: The one-line summary in `pyproject.toml` and README.
+        description: The one-line summary in `backend/pyproject.toml` and README.
         github_user: Owner of the GitHub repository.
         github_repository: `NAME` or `OWNER/NAME`; defaults to the slug.
         display_name: Human-readable name; defaults to the slug.
@@ -394,11 +394,11 @@ def _check_work_tree(root: Path, names: Names) -> None:
         listed = "\n".join(status.splitlines()[:10])
         msg = f"the working tree has uncommitted changes; commit or stash them first:\n{listed}"
         raise BootstrapError(msg)
-    source = root / "src" / PLACEHOLDER_MODULE
+    source = root / "backend" / "src" / PLACEHOLDER_MODULE
     if not source.is_dir():
         msg = f"expected the template's package at {source}"
         raise BootstrapError(msg)
-    destination = root / "src" / names.module
+    destination = root / "backend" / "src" / names.module
     if destination.exists() or destination.is_symlink():
         msg = f"destination package already exists: {destination}"
         raise BootstrapError(msg)
@@ -469,11 +469,11 @@ class _Site:
 
 def _edit_pyproject(text: str, names: Names, _today: dt.date) -> str:
     """Write the metadata with TOML quoting."""
-    text = _Site("pyproject.toml", f'name = "{PLACEHOLDER_AUTHOR}"').replace(
+    text = _Site("backend/pyproject.toml", f'name = "{PLACEHOLDER_AUTHOR}"').replace(
         text, f"name = {json.dumps(names.author, ensure_ascii=False)}"
     )
     description = f'description = "{PLACEHOLDER_DESCRIPTIONS[0]}"'
-    return _Site("pyproject.toml", description).replace(
+    return _Site("backend/pyproject.toml", description).replace(
         text, f"description = {json.dumps(names.description, ensure_ascii=False)}"
     )
 
@@ -512,7 +512,7 @@ def _edit_conduct(text: str, names: Names, _today: dt.date) -> str:
 
 
 FILE_EDITS: dict[str, Callable[[str, Names, dt.date], str]] = {
-    "pyproject.toml": _edit_pyproject,
+    "backend/pyproject.toml": _edit_pyproject,
     "README.md": _edit_readme,
     "LICENSE": _edit_license,
     "SECURITY.md": _edit_security,
@@ -624,9 +624,9 @@ def plan(root: Path, names: Names, *, keep_bootstrap: bool = False) -> Plan:
 
 def _moved(relative: str, module: str) -> str:
     """Return where a template path lives once the package directory is renamed."""
-    old_prefix = f"src/{PLACEHOLDER_MODULE}/"
+    old_prefix = f"backend/src/{PLACEHOLDER_MODULE}/"
     if relative.startswith(old_prefix):
-        return f"src/{module}/{relative.removeprefix(old_prefix)}"
+        return f"backend/src/{module}/{relative.removeprefix(old_prefix)}"
     return relative
 
 
@@ -639,8 +639,11 @@ def _apply(root: Path, names: Names, change: Plan) -> None:
     """
     done: list[str] = []
     try:
-        (root / "src" / PLACEHOLDER_MODULE).rename(root / "src" / names.module)
-        done.append(f"renamed src/{PLACEHOLDER_MODULE} to src/{names.module}")
+        package_parent = root / "backend" / "src"
+        (package_parent / PLACEHOLDER_MODULE).rename(package_parent / names.module)
+        done.append(
+            f"renamed backend/src/{PLACEHOLDER_MODULE} to backend/src/{names.module}"
+        )
         for relative, text in change.writes.items():
             (root / _moved(relative, names.module)).write_bytes(text.encode("utf-8"))
         done.append(f"rewrote {len(change.writes)} files")
@@ -767,7 +770,7 @@ def main(argv: list[str] | None = None) -> int:
     except BootstrapError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print(f"Renamed the template to {names.slug} (package src/{names.module}).")
+    print(f"Renamed the template to {names.slug} (package backend/src/{names.module}).")
     if not finish(REPO_ROOT):
         return 1
     print(

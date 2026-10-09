@@ -50,7 +50,7 @@ def test_mypy_targets_cover_authored_production_scripts() -> None:
     config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     mypy = config["tool"]["mypy"]
     targets = mypy["files"]
-    assert {"src", "scripts", "tests"} <= set(targets)
+    assert {"scripts", "tests"} <= set(targets)
     assert mypy["strict"] is True
     covered = {
         Path(path).resolve() for target in targets for path in REPO_ROOT.glob(target)
@@ -66,9 +66,19 @@ def test_mypy_targets_cover_authored_production_scripts() -> None:
     )
 
 
+def test_mypy_backend_targets_cover_the_app_strictly() -> None:
+    config = tomllib.loads(
+        (REPO_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    mypy = config["tool"]["mypy"]
+    assert {"src", "tests"} <= set(mypy["files"])
+    assert mypy["strict"] is True
+
+
 def test_mypy_hook_uses_the_shared_target_configuration() -> None:
     hooks = (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "entry: uv run --locked mypy\n" in hooks
+    assert "entry: uv run --locked --directory backend mypy\n" in hooks
 
 
 class FrontmatterError(ValueError):

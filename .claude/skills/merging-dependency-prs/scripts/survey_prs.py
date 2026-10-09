@@ -108,8 +108,9 @@ PENDING_STATES = frozenset({"PENDING", "IN_PROGRESS", "QUEUED", "WAITING", "EXPE
 UNKNOWN_STATE = "UNKNOWN"
 # Branch-name ecosystem segments that .github/dependabot.yml configures.
 KNOWN_ECOSYSTEMS = frozenset({"github_actions", "pre_commit", "uv"})
-# Files every uv PR may share; that overlap lands one PR at a time.
-UV_MANIFEST_FILES = frozenset({"uv.lock", "pyproject.toml"})
+# Files every uv PR may share; that overlap lands one PR at a time. The root
+# pyproject.toml is the uv workspace root; backend/pyproject.toml is its member.
+UV_MANIFEST_FILES = frozenset({"uv.lock", "pyproject.toml", "backend/pyproject.toml"})
 
 
 class GhError(Exception):
