@@ -44,7 +44,6 @@ jobs:
             uv run --locked ruff check .
             uv run --locked ruff format --check .
             uv run --locked mypy
-            uv run --locked --directory backend mypy
             uv run --locked pre-commit run shellcheck --all-files
           ) &
           lint_pid=$!
@@ -52,6 +51,15 @@ jobs:
           wait "$skills_pid" || status=$?
           wait "$lint_pid" || status=$?
           exit "$status"
+
+      # `just backend lint` (backend::lint), which runs in backend/ with
+      # backend/pyproject.toml's config; the lines stay verbatim.
+      - name: Lint and type-check the backend
+        working-directory: backend
+        run: |
+          uv run --locked ruff check .
+          uv run --locked ruff format --check .
+          uv run --locked mypy
 
   # Skill scripts promise to run on the system python3; 3.9 is macOS's
   # /usr/bin/python3. Stdlib only, so no project environment. Not a required
@@ -96,11 +104,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --locked
 
-      # The root suite, then the app's suite with the coverage floor, as `just test`.
-      - name: Run tests and enforce coverage
-        run: |
-          uv run --locked pytest -n auto
-          uv run --locked --directory backend pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
+      # `just test`: the root suite, and backend::test (`just backend test`), the
+      # app's suite with the coverage floor, run in backend/. Lines stay verbatim.
+      - name: Run the root tests
+        run: uv run --locked pytest -n auto
+
+      - name: Run the backend tests and enforce coverage
+        working-directory: backend
+        run: uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
   spell-check:
     name: Spell Check

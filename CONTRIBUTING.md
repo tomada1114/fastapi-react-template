@@ -10,8 +10,14 @@ Install these tools:
 - [Python 3.14+](https://www.python.org/)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.11.8 or later
   (`pyproject.toml`'s `required-version`; the relative `exclude-newer` and its lockfile form need it)
-- [Just](https://just.systems/man/en/installation.html) (optional — you can run
-  `uv run` commands directly)
+- [Just](https://just.systems/man/en/installation.html) 1.42.3 or later
+  (optional — you can run `uv run` commands directly). The root `justfile`
+  loads `backend/justfile` as a module (`just backend <recipe>`), and its
+  `lint`, `test`, and `dev` recipes depend on module recipes
+  (`lint: backend::lint`). Just accepts such a dependency from 1.42.0, and from
+  1.42.3 runs it in the module's directory (`backend/`) as it must; an older
+  Just fails to parse the `justfile` or runs the backend's commands from the
+  repository root.
 
 Then install the dependencies and the git hooks (without Just, run the
 `install` recipe's commands from the `justfile`):
@@ -36,6 +42,9 @@ just lint
 # Run tests
 just test
 
+# Run only the backend's tests, with its coverage floor (`just --list backend` lists the rest)
+just backend test
+
 # Mutating development check (format → lint → test)
 just check
 
@@ -44,7 +53,8 @@ just verify
 ```
 
 **Without Just**, run the `uv run` commands the `justfile` gives each recipe
-(`just verify` runs the recipes its own line in the `justfile` names).
+(`just verify` runs the recipes its own line in the `justfile` names), and a
+`backend::` recipe's commands from `backend/justfile` inside `backend/`.
 
 ## Worktrees
 
