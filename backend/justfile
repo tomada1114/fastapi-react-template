@@ -26,9 +26,10 @@ test:
 # `test` run with the environment as it is.
 database_url := if env("MY_APP_DATABASE_URL", "") == "" { "sqlite+aiosqlite:///./var/dev.db" } else { env("MY_APP_DATABASE_URL") }
 
-# Migrate the database to the newest revision (default: backend/var/dev.db)
+# Migrate the database to the newest revision (default: backend/var/dev.db).
+# A SQLite file's parent directory is created first; SQLite will not create it.
 db-upgrade:
-    mkdir -p var
+    url={{ quote(database_url) }}; case "$url" in sqlite+aiosqlite:///*) path="${url#sqlite+aiosqlite:///}"; mkdir -p "$(dirname "${path%%\?*}")" ;; esac
     MY_APP_DATABASE_URL={{ quote(database_url) }} uv run --locked alembic upgrade head
 
 # Autogenerate a revision from the change to adapters/sql/tables.py, against the migrated database
