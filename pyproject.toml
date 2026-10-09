@@ -167,7 +167,7 @@ runtime-evaluated-decorators = [
 # section records ownership and deliberate per-change porting to other templates.
 # They are stdlib-only CLI tools run with the system `python3` and tested with
 # unittest, never part of the package's public API. These scoped waivers do not
-# affect src/, scripts/ or tests/.
+# affect backend/, scripts/ or tests/.
 ".agents/skills/**/scripts/**" = [
     "D1",      # missing docstrings — CLI helpers, not a public API
     "T20",     # print is the CLI's output channel
