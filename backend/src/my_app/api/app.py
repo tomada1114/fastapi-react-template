@@ -16,6 +16,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.errors import ServerErrorMiddleware
 from starlette.middleware.exceptions import ExceptionMiddleware
 
+from my_app.api.middleware import RequestIdMiddleware
 from my_app.api.routers import health, todos
 from my_app.api.schemas import (
     PROBLEM_MEDIA_TYPE,
@@ -32,6 +33,7 @@ from my_app.core.errors import (
     InvalidTodoError,
     TodoNotFoundError,
 )
+from my_app.logging_config import configure_logging, request_id_var
 from my_app.settings import Settings
 
 if TYPE_CHECKING:
@@ -93,10 +95,13 @@ class _ApiApp(FastAPI):
                 middleware,
                 allow_origins=self.cors_origins,
                 allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-                allow_headers=["Content-Type"],
+                allow_headers=["Content-Type", "X-Request-ID"],
+                expose_headers=["X-Request-ID"],
                 allow_credentials=False,
             )
-        return middleware
+        # Outside CORS and ServerErrorMiddleware: preflights and unexpected 500s
+        # share the same active context and response-header wrapper.
+        return RequestIdMiddleware(middleware)
 
     def openapi(self) -> dict[str, Any]:
         """Publish error models as Problem Details, preserving success media types.
@@ -150,6 +155,7 @@ def create_app(
         settings = Settings(database_url=None) if container is not None else Settings()
     owns_container = container is None
     if container is None:
+        configure_logging(settings.log_level, settings.log_format)
         container = build_container(settings)
     services = container
 
@@ -212,12 +218,19 @@ def _problem_response(
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     """Serialize a client-safe error, omitting absent extensions."""
+    request_id = request_id_var.get()
+    if request_id is None:
+        # All HTTP handlers, including the outer 500 handler, run within the
+        # request-ID context. Do not publish an invalid correlation contract.
+        msg = "An HTTP problem response requires an active request ID"
+        raise RuntimeError(msg)
     body = ProblemDetails(
         title=status_phrase(status),
         status=status,
         detail=detail,
         code=code,
         errors=errors,
+        request_id=request_id,
     )
     return JSONResponse(
         status_code=status,
@@ -268,6 +281,17 @@ async def _handle_http_error(_: Request, error: HTTPException) -> Response:
 
 
 async def _handle_unexpected_error(_: Request, error: Exception) -> JSONResponse:
-    """Keep exception details in the traceback log, never in the client body."""
-    logger.error("Unhandled exception", exc_info=error)
+    """Keep frames and exception type, excluding messages that can carry secrets."""
+    # Driver exceptions can embed SQL parameters and credentials, even when the
+    # application never explicitly logs user text. A fresh exception has no
+    # message, cause or context from that input; retain the original stack only.
+    safe_error = RuntimeError(type(error).__qualname__)
+    logger.error(
+        "Unhandled exception",
+        exc_info=(RuntimeError, safe_error, error.__traceback__),
+        extra={
+            "request_id": request_id_var.get(),
+            "exception_type": f"{type(error).__module__}.{type(error).__qualname__}",
+        },
+    )
     return _problem_response(500, "An unexpected error occurred", "internal_error")

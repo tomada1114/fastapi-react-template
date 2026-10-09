@@ -51,11 +51,11 @@ Stop at the first tier that shows what the change does.
 The developer's shell may export `MY_APP_*` variables — `MY_APP_DATABASE_URL` pointing
 at their real data, for one. `Settings` also reads module-relative `backend/.env`.
 An unset variable can be filled from that file, so clear inherited prefixed variables
-and then set every current setting explicitly: database URL and CORS origins. An
+and then set every current setting explicitly: database URL, CORS origins, log level, and log format. An
 empty value wins over the file and selects the default. Add each future setting here.
 
 ```bash
-env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port"
+env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= MY_APP_LOG_LEVEL= MY_APP_LOG_FORMAT= uv run --locked uvicorn my_app.api.app:create_app --factory --no-access-log --port "$port"
 ```
 
 Set `MY_APP_DATABASE_URL=` for the in-memory store, or point it at a file in a
@@ -66,7 +66,7 @@ database. The app never creates its schema, so migrate the scratch file first, i
 same shell command (**BACKGROUND:** `persisting-data`):
 
 ```bash
-env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= uv run --locked alembic -c backend/alembic.ini upgrade head
+env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= MY_APP_LOG_LEVEL= MY_APP_LOG_FORMAT= uv run --locked alembic -c backend/alembic.ini upgrade head
 ```
 
 Set the variable in the same shell command that starts the server: an agent's shell
@@ -74,6 +74,12 @@ does not keep an exported variable from one call to the next, so a server starte
 later would silently use the developer's environment instead.
 
 ## Running a server of your own
+
+Read `X-Request-ID` from the response (`curl -i`) and find that same ID in
+application logs; Problem Details carries it as `request_id`, including 500s.
+Set `MY_APP_LOG_LEVEL=` and `MY_APP_LOG_FORMAT=` explicitly in an isolated
+server's environment to retain the sample defaults rather than a developer's
+dotenv logging settings. Pass `--no-access-log` to uvicorn to keep one access line.
 
 Run the server's whole life as one foreground shell command — pick a port, check it,
 start, wait, request, stop, check again. The `trap` stops the server even when the
@@ -96,7 +102,7 @@ port=$(uv run --locked python -c 'import socket; s = socket.socket(); s.bind(("1
 log=$(mktemp)
 uv run --locked python -c "$probe" "$port"; rc=$?
 if [ "$rc" = 1 ]; then
-  env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL= MY_APP_CORS_ORIGINS= uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port" >"$log" 2>&1 &
+  env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL= MY_APP_CORS_ORIGINS= MY_APP_LOG_LEVEL= MY_APP_LOG_FORMAT= uv run --locked uvicorn my_app.api.app:create_app --factory --no-access-log --port "$port" >"$log" 2>&1 &
   pid=$!
   trap 'kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null' EXIT
   if uv run --locked python -c "$ready" "$log" "$port" && kill -0 "$pid" 2>/dev/null; then
@@ -132,7 +138,8 @@ fi
 - **A host that runs long commands in the background** follows the same steps; the stop
   and the final check still happen before the turn ends.
 
-The output of that script under bash and zsh, observed 2026-10-09 (the port, the
+The output collected before request-id logging was added, under bash and zsh,
+observed 2026-10-09 (the port, the
 timestamps, and the generated id vary):
 
 ```console
