@@ -91,8 +91,17 @@ unprefixed keys are ignored.
 
 | Variable | Default | Effect |
 |---|---|---|
+| `MY_APP_LOG_LEVEL` | `INFO` | Case-insensitive `DEBUG`, `INFO`, `WARNING`, or `ERROR`; blank keeps the default. |
+| `MY_APP_LOG_FORMAT` | `text` | `text` or one JSON object per line with timestamp, level, logger, message, request ID, access fields, and an exception traceback when present; blank keeps text. |
 | `MY_APP_CORS_ORIGINS` | empty (CORS disabled) | Comma-separated HTTP(S) origins, e.g. `http://localhost:5173,https://app.example.com`. Spaces and empty items are removed, hosts use lowercase/punycode, default ports are removed, and duplicates kept once. Paths, queries, fragments, user info, invalid ports, trailing slashes, wildcards, and origins without an HTTP(S) scheme are rejected at startup. JSON requests from listed origins are allowed without credentials. |
 | `MY_APP_DATABASE_URL` | unset (`just dev`: `sqlite+aiosqlite:///./var/dev.db`) | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite+aiosqlite:///<path>` stores them in a SQLite file at `<path>`, relative to the working directory (an absolute path adds a fourth slash: `sqlite+aiosqlite:////var/lib/todos.db`). `postgresql+asyncpg://<user>:<password>@<host>/<database>` names a PostgreSQL database; its driver, asyncpg, is not installed yet. Anything else is rejected at startup, naming the fix: a URL without the async driver (`sqlite:` or `postgresql:` alone), an in-memory SQLite database (`:memory:`), and a path ending in `/`. |
+
+Every HTTP response carries `X-Request-ID`. Send 1–128 ASCII letters, digits,
+dots, underscores or hyphens to retain your own ID; other values receive a UUIDv7.
+Problem Details includes the same `request_id`, including 500 and CORS failures.
+Application logs carry that ID; the access record contains method, path, status,
+and duration, without query strings or request bodies. `just backend dev` disables
+uvicorn's duplicate access log.
 
 The database must be migrated before the API uses it: the app never creates or
 alters a table. `just backend db-upgrade` migrates the database

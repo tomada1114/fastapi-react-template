@@ -68,6 +68,7 @@ def test_create_todo_invalid_title_returns_422_and_stores_nothing(client, title)
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unprocessable Content",
         "status": 422,
@@ -83,6 +84,7 @@ def test_create_todo_missing_title_returns_422_problem_with_errors(client):
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unprocessable Content",
         "status": 422,
@@ -134,6 +136,7 @@ def test_list_todos_invalid_cursor_returns_422(client, make_todo, cursor):
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unprocessable Content",
         "status": 422,
@@ -161,6 +164,7 @@ def test_list_todos_limit_below_one_returns_422(client, limit):
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unprocessable Content",
         "status": 422,
@@ -175,6 +179,7 @@ def test_list_todos_limit_above_max_returns_422(client):
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unprocessable Content",
         "status": 422,
@@ -189,6 +194,7 @@ def test_list_todos_non_integer_limit_returns_422_problem(client):
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unprocessable Content",
         "status": 422,
@@ -220,6 +226,7 @@ def test_complete_todo_unknown_id_returns_404(client, todo_id):
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Not Found",
         "status": 404,
@@ -234,6 +241,7 @@ def test_complete_todo_unhyphenated_uppercase_id_names_the_canonical_id(client):
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Not Found",
         "status": 404,
@@ -259,6 +267,7 @@ def test_delete_todo_unknown_id_returns_404(client, todo_id):
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Not Found",
         "status": 404,
@@ -283,6 +292,7 @@ def test_todo_route_non_uuid_id_returns_422_problem(client, method, path):
     body = response.json()
     assert response.headers["content-type"] == "application/problem+json"
     assert body == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unprocessable Content",
         "status": 422,

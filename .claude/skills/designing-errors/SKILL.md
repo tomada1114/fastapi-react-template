@@ -166,10 +166,14 @@ the first request (`designing-core-logic`).
 
 An `AppError` is expected, so it is mapped at the API boundary to an HTTP status, and
 not logged with `logging.exception()`. An
-unexpected error keeps its traceback. The API handler logs
-`logger.error("Unhandled exception", exc_info=error)` on `my_app.api.errors`;
+unexpected error keeps its stack and exception type. The API handler logs on
+`my_app.api.errors` with a sanitized exception that omits the original message
+and cause chain, because a driver can put SQL parameters or credentials there;
 Starlette re-raises after responding, so the server may also log it. Code that catches
 one to add context logs with `logging.exception()` and re-raises.
+The outer request-ID middleware keeps context active through this 500 handler,
+including CORS preflights. Every Problem Details body and response header share
+the request ID; use it to correlate an error without logging user inputs.
 
 ## Adding a failure mode
 

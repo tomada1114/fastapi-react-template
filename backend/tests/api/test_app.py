@@ -75,6 +75,7 @@ def test_unmapped_app_error_returns_400_problem(make_container):
     assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Bad Request",
         "status": 400,
@@ -309,6 +310,7 @@ def test_cors_preflight_checks_origins_and_allows_json_post(
             "Accept-Language",
             "Content-Language",
             "Content-Type",
+            "X-Request-ID",
         }
 
 
@@ -355,6 +357,7 @@ def test_cors_rejected_preflight_returns_problem_details(
     assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Bad Request",
         "status": 400,
@@ -376,6 +379,7 @@ def test_cors_rejected_preflight_returns_problem_details(
         "Accept-Language",
         "Content-Language",
         "Content-Type",
+        "X-Request-ID",
     }
     assert response.headers["access-control-max-age"] == "600"
     assert "access-control-allow-credentials" not in response.headers
@@ -465,6 +469,7 @@ def test_domain_error_returns_problem_details(make_container, error, status, cod
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": HTTPStatus(status).phrase,
         "status": status,
@@ -486,6 +491,7 @@ def test_routing_error_returns_problem_details(client, method, path, status, cod
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": HTTPStatus(status).phrase,
         "status": status,
@@ -519,6 +525,7 @@ def test_http_exception_keeps_headers_and_respects_body_rules(
     else:
         assert response.headers["content-type"] == "application/problem+json"
         assert response.json() == {
+            "request_id": response.headers["X-Request-ID"],
             "type": "about:blank",
             "title": "Forbidden",
             "status": 403,
@@ -546,6 +553,7 @@ def test_unhandled_exception_returns_500_problem_without_leaking(
     assert response.status_code == 500
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Internal Server Error",
         "status": 500,
@@ -558,9 +566,12 @@ def test_unhandled_exception_returns_500_problem_without_leaking(
     ]
     assert len(records) == 1
     assert records[0].getMessage() == "Unhandled exception"
+    assert records[0].request_id == response.headers["X-Request-ID"]
     assert records[0].exc_info is not None
-    assert records[0].exc_info[1] is error
-    assert "hunter2" in caplog.text
+    assert records[0].exc_info[1] is not error
+    assert records[0].exc_info[2] is not None
+    assert "RuntimeError" in caplog.text
+    assert "hunter2" not in caplog.text
 
 
 def test_openapi_documents_every_error_as_problem_details(client):
@@ -610,6 +621,7 @@ def test_http_exception_unregistered_status_keeps_status_detail_and_headers(
     assert response.headers["content-type"] == "application/problem+json"
     assert response.headers["x-reason"] == "custom"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unknown Status",
         "status": status,
@@ -653,6 +665,7 @@ def test_middleware_http_exception_returns_problem_without_server_error_log(
         assert response.headers[name] == value
     phrase = "Unauthorized" if error.status_code == 401 else "Unknown Status"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": phrase,
         "status": error.status_code,
@@ -700,6 +713,7 @@ def test_http_exception_representation_headers_match_problem_body(
     assert response.headers["www-authenticate"] == "Bearer"
     assert response.headers["allow"] == "GET"
     assert response.json() == {
+        "request_id": response.headers["X-Request-ID"],
         "type": "about:blank",
         "title": "Unauthorized",
         "status": 401,

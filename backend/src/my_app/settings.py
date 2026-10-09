@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from pydantic import AnyHttpUrl, field_validator
@@ -37,6 +37,8 @@ class Settings(BaseSettings):
             (``just backend db-upgrade``): the app never creates its schema.
         cors_origins: Exact HTTP(S) origins allowed to call the API, from
             comma-separated ``MY_APP_CORS_ORIGINS``; empty disables CORS.
+        log_level: DEBUG, INFO, WARNING or ERROR, case-insensitive; blank uses INFO.
+        log_format: text or JSON lines; blank uses text.
     """
 
     model_config = SettingsConfigDict(
@@ -48,6 +50,20 @@ class Settings(BaseSettings):
 
     database_url: str | None = None
     cors_origins: Annotated[list[str], NoDecode] = []
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["text", "json"] = "text"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _parse_log_level(cls, value: str) -> str:
+        """Keep levels case-insensitive and blank values at the default."""
+        return value.upper() if value else "INFO"
+
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def _parse_log_format(cls, value: str) -> str:
+        """Treat an empty environment value as the text default."""
+        return value or "text"
 
     @field_validator("cors_origins", mode="before")
     @classmethod

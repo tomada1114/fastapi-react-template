@@ -40,4 +40,4 @@ db-revision MESSAGE url=(shell(database_url_command)): (db-upgrade url)
 # Never ends on its own; an agent runs its own server on a free port instead (running-the-app).
 # Human-run: migrate the database, then serve the API on http://127.0.0.1:8000, reloading on source changes
 dev url=(shell(database_url_command)): (db-upgrade url)
-    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked uvicorn my_app.api.app:create_app --factory --reload
+    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked uvicorn my_app.api.app:create_app --factory --reload --no-access-log
