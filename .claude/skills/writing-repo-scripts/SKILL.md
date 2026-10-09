@@ -34,8 +34,9 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
   `language: python`, so ruff's `per-file-target-version` holds it to Python 3.10
   syntax. It inherits `GIT_*` from the hook on purpose, because `git commit -a` hands
   the hook a temporary index through `GIT_INDEX_FILE`.
-- No fastapi, uvicorn, sqlite3, or httpx, as in the core. Review holds this: the
-  `banned-api` table lives in `backend/pyproject.toml` and does not reach `scripts/`.
+- Enforced by: `tests/test_script_imports.py`, which checks repository and skill
+  scripts for imports outside the stdlib and sibling modules. The backend's
+  `banned-api` table does not reach `scripts/`.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and
   `print` is its output channel.
 
