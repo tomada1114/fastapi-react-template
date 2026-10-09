@@ -107,8 +107,8 @@ row in `docs/architecture/README.md`, per **REQUIRED:**
 
 - **App shape**: whether the app keeps the API, and why.
 - **Persistence**: where and in what format the app keeps state — the in-memory
-  repository, the stdlib SQLite adapter, or another store — with how a schema change
-  reaches existing data. Write it as soon as the app keeps state of its own.
+  repository, the SQL adapter (SQLAlchemy with Alembic migrations, on SQLite or
+  PostgreSQL), or another store — with how a schema change reaches existing data. Write it as soon as the app keeps state of its own.
 
 Each new runtime dependency or external service the first features need is an ADR too,
 and a new dependency waits for the owner's sign-off.

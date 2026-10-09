@@ -76,9 +76,10 @@ port's docstring is the contract and
 `InMemoryTodoRepository` turns a `KeyError` into
 `TodoNotFoundError`, and both repositories raise `InvalidCursorError` for a page cursor
 they did not issue (`adapters/cursor.py`). A port may also promise a builtin exception
-for a bug: `add` of an id already stored raises `ValueError`, so `SqliteTodoRepository`
-translates only `sqlite3.IntegrityError` into it. A driver failure with no meaning in
-the port — a locked database, a full disk — stays a bug and propagates.
+for a bug: `add` of an id already stored raises `ValueError`, so `SqlTodoRepository`
+translates only SQLAlchemy's `IntegrityError` into it. A driver failure with no meaning
+in the port — a locked database, a full disk, a missing table — stays a bug and
+propagates.
 
 ## The HTTP mapping
 

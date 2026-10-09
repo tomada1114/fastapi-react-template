@@ -57,11 +57,19 @@ env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" u
 ```
 
 Leave `MY_APP_DATABASE_URL` out for the in-memory store, or point it at a file in a
-directory from `mktemp -d`, outside the checkout (`db="sqlite:///$(mktemp -d)/todos.db"`);
-a relative `sqlite:///todos.db` would create the file in the working directory. Set it in
-the same shell command that starts the server: an agent's shell does not keep an
-exported variable from one call to the next, so a server started later would silently
-use the developer's environment instead.
+directory from `mktemp -d`, outside the checkout
+(`db="sqlite+aiosqlite:///$(mktemp -d)/todos.db"`); a relative path would create the
+file in the working directory. Never point it at `backend/var/dev.db`, the developer's
+database. The app never creates its schema, so migrate the scratch file first, in the
+same shell command (**BACKGROUND:** `persisting-data`):
+
+```bash
+env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" uv run --locked alembic -c backend/alembic.ini upgrade head
+```
+
+Set the variable in the same shell command that starts the server: an agent's shell
+does not keep an exported variable from one call to the next, so a server started
+later would silently use the developer's environment instead.
 
 ## Running a server of your own
 
@@ -145,9 +153,10 @@ INFO:     Uvicorn running on http://127.0.0.1:60945 (Press CTRL+C to quit)
 INFO:     Finished server process [98971]
 ```
 
-The server command is the one `just dev` runs, minus `--reload`, plus `--port`. The
-in-memory store starts empty on every start; create what a request needs with a
-`POST` first.
+The server command is the one `just backend dev` serves with, minus `--reload`, plus
+`--port`; unlike `just dev`, it migrates nothing and, with `MY_APP_DATABASE_URL`
+cleared, keeps to-dos in memory. That store starts empty on every start; create what a
+request needs with a `POST` first.
 
 ## The evidence a pull request carries
 

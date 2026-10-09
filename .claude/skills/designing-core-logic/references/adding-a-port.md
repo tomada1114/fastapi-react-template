@@ -37,4 +37,5 @@ registered context managers and keeps their suppression decision, and a failing 
 propagates after the rest run. The API's lifespan awaits `aclose()` on a container its
 factory built; a supplied `container=` stays caller-owned. Each `TestClient` context
 runs the app on its own loop, so never reuse a container holding a loop-bound resource
-across two of them. Current adapters register nothing here.
+across two of them. The SQL repository's engine is registered this way
+(`resources.push_async_callback(engine.dispose)`; **BACKGROUND:** `persisting-data`).

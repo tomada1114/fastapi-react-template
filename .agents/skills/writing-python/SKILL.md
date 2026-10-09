@@ -115,13 +115,15 @@ if TYPE_CHECKING:
   ```
 
   `from None` drops a cause that adds nothing; `from error` keeps one that does.
-- **A context manager for every resource.** When an object's own `with` does not
-  release it, compose `contextlib.closing`: `SqliteTodoRepository._transaction` closes
-  the connection that `sqlite3.Connection`'s context manager only commits. A reusable
-  boundary is a `@contextmanager` function (`SqliteTodoRepository._transaction`).
+- **A context manager for every resource.** Acquire it with `with` or `async with`
+  so it is released on every path: `SqlTodoRepository` takes each connection with
+  `async with self._engine.begin() as connection:`, which commits, or rolls back on an
+  error, and returns the connection to the pool. When an object's own `with` does not
+  release it, compose `contextlib.closing`; a reusable boundary is a
+  `@contextmanager` or `@asynccontextmanager` function.
 - **`match`/`case`** for dispatch on type or shape (`_status_for` in `api/app.py`).
-- **The walrus operator** where it removes a repeated expression:
-  `if (path := settings.sqlite_path) is not None:` in `composition.py`.
+- **The walrus operator** where it removes a repeated expression, as in
+  `if (found := pattern.search(text)) is not None:`.
 - **Comprehensions** over `map()` and `filter()`; `*args`/`**kwargs` only when a call
   genuinely forwards them.
 - **Time is never read directly** in the core; it arrives through the injected `Clock`
@@ -142,8 +144,9 @@ if TYPE_CHECKING:
 
 - A path built from outside input is resolved with `Path.resolve()` and checked to stay
   under its allowed root before it is opened.
-- SQL uses `?` parameters only, with the statement a module constant spelled out in
-  full (`adapters/sqlite.py`'s `_SELECT_ONE` and siblings).
+- SQL takes values only through bound parameters, with the statement a module
+  constant built once (`adapters/sql/repository.py`'s `_SELECT_ONE` and siblings,
+  `persisting-data`); never a string assembled from input.
 - A subprocess takes a fixed argv list, never `shell=True`; its `# noqa: S603` names why
   the argv is safe (`backend/tests/test_composition.py`).
 

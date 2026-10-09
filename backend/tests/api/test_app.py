@@ -64,8 +64,10 @@ def test_unmapped_app_error_returns_400_not_500(make_container):
     assert response.json() == {"detail": UNMAPPED_MESSAGE}
 
 
-def test_create_app_without_settings_reads_the_environment(tmp_path, monkeypatch):
-    monkeypatch.setenv("MY_APP_DATABASE_URL", f"sqlite:///{tmp_path / 'env.db'}")
+def test_create_app_without_settings_reads_the_environment(
+    migrated_sqlite_url, monkeypatch
+):
+    monkeypatch.setenv("MY_APP_DATABASE_URL", migrated_sqlite_url)
 
     with TestClient(create_app()) as writer:
         created = writer.post("/todos", json={"title": "from env"})
@@ -84,8 +86,8 @@ def test_create_app_each_call_owns_an_independent_store():
         assert second.get("/todos").json()["items"] == []
 
 
-def test_create_app_with_sqlite_keeps_todos_across_apps(tmp_path):
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'todos.db'}")
+def test_create_app_with_sql_keeps_todos_across_apps(migrated_sqlite_url):
+    settings = Settings(database_url=migrated_sqlite_url)
     with TestClient(create_app(settings)) as first:
         first.post("/todos", json={"title": "survives"})
 
@@ -93,6 +95,17 @@ def test_create_app_with_sqlite_keeps_todos_across_apps(tmp_path):
         titles = [todo["title"] for todo in second.get("/todos").json()["items"]]
 
     assert titles == ["survives"]
+
+
+def test_create_app_on_unmigrated_database_answers_500(sqlite_url):
+    # The app never creates its schema: a database nobody migrated is a bug in
+    # the deployment, reported as a server error rather than repaired.
+    app = create_app(Settings(database_url=sqlite_url))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/todos")
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 def test_create_app_every_route_is_a_coroutine_function(make_container):

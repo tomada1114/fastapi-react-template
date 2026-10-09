@@ -67,10 +67,25 @@ rule and a test keep the core clean, and the CLI reaches the API only through
 `cli/serve.py`, so dropping the entry point you do not need is a list of
 deletions (README's Architecture section), not a refactor.
 
-The runtime dependencies are exactly what those entry points need — FastAPI,
-uvicorn, Typer, and pydantic-settings — and the SQLite adapter uses the
-stdlib `sqlite3` driver rather than an ORM. Anything else is yours to add
-deliberately.
+The runtime dependencies are what the API and its storage need — FastAPI,
+uvicorn, and pydantic-settings for the API; SQLAlchemy, Alembic, and aiosqlite
+for the SQL store (below). Anything else is yours to add deliberately.
+
+### Why SQLAlchemy Core and Alembic, and never migrating at start-up?
+
+An app cut from the template keeps state from its first feature, and the first
+schema change it makes needs a path for the data already stored. So the SQL
+adapter is SQLAlchemy's asyncio API in Core style — explicit `Table` metadata
+and statements inside `adapters/`, no ORM classes, no SQLModel — with Alembic
+revisions as the schema's only author (tomada1114/fastapi-react-template#3,
+D4). Core keeps rows inside the adapter, so the core's ports stay ones a
+key-value store could implement too; SQLModel would make one class both the API
+schema and the table, coupling the layers the core/adapter split separates.
+SQLite through `aiosqlite` is the local default, so a first run needs no
+Docker; PostgreSQL takes the same statements. Migrations run only when asked
+(`just backend db-upgrade`, which `just dev` runs first): an app that migrates
+or calls `create_all` at start-up hides a missing revision and races when two
+processes start at once. The `persisting-data` skill holds the workflow.
 
 ### Why no LLM layer?
 
