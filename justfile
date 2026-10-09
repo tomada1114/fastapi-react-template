@@ -1,6 +1,9 @@
 # Development task runner — requires Just (https://just.systems)
 # All commands also work without Just by running the uv commands directly.
 
+# The FastAPI app in backend/: `just backend <recipe>`
+mod backend
+
 # Show available recipes
 default:
     @just --list
@@ -63,26 +66,23 @@ fmt:
     uv run --locked ruff check --fix .
     uv run --locked ruff format .
 
-# mypy runs twice: the root config checks scripts/, tests/, and skill scripts;
-# backend/pyproject.toml checks the app. Both trees hold a `tests` package.
-# Run linters and type checker
-lint:
+# backend::lint checks the app with backend/pyproject.toml's config; these lines
+# check the whole tree with the root's (scripts/, tests/, and skill scripts for
+# mypy). Both trees hold a `tests` package, so mypy runs once in each.
+# Run linters and type checker (the backend's first)
+lint: backend::lint
     uv run --locked ruff check .
     uv run --locked ruff format --check .
     uv run --locked mypy
-    uv run --locked --directory backend mypy
 
-# The root suite and the app's suite run separately (each has a `tests`
-# package); the 80% branch-coverage floor measures backend/src.
-# Run tests in parallel with coverage
-test:
+# backend::test runs the app's suite with the 80% branch-coverage floor over
+# backend/src; this line runs the root suite (the harness and the scripts' tests).
+# Run tests in parallel with coverage (the backend's first)
+test: backend::test
     uv run --locked pytest -n auto
-    uv run --locked --directory backend pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
-# Never ends on its own; an agent starts its own uvicorn on a free port instead and stops it.
-# Human-run: serve the HTTP API on http://127.0.0.1:8000, reloading on source changes
-dev:
-    uv run --locked uvicorn my_app.api.app:create_app --factory --reload
+# Human-run: serve the app (`just backend dev`); runs until stopped
+dev: backend::dev
 
 # Update uv.lock after changing dependency declarations
 lock:

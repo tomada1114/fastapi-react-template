@@ -1,0 +1,26 @@
+# The FastAPI app's recipes, a just module of the root justfile: run them as
+# `just backend <recipe>` from anywhere in the repository. Each runs in this
+# directory, so `uv run` reads backend/pyproject.toml's ruff, mypy, pytest, and
+# coverage settings. CI's `Lint & Type Check` and `Coverage` jobs repeat the
+# `lint` and `test` lines verbatim in a `working-directory: backend` step
+# (tests/harness/test_just_recipes.py holds them equal).
+
+# Lint and type-check the backend (ruff, ruff format --check, mypy strict)
+lint:
+    uv run --locked ruff check .
+    uv run --locked ruff format --check .
+    uv run --locked mypy
+
+# Format the backend (lint fixes first so the formatter has the last word)
+fmt:
+    uv run --locked ruff check --fix .
+    uv run --locked ruff format .
+
+# Run the backend tests in parallel with branch coverage (80% floor)
+test:
+    uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
+
+# Never ends on its own; an agent runs its own server on a free port instead (running-the-app).
+# Human-run: serve the API on http://127.0.0.1:8000, reloading on source changes
+dev:
+    uv run --locked uvicorn my_app.api.app:create_app --factory --reload

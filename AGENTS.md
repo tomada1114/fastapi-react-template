@@ -49,8 +49,11 @@ Grouped by who runs them; the `justfile` is the source of truth, this its index.
 just install         # Install dependencies and git hooks when .git/ is present
 just setup           # Alias for just install (first-time setup)
 just fmt             # Format code (ruff check --fix + ruff format)
-just lint            # Lint (ruff check) + type check (mypy)
-just test            # Run tests in parallel with coverage
+just lint            # Lint (ruff check) + type check (mypy): just backend lint, then the root
+just test            # Run tests in parallel: just backend test, then the root suite
+just backend lint    # Lint and type-check the backend (ruff, ruff format --check, mypy strict)
+just backend fmt     # Format the backend
+just backend test    # Run the backend tests in parallel with branch coverage (80% floor)
 just check           # Mutating dev check: fmt → lint → test
 just lock            # Update uv.lock after dependency changes
 just lock-check      # Fail when uv.lock is out of date, without changing it
@@ -69,13 +72,15 @@ just clean           # Remove build artifacts and caches
 ### Long-running — human-run
 
 ```bash
-just dev             # Serve the API on http://127.0.0.1:8000 with auto-reload; runs until stopped
+just dev             # Run just backend dev; runs until stopped
+just backend dev     # Serve the API on http://127.0.0.1:8000 with auto-reload; runs until stopped
 ```
 
-`just dev` is the developer's server: never start, stop, or restart it, or bind
-its port. To see what only a running server shows, prefer a `TestClient` test,
-else your own `uv run --locked uvicorn my_app.api.app:create_app --factory --port
-<free port>`, stopped before your turn ends (`running-the-app`).
+`just dev` and `just backend dev` are the developer's server: never start, stop,
+or restart one, or bind its port. To see what only a running server shows,
+prefer a `TestClient` test, else your own `uv run --locked uvicorn
+my_app.api.app:create_app --factory --port <free port>`, stopped before your
+turn ends (`running-the-app`).
 
 ### Writes to GitHub
 
@@ -84,7 +89,8 @@ just labels          # Create/update GitHub labels from .github/labels.yml (ask 
 just ruleset         # Apply .github/rulesets/main.json to GitHub (admin-only human step; never an agent)
 ```
 
-Without Just, run the `uv run` commands the `justfile` gives each recipe.
+Without Just, run the `uv run` commands the `justfile` gives each recipe, and a
+`backend::` dependency's lines from `backend/justfile` in `backend/`.
 `just check` runs `fmt` first, so it never proves the *committed* tree green;
 `just verify` mutates nothing and is the gate for a PR or a completion claim.
 

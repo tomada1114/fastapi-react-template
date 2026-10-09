@@ -5,14 +5,19 @@ that lists ``just verify``'s steps; every other document points at it. So:
 
 - every justfile recipe and alias but ``default`` (``just --list``) appears as
   ``just <name>`` in command position in the section (fenced or inline, as
-  check (c) reads code), and
+  check (c) reads code),
+- every recipe and alias but ``default`` of each module the root justfile
+  declares (``mod backend``) appears as ``just <module> <name>`` or
+  ``just <module>::<name>`` there too, and
 - the comment on its ``just verify`` line lists ``verify``'s dependencies in
   the justfile's order, as ``<label>: a → b → c``: prior and subsequent
-  (``&&``) ones alike, a ``(name arg ...)`` dependency by its name.
+  (``&&``) ones alike, a ``(name arg ...)`` dependency by its name, and a
+  module recipe as one step, ``module::name``.
 
 The section runs from ``## Quick Reference`` to the next ``## `` heading. A
-missing AGENTS.md, section, or ``just verify`` line fails closed; a justfile
-with no ``verify`` recipe (an app that dropped it) skips the second rule.
+missing AGENTS.md, section, ``just verify`` line, or non-optional module file
+fails closed; a justfile with no ``verify`` recipe (an app that dropped it)
+skips the last rule.
 """
 
 from __future__ import annotations
@@ -23,7 +28,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.harness.test_just_recipes import code_snippets, commands, justfile_recipes
+from tests.harness.test_just_recipes import (
+    code_snippets,
+    commands,
+    justfile_modules,
+    justfile_recipes,
+    module_findings,
+    module_recipes,
+    parse_call,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -39,13 +52,14 @@ UNINDEXED = frozenset({"default"})
 ARROW = "→"
 
 _NAME = r"[A-Za-z_][A-Za-z0-9_-]*"
-_CALL = re.compile(rf"^just\s+(?P<name>{_NAME})")
+_PATH = rf"{_NAME}(?:::{_NAME})*"
 _VERIFY_HEADER = re.compile(r"^@?verify(?:[ \t]+[^:]*?)?[ \t]*:(?!=)(?P<deps>.*)$")
 _VERIFY_LINE = re.compile(r"^\s*just\s+verify\b[^#]*#(?P<comment>.*)$")
 _QUOTED = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'[^']*'")
-# A dependency is a bare name or `(name arg ...)`; `&&` only marks the ones
-# after it as running after the body, and verify's body is empty.
-_DEPENDENCY = re.compile(rf"\(\s*(?P<call>{_NAME})[^)]*\)|(?P<name>{_NAME})")
+# A dependency is a bare name or `(name arg ...)`, each name possibly a module
+# path (`backend::lint`); `&&` only marks the ones after it as running after the
+# body, and verify's body is empty.
+_DEPENDENCY = re.compile(rf"\(\s*(?P<call>{_PATH})[^)]*\)|(?P<name>{_PATH})")
 
 
 def verify_dependencies(text: str) -> list[str] | None:
@@ -86,18 +100,28 @@ def quick_reference_findings(root: Path) -> list[str]:
     if bounds is None:
         return [f"{AGENTS} has no `{HEADING}` section"]
     first, last = bounds
+    declared = set(justfile_modules(recipes_text, root))
     indexed = {
-        match["name"]
+        (call.module, call.recipe)
         for number, code in code_snippets(text)
         if first <= number <= last
         for command in commands(code)
-        if (match := _CALL.match(command))
+        if (call := parse_call(command, declared))
     }
-    findings = [
+    findings = module_findings(root)
+    findings.extend(
         f"{AGENTS}: `just {name}` is a {JUSTFILE} recipe the Quick Reference "
         "does not index"
-        for name in sorted(justfile_recipes(recipes_text) - UNINDEXED - indexed)
-    ]
+        for name in sorted(justfile_recipes(recipes_text) - UNINDEXED)
+        if (None, name) not in indexed
+    )
+    for module, found in sorted(module_recipes(root).items()):
+        findings.extend(
+            f"{AGENTS}: `just {module} {name}` is a {found.file} recipe the "
+            "Quick Reference does not index"
+            for name in sorted(found.recipes - UNINDEXED)
+            if (module, name) not in indexed
+        )
     deps = verify_dependencies(recipes_text)
     if deps is None:
         return findings
@@ -200,6 +224,11 @@ def test_verify_dependencies_reads_order_and_drops_comment() -> None:
             id="quoted-hash-in-argument",
         ),
         pytest.param("verify:", [], id="no-dependencies"),
+        pytest.param(
+            "verify: lint backend::lint (backend::test 'x') && docs::site::build",
+            ["lint", "backend::lint", "backend::test", "docs::site::build"],
+            id="module-paths",
+        ),
     ],
 )
 def test_verify_dependencies_reads_every_dependency_form(
@@ -314,3 +343,97 @@ def test_quick_reference_findings_missing_file_fails(
     (root / absent).unlink()
 
     assert quick_reference_findings(root) == [f"{absent} is missing"]
+
+
+# --- modules ---
+
+MODULE_JUSTFILE = """\
+lint:
+    uv run ruff check .
+
+fmt:
+    uv run ruff format .
+
+dev:
+    uv run uvicorn app:app
+"""
+
+MODULE_SECTION = """\
+```bash
+just backend lint    # Lint the backend
+just backend::fmt    # Format the backend
+```
+
+### Long-running
+
+```bash
+just backend dev     # Serve the API
+```
+"""
+
+
+def _module_root(make_root: MakeRoot, agents: str) -> Path:
+    root = make_root(f"mod backend\n\n{JUSTFILE_TEXT}", agents)
+    (root / "backend").mkdir()
+    (root / "backend/justfile").write_text(MODULE_JUSTFILE, encoding="utf-8")
+    return root
+
+
+def test_quick_reference_findings_indexed_module_recipes_pass(
+    make_root: MakeRoot,
+) -> None:
+    agents = AGENTS_TEXT.replace(
+        "## Architecture", f"{MODULE_SECTION}\n## Architecture"
+    )
+
+    assert quick_reference_findings(_module_root(make_root, agents)) == []
+
+
+def test_quick_reference_findings_unindexed_module_recipe_is_named(
+    make_root: MakeRoot,
+) -> None:
+    section = MODULE_SECTION.replace(
+        "just backend dev     # Serve the API\n", "just dev             # Serve\n"
+    )
+    agents = AGENTS_TEXT.replace("## Architecture", f"{section}\n## Architecture")
+
+    findings = quick_reference_findings(_module_root(make_root, agents))
+
+    # `just dev` names the root, not the module's `dev`.
+    assert findings == [
+        (
+            f"{AGENTS}: `just backend dev` is a backend/justfile recipe the Quick "
+            "Reference does not index"
+        )
+    ]
+
+
+def test_quick_reference_findings_module_recipe_outside_section_does_not_count(
+    make_root: MakeRoot,
+) -> None:
+    section = MODULE_SECTION.replace("just backend dev ", "just backend <recipe> ")
+    agents = AGENTS_TEXT.replace(
+        "## Architecture", f"{section}\n## Architecture\n\nRun `just backend dev`.\n"
+    )
+
+    findings = quick_reference_findings(_module_root(make_root, agents))
+
+    assert findings == [
+        (
+            f"{AGENTS}: `just backend dev` is a backend/justfile recipe the Quick "
+            "Reference does not index"
+        )
+    ]
+
+
+def test_quick_reference_findings_missing_module_file_fails(
+    make_root: MakeRoot,
+) -> None:
+    root = make_root(f"mod backend\n\n{JUSTFILE_TEXT}", AGENTS_TEXT)
+
+    assert quick_reference_findings(root) == [
+        (
+            f"{JUSTFILE}: `mod backend` has no module file (looked for backend.just, "
+            "backend/mod.just, backend/justfile, backend/.justfile)"
+        )
+    ]

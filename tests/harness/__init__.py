@@ -10,10 +10,15 @@ repository and fails on a fixture built under ``tmp_path``:
   ``SKILL.md`` exists;
 - (b) ``test_skills.py``: AGENTS.md's Skills table lists exactly those skills;
 - (c) ``test_just_recipes.py``: every ``just <recipe>`` in command position
-  in the top-level Markdown, ``docs/**`` (bar the ADRs, the roadmap, and
-  ``docs/product/``), the skills, the agent definitions, ``.github/**``
-  (composite actions' ``run:`` included), ``.pre-commit-config.yaml``, and
-  the scripts exists in the justfile (its docstring lists what is not read);
+  in the top-level Markdown, each area's ``AGENTS.md`` and ``CLAUDE.md``,
+  ``docs/**`` (bar the ADRs, the roadmap, and ``docs/product/``), the skills,
+  the agent definitions, ``.github/**`` (composite actions' ``run:``
+  included), ``.pre-commit-config.yaml``, and the scripts exists in the
+  justfile, and every ``just <module> <recipe>`` (or ``<module>::<recipe>``)
+  in the module's file a ``mod`` statement declares (its docstring lists what
+  is not read); a non-optional module without a file fails, and the required
+  CI jobs repeat the ``lint``/``test`` recipe lines verbatim, a module
+  recipe's in a step whose ``working-directory`` is the module's directory;
 - (d) ``test_ruleset_contexts.py``: every required context in
   ``.github/rulesets/main.json`` is a job that runs on every pull request and
   cannot be skipped, and one with ``needs:`` has a step, in one of the
@@ -30,8 +35,9 @@ repository and fails on a fixture built under ``tmp_path``:
 - (h) ``test_dependabot_cooldown.py``: the Dependabot ``uv`` update's
   ``cooldown.default-days`` equals ``[tool.uv] exclude-newer``'s day count;
 - (i) ``test_quick_reference.py``: AGENTS.md's Quick Reference names every
-  justfile recipe but ``default``, and its ``just verify`` line lists
-  ``verify``'s dependencies in order;
+  justfile recipe and every module recipe (as ``just <module> <recipe>``) but
+  ``default``, and its ``just verify`` line lists ``verify``'s dependencies in
+  order;
 - (g) the Product section check is ``tests/test_product_section.py``
   (tomada1114/uv-template#95),
   not duplicated here.
