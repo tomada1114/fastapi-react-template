@@ -146,6 +146,35 @@ class ExtractDepsTest(unittest.TestCase):
         deps = idg.extract_deps("Blocked by #3", "Requires #4", self_number=1)
         self.assertEqual(deps["depends_on"], [3, 4])
 
+    def test_container_code_dependencies_are_ignored(self):
+        for body in (
+            "- Example:\n\n      requires #99\n",
+            "1. Example:\n\n       requires #99\n",
+            "- Example:\n  - Nested:\n\n        requires #99\n",
+            "> ~~~text\n> requires #99\n> ~~~\n",
+            "> > ~~~text\n> > requires #99\n> > ~~~\n",
+            "- ~~~text\n  requires #99\n  ~~~\n",
+            "> - Example:\n>\n>       requires #99\n",
+            "~~~\n> ~~~\nrequires #99\n~~~\n",
+        ):
+            with self.subTest(body=body):
+                deps = idg.extract_deps(body + "\nBlocked by #3", "", self_number=1)
+                self.assertEqual(deps["depends_on"], [3])
+
+    def test_container_prose_dependencies_are_kept(self):
+        for body in (
+            "- Example:\n\n    requires #3\n",
+            "> requires #3\n",
+            "- Example:\n  - Nested:\n\n      requires #3\n",
+            "> ~~~\n> requires #99\n\nRequires #3\n",
+            "- ~~~\n  requires #99\n\nRequires #3\n",
+            "-   Example:\n\n      requires #3\n",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(
+                    idg.extract_deps(body, "", self_number=1)["depends_on"], [3]
+                )
+
     def test_ignored_regions_do_not_join_dependency_phrases(self):
         for region in (
             "`example`",

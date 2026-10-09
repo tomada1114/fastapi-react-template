@@ -126,7 +126,10 @@ _BACKTICK_RUN_RE = re.compile(r"`+")
 # after up to three spaces, with `<!--`. It runs to the line holding `-->`.
 _HTML_COMMENT_OPEN_RE = re.compile(r"^ {0,3}<!--")
 # A list item's first line: a bullet or an ordered marker, then a space or tab.
-_LIST_ITEM_RE = re.compile(r"^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)")
+_LIST_ITEM_RE = re.compile(
+    r"^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]{1,4}(?=\S|$)|[ \t]|$)"
+)
+_BLOCKQUOTE_RE = re.compile(r"^ {0,3}>[ \t]?")
 
 
 def _indent_width(line: str) -> int:
@@ -155,21 +158,21 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
     An indented code block starts on a line indented four or more columns (a
     tab counts to the next multiple of 4) that does not continue a paragraph:
     an indented line straight after paragraph text is a lazy continuation of
-    it. It runs across blank lines until a non-blank line indented less. Once
-    a list item has been seen, indented lines are read as its continuation
-    rather than code until a blank line is followed by an unindented,
-    non-list line. Code nested inside list items, other HTML blocks, and
-    backslash-escaped backticks are not modelled.
+    it. It runs across blank lines until a non-blank line indented less.
+    Blockquote markers and list-content indentation are removed for block
+    recognition, while returned offsets still refer to the original text.
+    Other HTML blocks and backslash-escaped backticks are not modelled.
     """
     spans: list[tuple[int, int]] = []
     paragraphs: list[tuple[int, int]] = []
     pos = 0
-    fence: tuple[str, int, int] | None = None  # (char, length, start)
+    # char, length, start, quote depth, list-content indent
+    fence: tuple[str, int, int, int, int] | None = None
     in_comment = False
     para_start: int | None = None
     indented: tuple[int, int] | None = None  # (start, end of last non-blank line)
-    in_list = False
-    after_blank = True
+    list_indents: list[int] = []
+    previous_quote_depth = 0
 
     def end_paragraph(at: int) -> None:
         nonlocal para_start
@@ -178,25 +181,48 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             para_start = None
 
     for line in body.splitlines(keepends=True):
-        stripped = line.rstrip("\r\n")
+        stripped = line.rstrip("\r\n").expandtabs(4)
+        quote_depth = 0
+        while fence is None or quote_depth < fence[3]:
+            quote = _BLOCKQUOTE_RE.match(stripped)
+            if quote is None:
+                break
+            stripped = stripped[quote.end() :]
+            quote_depth += 1
+        if quote_depth != previous_quote_depth:
+            list_indents.clear()
+            end_paragraph(pos)
+        previous_quote_depth = quote_depth
+        if fence is not None and quote_depth < fence[3]:
+            spans.append((fence[2], pos))
+            fence = None
+        indent = _indent_width(stripped)
+        if fence is not None and stripped.strip() and indent < fence[4]:
+            spans.append((fence[2], pos))
+            fence = None
+        if stripped.strip():
+            while list_indents and indent < list_indents[-1]:
+                list_indents.pop()
+        if list_indents:
+            stripped = stripped[list_indents[-1] :]
+        if fence is None and not in_comment:
+            while marker := _LIST_ITEM_RE.match(stripped):
+                end_paragraph(pos)
+                base = list_indents[-1] if list_indents else 0
+                list_indents.append(base + marker.end())
+                stripped = stripped[marker.end() :]
         blank = not stripped.strip()
         indent = _indent_width(stripped)
         if indented is not None:
             if blank or indent >= 4:
                 if not blank:
                     indented = (indented[0], pos + len(line))
-                after_blank = blank
                 pos += len(line)
                 continue
             spans.append(indented)
             indented = None
-        if fence is None and not in_comment and not blank:
-            if _LIST_ITEM_RE.match(stripped):
-                in_list = True
-            elif after_blank and indent == 0:
-                in_list = False
         if fence is not None:
-            char, length, start = fence
+            char, length, start, _, _ = fence
             close = re.fullmatch(
                 rf" {{0,3}}({re.escape(char)}{{{length},}})\s*", stripped
             )
@@ -207,17 +233,22 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             in_comment = "-->" not in stripped
         elif m := _FENCE_OPEN_RE.match(stripped):
             end_paragraph(pos)
-            fence = (m.group(1)[0], len(m.group(1)), pos)
+            fence = (
+                m.group(1)[0],
+                len(m.group(1)),
+                pos,
+                quote_depth,
+                list_indents[-1] if list_indents else 0,
+            )
         elif _HTML_COMMENT_OPEN_RE.match(stripped):
             end_paragraph(pos)
             in_comment = "-->" not in stripped[stripped.index("<!--") + 4 :]
         elif blank:
             end_paragraph(pos)
-        elif indent >= 4 and para_start is None and not in_list:
+        elif indent >= 4 and para_start is None:
             indented = (pos, pos + len(line))
         elif para_start is None:
             para_start = pos
-        after_blank = blank
         pos += len(line)
     if fence is not None:
         spans.append((fence[2], len(body)))
