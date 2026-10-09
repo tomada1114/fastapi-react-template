@@ -12,6 +12,7 @@ git repos under tempfile.TemporaryDirectory() instead.
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -94,6 +95,35 @@ def issue_args(issue: str, root: Path) -> list:
 
 def deps_lines(stdout: str) -> list:
     return [ln for ln in stdout.splitlines() if ln.startswith("deps: ")]
+
+
+# Every external command worktree_setup.sh runs on its create-and-install path
+# (git, the coreutils its helpers call, and the shells), linked by name.
+SCRIPT_TOOLS = (
+    "bash",
+    "sh",
+    "env",
+    "git",
+    "dirname",
+    "basename",
+    "mktemp",
+    "mkdir",
+    "rm",
+    "tail",
+    "sed",
+    "grep",
+)
+
+
+def tools_only_path(bin_dir: Path) -> Path:
+    """Fill `bin_dir` with a symlink to each of SCRIPT_TOOLS, resolved on the
+    real PATH, and return it: a PATH holding no other command."""
+    for name in SCRIPT_TOOLS:
+        target = shutil.which(name)
+        if target is None:
+            raise AssertionError("the test host has no " + name + " on PATH")
+        (bin_dir / name).symlink_to(target)
+    return bin_dir
 
 
 def run_script(args, cwd, *, extra_path: str | None = None):
@@ -466,12 +496,14 @@ class WorktreeSetupTest(unittest.TestCase):
             bin_dir = td / "bin"
             bin_dir.mkdir()
             env = dict(os.environ)
-            # The system directories only: a pnpm installed by a version
-            # manager or under /usr/local is out of reach.
-            env["PATH"] = os.pathsep.join([str(bin_dir), "/usr/bin", "/bin"])
+            # PATH is one directory of links to the tools the script calls and
+            # nothing else, so no pnpm the host has (a version manager's, a
+            # corepack shim in /usr/bin) is reachable.
+            env["PATH"] = str(tools_only_path(bin_dir))
 
             proc = subprocess.run(
-                ["bash", str(SCRIPT), *issue_args("10", root)],
+                [shutil.which("bash") or "/bin/bash", str(SCRIPT)]
+                + issue_args("10", root),
                 cwd=repo,
                 env=env,
                 text=True,
@@ -479,6 +511,7 @@ class WorktreeSetupTest(unittest.TestCase):
             )
 
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+        self.assertIn("result: CREATED\n", proc.stdout)
         self.assertEqual(
             deps_lines(proc.stdout),
             ["deps: FAILED: pnpm install --frozen-lockfile (exit=127)"],
