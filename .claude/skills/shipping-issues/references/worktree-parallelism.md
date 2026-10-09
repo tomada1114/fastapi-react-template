@@ -63,7 +63,7 @@ nothing. Teardown here is `cleanup_run.sh` and nothing else.
 ## Viability gate
 
 `worktree_setup.sh` reconstructs what a fresh worktree lacks — it installs from the
-lockfile without copying local config, and runs the project's own verification command. Whether that is _enough_ for a given repo is not worth predicting; it is worth
+lockfiles without copying local config, and runs the project's own verification command. Whether that is _enough_ for a given repo is not worth predicting; it is worth
 testing, once, cheaply.
 
 Provision the group's **first** worktree and read its `verdict:` line:
@@ -141,11 +141,17 @@ knowingly red baseline has to show its work.
   `.claude/settings.local.json`. **Never copied.** A worktree gets no secret and no
   personal-permission file; an issue whose verification needs one is not worktree-viable
   and runs serially in the main checkout.
-- **Dependencies** — `.venv` is absent. `worktree_setup.sh` re-creates it from `uv.lock`
-  with `uv sync --all-groups --locked`, the same command `just install` runs; uv's
-  shared cache keeps that fast after the first worktree.
-- **A virtualenv can never be copied.** `pyvenv.cfg` and the `bin/` shims hold absolute
-  paths; a copied `.venv` is a broken one that fails in confusing ways. It is always
+- **Dependencies** — `.venv` and `node_modules` are absent. `worktree_setup.sh`
+  re-creates `.venv` from `uv.lock` with `uv sync --all-groups --locked`, then, when
+  `pnpm-lock.yaml` exists, `node_modules` with `pnpm install --frozen-lockfile` — the
+  installs `just install` runs. Each prints a `deps:` line; a failed one prints
+  `deps: FAILED: <cmd> (exit=<rc>)` and blocks the worktree, never moving on to the next.
+  uv's shared cache and pnpm's store keep both fast after the first worktree.
+- **Neither `.venv` nor `node_modules` is ever copied.** `pyvenv.cfg` and the `bin/`
+  shims hold absolute paths, and pnpm builds `node_modules` from symlinks into
+  `node_modules/.pnpm` and hard links into its store
+  (<https://pnpm.io/symlinked-node-modules-structure>, checked 2026-10-08); a copy of
+  either points at the wrong tree and fails in confusing ways. Both are always
   re-created by the tool.
 - **`.git` is a file, not a directory** in a linked worktree — it is a gitlink pointing
   into the main `.git/worktrees/<name>`. Any tool that assumes a `.git/` directory can
