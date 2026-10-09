@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
+from fastapi.utils import is_body_allowed_for_status_code
+from starlette.exceptions import HTTPException
 from starlette.middleware.cors import CORSMiddleware
 
 from my_app.api.routers import health, todos
-from my_app.api.schemas import ErrorResponse
+from my_app.api.schemas import (
+    PROBLEM_MEDIA_TYPE,
+    ProblemDetails,
+    ProblemFieldError,
+    problem_responses,
+)
 from my_app.composition import Container, build_container
 from my_app.core.errors import (
     AppError,
@@ -23,17 +32,18 @@ from my_app.core.errors import (
 from my_app.settings import Settings
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Mapping
 
     from fastapi.routing import APIRoute
     from starlette.types import ASGIApp
 
 APP_TITLE = "My App"
 API_PREFIX = "/api"
+logger = logging.getLogger("my_app.api.errors")
 
 
-class _CorsApp(FastAPI):
-    """Keep CORS outside server-error handling while retaining the factory API."""
+class _ApiApp(FastAPI):
+    """Apply the API media types and keep CORS outside server-error handling."""
 
     cors_origins: tuple[str, ...] = ()
 
@@ -49,6 +59,26 @@ class _CorsApp(FastAPI):
                 allow_credentials=False,
             )
         return middleware
+
+    def openapi(self) -> dict[str, Any]:
+        """Publish error models as Problem Details, preserving success media types.
+
+        FastAPI registers ``responses=`` models under the route's success
+        media type. Keep that schema registration, then correct error content
+        in its cached OpenAPI document. ``Any`` is the framework's schema type.
+        """
+        schema = super().openapi()
+        for path in schema["paths"].values():
+            for operation in path.values():
+                if not isinstance(operation, dict) or "responses" not in operation:
+                    continue
+                for response in operation["responses"].values():
+                    content = response.get("content", {})
+                    if content.get("application/json", {}).get("schema") == {
+                        "$ref": "#/components/schemas/ProblemDetails"
+                    }:
+                        content[PROBLEM_MEDIA_TYPE] = content.pop("application/json")
+        return schema
 
 
 def route_operation_id(route: APIRoute) -> str:
@@ -93,10 +123,11 @@ def create_app(
             if owns_container:
                 await services.aclose()
 
-    app = _CorsApp(
+    app = _ApiApp(
         title=APP_TITLE,
         lifespan=lifespan,
         generate_unique_id_function=route_operation_id,
+        responses=problem_responses(400, 422, 500),
     )
     app.cors_origins = tuple(settings.cors_origins)
     app.state.container = services
@@ -105,6 +136,9 @@ def create_app(
     # The decorator form, unlike add_exception_handler, type-checks a handler
     # that takes AppError rather than any Exception.
     app.exception_handler(AppError)(_handle_app_error)
+    app.exception_handler(RequestValidationError)(_handle_validation_error)
+    app.exception_handler(HTTPException)(_handle_http_error)
+    app.exception_handler(Exception)(_handle_unexpected_error)
     return app
 
 
@@ -131,7 +165,64 @@ def _status_for(error: AppError) -> HTTPStatus:
     return status
 
 
+def _problem_response(
+    status: int,
+    detail: str,
+    code: str,
+    *,
+    errors: list[ProblemFieldError] | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
+    """Serialize a client-safe error, omitting absent extensions."""
+    body = ProblemDetails(
+        title=HTTPStatus(status).phrase,
+        status=status,
+        detail=detail,
+        code=code,
+        errors=errors,
+    )
+    return JSONResponse(
+        status_code=status,
+        content=body.model_dump(exclude_none=True),
+        media_type=PROBLEM_MEDIA_TYPE,
+        headers=headers,
+    )
+
+
 async def _handle_app_error(_: Request, error: AppError) -> JSONResponse:
-    """Answer a domain error with its status and an ``ErrorResponse`` body."""
-    body = ErrorResponse(detail=str(error))
-    return JSONResponse(status_code=_status_for(error), content=body.model_dump())
+    """Translate the domain status table and code into Problem Details."""
+    return _problem_response(_status_for(error), str(error), error.code)
+
+
+async def _handle_validation_error(
+    _: Request, error: RequestValidationError
+) -> JSONResponse:
+    """Expose field locations and messages without echoing inputs or context."""
+    errors = [
+        ProblemFieldError(loc=list(item["loc"]), message=item["msg"], type=item["type"])
+        for item in error.errors()
+    ]
+    return _problem_response(
+        422, "Request validation failed", "request_invalid", errors=errors
+    )
+
+
+async def _handle_http_error(_: Request, error: HTTPException) -> Response:
+    """Keep protocol headers and leave statuses that forbid a body empty."""
+    if not is_body_allowed_for_status_code(error.status_code):
+        return Response(status_code=error.status_code, headers=error.headers)
+    code = {404: "not_found", 405: "method_not_allowed"}.get(
+        error.status_code, "http_error"
+    )
+    detail = (
+        error.detail
+        if isinstance(error.detail, str)
+        else HTTPStatus(error.status_code).phrase
+    )
+    return _problem_response(error.status_code, detail, code, headers=error.headers)
+
+
+async def _handle_unexpected_error(_: Request, error: Exception) -> JSONResponse:
+    """Keep exception details in the traceback log, never in the client body."""
+    logger.error("Unhandled exception", exc_info=error)
+    return _problem_response(500, "An unexpected error occurred", "internal_error")

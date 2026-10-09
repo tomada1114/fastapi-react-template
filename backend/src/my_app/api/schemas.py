@@ -7,7 +7,8 @@ A domain field can be renamed without breaking a client, because only the
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal
+from http import HTTPStatus
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -16,16 +17,37 @@ if TYPE_CHECKING:
     from my_app.core.models import Page, Todo
 
 
-class ErrorResponse(BaseModel):
-    """Body of every error a domain rule produces (404, 422, and 400).
+PROBLEM_MEDIA_TYPE = "application/problem+json"
 
-    ``detail`` is a single message here. FastAPI's own 422 for a request that
-    does not parse (a missing field, an id that is not a UUID, a non-integer
-    limit) keeps its list-shaped ``detail`` instead, so a client tells the two
-    apart by type.
-    """
 
+class ProblemFieldError(BaseModel):
+    """A request parsing failure, without raw input or server context."""
+
+    loc: list[str | int]
+    message: str
+    type: str
+
+
+class ProblemDetails(BaseModel):
+    """RFC 9457 error body with a stable application code."""
+
+    type: Literal["about:blank"] = "about:blank"
+    title: str
+    status: int
     detail: str
+    code: str
+    errors: list[ProblemFieldError] | None = None
+
+
+def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    """Register error models; the factory publishes their Problem media type.
+
+    ``Any`` matches FastAPI's ``responses=`` declaration type.
+    """
+    return {
+        status: {"model": ProblemDetails, "description": HTTPStatus(status).phrase}
+        for status in statuses
+    }
 
 
 class HealthResponse(BaseModel):

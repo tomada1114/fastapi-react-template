@@ -4,7 +4,7 @@ description: >
   Covers the AppError hierarchy in backend/src/my_app/core/errors.py and how the API reports
   it: when a failure earns a subclass, what its message and attributes carry,
   translating a driver error in an adapter, and the HTTP status _status_for in
-  api/app.py gives it with an ErrorResponse body (404, 422, 400 fallback). Use when adding a failure mode, choosing a status,
+  api/app.py gives it with a ProblemDetails body and stable code (404, 422, 400 fallback). Use when adding a failure mode, choosing a status,
   seeing an unexpected 500 or traceback, or deciding whether to log an error.
 ---
 
@@ -24,9 +24,8 @@ in general (`writing-python`).
   never shows a traceback.
 - **A bug:** anything else — a naive `datetime` from a clock, a driver error nobody
   translated. It is a builtin exception or left to propagate, and it keeps its
-  traceback: the API answers a plain-text `500 Internal Server Error` while the
-  traceback goes to the server's log (observed with starlette 1.3.1 and fastapi
-  0.139.2, 2026-10-06). Never catch `Exception` to dress a bug up as a domain error.
+  traceback: the API answers 500 Problem Details with code `internal_error` and
+  detail `An unexpected error occurred`; the traceback goes only to the log. Never catch `Exception` to dress a bug up as a domain error.
 
 `core/models.py` draws the line in one function: `_check_invariants` raises
 `InvalidTodoError` for a bad title but a plain `ValueError` for a naive `created_at`,
@@ -39,6 +38,9 @@ entry point can catch the whole family with a single `except`. A failure earns i
 subclass when a caller must tell it apart — an entry point maps it differently, or a
 caller needs data it carries. Otherwise raise an existing class with a new message.
 
+- Each class, including `AppError`, declares its own `code: ClassVar[str]`, unique
+  in the hierarchy and matching `^[a-z][a-z0-9_]*$`. The recursive core test checks
+  every class defined under `my_app`, excluding test-local subclasses.
 - Keep the data a caller needs as attributes, so nobody parses the message.
 - Pass exactly the constructor's arguments to `super().__init__`, so pickling (process
   pools, task queues) rebuilds an equal error. `backend/tests/core/test_errors.py`
@@ -54,6 +56,8 @@ where marked; the real code keeps them, because ruff's `D` rules require them.
 ```python
 class TodoNotFoundError(AppError):
     # ... docstrings elided
+    code: ClassVar[str] = "todo_not_found"
+
     def __init__(self, todo_id: UUID) -> None:
         super().__init__(todo_id)
         self.todo_id = todo_id
@@ -86,18 +90,29 @@ propagates.
 `create_app` registers one handler for `AppError`, and no route catches one. The status
 table is `_status_for` in `api/app.py`, and nowhere else:
 
-| Core error | HTTP status |
-|---|---|
-| `TodoNotFoundError` | 404 `HTTPStatus.NOT_FOUND` |
-| `InvalidTodoError` | 422 `HTTPStatus.UNPROCESSABLE_CONTENT` |
-| `InvalidCursorError` | 422 `HTTPStatus.UNPROCESSABLE_CONTENT` |
-| `InvalidPageLimitError` | 422 `HTTPStatus.UNPROCESSABLE_CONTENT` |
-| any other `AppError` | 400 `HTTPStatus.BAD_REQUEST` |
+| Core error | HTTP status | Code |
+|---|---|---|
+| `AppError` (fallback) | 400 | `app_error` |
+| `TodoNotFoundError` | 404 | `todo_not_found` |
+| `InvalidTodoError` | 422 | `invalid_todo` |
+| `InvalidCursorError` | 422 | `invalid_cursor` |
+| `InvalidPageLimitError` | 422 | `invalid_page_limit` |
 
-The body is always `ErrorResponse`, `{"detail": str(error)}`. FastAPI's own 422 for a
-request that does not parse (a missing field, a path id that is not a UUID, a
-non-integer `limit`) keeps its list-shaped `detail`, so a client tells the two apart by
-the type of `detail`.
+Every error is `application/problem+json`, serialized with `exclude_none=True`:
+`{"type": "about:blank", "title": <HTTPStatus phrase>, "status": <number>,
+"detail": str(error), "code": <class code>}`. Domain errors have no `errors`.
+Clients branch on `code`, and ignore unknown extensions.
+
+The factory also handles non-domain failures:
+
+- `RequestValidationError`: 422 `request_invalid`, detail `Request validation failed`,
+  with `errors` containing only `loc`, `message` (from `msg`), and `type`. Drop
+  `input`, `ctx`, and `url`. `ProblemFieldError` defines each item.
+- Starlette's `HTTPException`: 404 `not_found`, 405 `method_not_allowed`, otherwise
+  `http_error`. Keep its headers (including `Allow`); a non-string detail becomes
+  the status phrase. Statuses forbidding a body, such as 204 and 304, stay empty.
+- An unhandled `Exception`: 500 `internal_error` with the generic detail above.
+  Never echo exception text; test with `raise_server_exceptions=False`.
 
 Each status names a cause. 404 means the named thing does not exist. 422 means the
 request parsed but its input breaks a domain rule on a field — `InvalidTodoError`'s
@@ -108,18 +123,20 @@ for invalid input.
 
 400 is only the fallback for an `AppError` that has no case yet: it keeps an unmapped
 subclass the client's problem, never an unhandled 500, and
-`backend/tests/api/test_app.py::test_unmapped_app_error_returns_400_not_500` pins it. Never
+`backend/tests/api/test_app.py::test_unmapped_app_error_returns_400_problem` pins it. Never
 choose 400 on purpose for a new error; give it the status that names its cause.
 
 Adding a status for a new error:
 
-1. Add a `case` to `_status_for`, with a subclass's case above its base class's.
-2. List the status, with `ErrorResponse` as its model, in `responses=` on every route
-   that can raise the error.
-3. Assert the status and the exact `{"detail": ...}` in a `TestClient` test, and add
-   the route's status to the parametrized OpenAPI test in
-   `backend/tests/api/test_todos.py`.
-4. Describe the status in the README beside the existing 404 and 422.
+1. Declare the error's unique `code`, then add a `case` to `_status_for`, with a
+   subclass's case above its base class's.
+2. List the status using `problem_responses(...)` in `responses=` on every route
+   that can raise it. The factory documents shared 400, 422, and 500 responses;
+   its OpenAPI override publishes the registered models under the Problem media type.
+3. Assert the status, media type, and whole Problem body in a `TestClient` test.
+   `test_openapi_documents_every_error_as_problem_details` checks every documented
+   error, including parsing failures, and rejects legacy validation schemas.
+4. Describe the status and code in the README beside the existing 404 and 422.
 
 ```python
 match error:
@@ -147,14 +164,17 @@ the first request (`designing-core-logic`).
 
 An `AppError` is expected, so it is mapped at the API boundary to an HTTP status, and
 not logged with `logging.exception()`. An
-unexpected error keeps its traceback; code that catches one to add context logs it with
-`logging.exception()` and re-raises.
+unexpected error keeps its traceback. The API handler logs
+`logger.error("Unhandled exception", exc_info=error)` on `my_app.api.errors`;
+Starlette re-raises after responding, so the server may also log it. Code that catches
+one to add context logs with `logging.exception()` and re-raises.
 
 ## Adding a failure mode
 
 1. Can an existing class carry it with the same mapping? Reuse it with a new message.
 2. Otherwise subclass `AppError` beside the existing errors, with its data as
-   attributes, a pickle-safe `__init__`, and a client-safe `__str__`.
+   attributes, its own unique `code: ClassVar[str]`, a pickle-safe `__init__`, and a
+   client-safe `__str__`.
 3. Raise it in the core where the rule is checked, or translate to it in an adapter, and
    name it in the `Raises:` section of the port or service method.
 4. If the project has the API: give it a status by the steps in "The HTTP mapping",

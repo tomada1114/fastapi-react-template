@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pickle
+import re
 from uuid import UUID
 
 import pytest
@@ -57,3 +58,18 @@ def test_todo_not_found_error_pickle_round_trip_keeps_the_id():
     restored = pickle.loads(pickle.dumps(TodoNotFoundError(SOME_ID)))  # noqa: S301 - our own bytes
 
     assert restored.todo_id == SOME_ID
+
+
+def test_every_app_error_declares_its_own_unique_code():
+    pending = [AppError]
+    codes: set[str] = set()
+    while pending:
+        error_type = pending.pop()
+        pending.extend(error_type.__subclasses__())
+        if not error_type.__module__.startswith("my_app."):
+            continue
+        assert "code" in error_type.__dict__, error_type.__name__
+        code = error_type.code
+        assert re.fullmatch(r"[a-z][a-z0-9_]*", code), error_type.__name__
+        assert code not in codes, code
+        codes.add(code)

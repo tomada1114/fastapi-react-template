@@ -4,19 +4,27 @@ from contextlib import AsyncExitStack
 from http import HTTPStatus
 from importlib import metadata, reload
 from inspect import iscoroutinefunction
+from uuid import UUID
 
 import httpx2
 import pytest
 from fastapi import FastAPI
 from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
+from starlette.exceptions import HTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 import my_app
 from my_app.api import app as app_module
 from my_app.api.app import create_app
 from my_app.composition import Container
-from my_app.core.errors import AppError
+from my_app.core.errors import (
+    AppError,
+    InvalidCursorError,
+    InvalidPageLimitError,
+    InvalidTodoError,
+    TodoNotFoundError,
+)
 from my_app.settings import Settings
 
 UNMAPPED_MESSAGE = "a rule with no status of its own"
@@ -52,7 +60,7 @@ def test_openapi_uses_the_framework_default_version(make_container, monkeypatch)
     assert response.json()["info"]["version"] == "0.1.0"
 
 
-def test_unmapped_app_error_returns_400_not_500(make_container):
+def test_unmapped_app_error_returns_400_problem(make_container):
     app = create_app(container=make_container())
 
     @app.get("/unmapped")
@@ -63,7 +71,14 @@ def test_unmapped_app_error_returns_400_not_500(make_container):
         response = client.get("/unmapped")
 
     assert response.status_code == HTTPStatus.BAD_REQUEST
-    assert response.json() == {"detail": UNMAPPED_MESSAGE}
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Bad Request",
+        "status": 400,
+        "detail": UNMAPPED_MESSAGE,
+        "code": "app_error",
+    }
 
 
 def test_create_app_without_settings_reads_the_environment(
@@ -341,3 +356,153 @@ def test_create_app_supplied_container_ignores_invalid_storage_env_but_reads_cor
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {"items": [], "next_cursor": None}
     assert response.headers["access-control-allow-origin"] == "https://app.example.com"
+
+
+@pytest.mark.parametrize(
+    ("error", "status", "code"),
+    [
+        (AppError("base failure"), 400, "app_error"),
+        (TodoNotFoundError(UUID(int=1)), 404, "todo_not_found"),
+        (InvalidTodoError("bad title"), 422, "invalid_todo"),
+        (InvalidCursorError("bad cursor"), 422, "invalid_cursor"),
+        (InvalidPageLimitError("bad limit"), 422, "invalid_page_limit"),
+    ],
+)
+def test_domain_error_returns_problem_details(make_container, error, status, code):
+    app = create_app(container=make_container())
+
+    @app.get("/failure")
+    async def failure() -> None:
+        raise error
+
+    with TestClient(app) as client:
+        response = client.get("/failure")
+
+    assert response.status_code == status
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": HTTPStatus(status).phrase,
+        "status": status,
+        "detail": str(error),
+        "code": code,
+    }
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "status", "code"),
+    [
+        ("GET", "/api/nope", 404, "not_found"),
+        ("PUT", "/api/todos", 405, "method_not_allowed"),
+    ],
+)
+def test_routing_error_returns_problem_details(client, method, path, status, code):
+    response = client.request(method, path)
+
+    assert response.status_code == status
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": HTTPStatus(status).phrase,
+        "status": status,
+        "detail": HTTPStatus(status).phrase,
+        "code": code,
+    }
+    if status == 405:
+        assert response.headers["allow"] == "GET"
+
+
+@pytest.mark.parametrize(
+    ("status", "detail"),
+    [(403, "denied"), (403, {"secret": "hidden"}), (204, "ignored"), (304, "ignored")],
+)
+def test_http_exception_keeps_headers_and_respects_body_rules(
+    make_container, status, detail
+):
+    app = create_app(container=make_container())
+
+    @app.get("/http-failure")
+    async def failure() -> None:
+        raise HTTPException(status, detail=detail, headers={"X-Reason": "policy"})
+
+    with TestClient(app) as client:
+        response = client.get("/http-failure")
+
+    assert response.status_code == status
+    assert response.headers["x-reason"] == "policy"
+    if status in (204, 304):
+        assert response.content == b""
+    else:
+        assert response.headers["content-type"] == "application/problem+json"
+        assert response.json() == {
+            "type": "about:blank",
+            "title": "Forbidden",
+            "status": 403,
+            "detail": detail if isinstance(detail, str) else "Forbidden",
+            "code": "http_error",
+        }
+
+
+def test_unhandled_exception_returns_500_problem_without_leaking(
+    make_container, caplog
+):
+    app = create_app(container=make_container())
+    error = RuntimeError("db password=hunter2")
+
+    @app.get("/unexpected")
+    async def unexpected() -> None:
+        raise error
+
+    with (
+        caplog.at_level("ERROR", logger="my_app.api.errors"),
+        TestClient(app, raise_server_exceptions=False) as client,
+    ):
+        response = client.get("/unexpected")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Internal Server Error",
+        "status": 500,
+        "detail": "An unexpected error occurred",
+        "code": "internal_error",
+    }
+    assert "hunter2" not in response.text
+    records = [
+        record for record in caplog.records if record.name == "my_app.api.errors"
+    ]
+    assert len(records) == 1
+    assert records[0].getMessage() == "Unhandled exception"
+    assert records[0].exc_info is not None
+    assert records[0].exc_info[1] is error
+    assert "hunter2" in caplog.text
+
+
+def test_openapi_documents_every_error_as_problem_details(client):
+    document = client.get("/openapi.json").json()
+    schemas = document["components"]["schemas"]
+    assert set(schemas) == {
+        "HealthResponse",
+        "ProblemDetails",
+        "ProblemFieldError",
+        "TodoCreateRequest",
+        "TodoPageResponse",
+        "TodoResponse",
+    }
+    seen_errors = 0
+    for path in document["paths"].values():
+        for operation in path.values():
+            responses = operation["responses"]
+            assert "500" in responses
+            if operation.get("parameters") or "requestBody" in operation:
+                assert "422" in responses
+            for status, response in responses.items():
+                if int(status) >= 400:
+                    seen_errors += 1
+                    assert response["content"] == {
+                        "application/problem+json": {
+                            "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                        }
+                    }
+    assert seen_errors > 0
