@@ -55,9 +55,7 @@ FORBIDDEN_BUILTIN_CALLS = frozenset(
     {"open", "input", "print", "breakpoint", "exec", "eval", "compile", "__import__"}
 )
 CLOCK_READ_METHODS = frozenset({"now", "utcnow", "today"})
-NONDETERMINISTIC_UUID_CALLS = frozenset(
-    {"uuid1", "uuid4", "uuid6", "uuid7", "uuid8", "getnode"}
-)
+NONDETERMINISTIC_UUID_CALLS = frozenset({"uuid1", "uuid4", "uuid6", "uuid7", "getnode"})
 CORE_MODULE_PATHS = sorted(CORE_DIR.rglob("*.py"))
 
 
@@ -112,6 +110,20 @@ def _uses_local_timezone(call: ast.Call) -> bool:
     return False
 
 
+def _uuid8_uses_randomness(call: ast.Call) -> bool:
+    """Require every custom block explicitly, as for timezone arguments above."""
+    if any(isinstance(argument, ast.Starred) for argument in call.args):
+        return True
+    for position, name in enumerate(("a", "b", "c")):
+        value = next(
+            (keyword.value for keyword in call.keywords if keyword.arg == name),
+            call.args[position] if len(call.args) > position else None,
+        )
+        if value is None or (isinstance(value, ast.Constant) and value.value is None):
+            return True
+    return False
+
+
 def _forbidden_calls(source: str) -> set[str]:
     """Return forbidden calls with their source lines for actionable failures."""
     forbidden: set[str] = set()
@@ -122,12 +134,16 @@ def _forbidden_calls(source: str) -> set[str]:
             forbidden.add(f"line {node.lineno}: {ast.unparse(node.func)}")
         match node.func:
             case ast.Name(id=name) if (
-                name in FORBIDDEN_BUILTIN_CALLS or name in NONDETERMINISTIC_UUID_CALLS
+                name in FORBIDDEN_BUILTIN_CALLS
+                or name in NONDETERMINISTIC_UUID_CALLS
+                or (name == "uuid8" and _uuid8_uses_randomness(node))
             ):
                 forbidden.add(f"line {node.lineno}: {name}")
             case ast.Attribute(
                 value=ast.Name(id="uuid") | ast.Attribute(attr="uuid"), attr=generator
-            ) if generator in NONDETERMINISTIC_UUID_CALLS:
+            ) if generator in NONDETERMINISTIC_UUID_CALLS or (
+                generator == "uuid8" and _uuid8_uses_randomness(node)
+            ):
                 forbidden.add(f"line {node.lineno}: {ast.unparse(node.func)}")
             case ast.Attribute(value=receiver, attr=method) if (
                 method in CLOCK_READ_METHODS
@@ -262,6 +278,14 @@ def test_import_check_allowed_import_is_accepted(source, package):
         pytest.param("uuid.uuid7()", "uuid.uuid7", id="module-uuid7"),
         pytest.param("uuid.uuid8()", "uuid.uuid8", id="module-uuid8"),
         pytest.param("uuid.getnode()", "uuid.getnode", id="module-getnode"),
+        pytest.param("uuid.uuid8(1, 2)", "uuid.uuid8", id="uuid8-missing-block"),
+        pytest.param(
+            "uuid.uuid8(1, None, 3)", "uuid.uuid8", id="uuid8-positional-none"
+        ),
+        pytest.param("uuid8(a=1, b=2)", "uuid8", id="uuid8-missing-keyword-block"),
+        pytest.param("uuid8(a=1, b=2, c=None)", "uuid8", id="uuid8-keyword-none"),
+        pytest.param("uuid8(*blocks)", "uuid8", id="uuid8-unpacked-blocks"),
+        pytest.param("uuid8(**blocks)", "uuid8", id="uuid8-unpacked-keywords"),
         pytest.param("uuid1()", "uuid1", id="bare-uuid1"),
         pytest.param("uuid4()", "uuid4", id="bare-uuid4"),
         pytest.param("uuid6()", "uuid6", id="bare-uuid6"),
@@ -291,6 +315,11 @@ def test_call_check_forbidden_call_is_rejected(source, call):
         ),
         pytest.param('uuid.uuid5(uuid.NAMESPACE_URL, "x")', id="uuid5-deterministic"),
         pytest.param('uuid5(NAMESPACE_URL, "x")', id="bare-uuid5-deterministic"),
+        pytest.param("uuid8(0, 0, 0)", id="uuid8-zero-blocks"),
+        pytest.param("uuid.uuid8(1, 2, 3)", id="uuid8-positional-blocks"),
+        pytest.param("uuid.uuid8(a=1, b=2, c=3)", id="uuid8-keyword-blocks"),
+        pytest.param("uuid8(1, b=2, c=3)", id="uuid8-mixed-blocks"),
+        pytest.param("ids.uuid.uuid8(c=3, a=1, b=2)", id="uuid8-attribute-blocks"),
         pytest.param("new_id()", id="injected-id-factory"),
         pytest.param("generator.uuid7()", id="unrelated-uuid-receiver"),
     ],
