@@ -6,6 +6,7 @@ so swapping a repository is a change to this module only.
 
 from __future__ import annotations
 
+import uuid
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -18,7 +19,7 @@ from my_app.core.services import TodoService
 if TYPE_CHECKING:
     from types import TracebackType
 
-    from my_app.core.ports import Clock, TodoRepository
+    from my_app.core.ports import Clock, IdFactory, TodoRepository
     from my_app.settings import Settings
 
 
@@ -54,7 +55,9 @@ def utc_now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def build_container(settings: Settings, clock: Clock = utc_now) -> Container:
+def build_container(
+    settings: Settings, clock: Clock = utc_now, new_id: IdFactory = uuid.uuid7
+) -> Container:
     """Choose the adapters ``settings`` asks for and wire them into services.
 
     A plain function, not a coroutine: nothing here awaits, and a bad setting
@@ -68,6 +71,8 @@ def build_container(settings: Settings, clock: Clock = utc_now) -> Container:
     Args:
         settings: Selects the repository through ``database_url``.
         clock: Stamps new to-dos; tests pass a fixed one.
+        new_id: Gives new to-dos their ids; ``uuid.uuid7``, whose ids ascend
+            in creation order, unless a test passes a predictable factory.
 
     Returns:
         The services and their owned resources, ready for an entry point to
@@ -75,7 +80,7 @@ def build_container(settings: Settings, clock: Clock = utc_now) -> Container:
     """
     resources = AsyncExitStack()
     repository = _build_repository(settings, resources)
-    todos = TodoService(repository, clock)
+    todos = TodoService(repository, clock, new_id)
     return Container(todos=todos, _resources=resources)
 
 

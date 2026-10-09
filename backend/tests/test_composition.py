@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tomllib
+import uuid
 from contextlib import AsyncExitStack, suppress
 from datetime import UTC
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 from my_app import composition
 from my_app.adapters.memory import InMemoryTodoRepository
 from my_app.composition import Container, build_container, utc_now
+from my_app.core.models import Page
 from my_app.settings import Settings
 
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
@@ -30,7 +32,7 @@ async def test_build_container_default_settings_uses_an_independent_memory_store
 
     await first.todos.create("only in first")
 
-    assert await second.todos.list_todos() == []
+    assert await second.todos.list_page() == Page(items=(), next_cursor=None)
 
 
 async def test_build_container_sqlite_settings_shares_the_file(
@@ -41,7 +43,7 @@ async def test_build_container_sqlite_settings_shares_the_file(
 
     reopened = make_container(settings)
 
-    assert await reopened.todos.list_todos() == [created]
+    assert (await reopened.todos.list_page()).items == (created,)
 
 
 async def test_build_container_injected_clock_stamps_created_at(
@@ -50,6 +52,36 @@ async def test_build_container_injected_clock_stamps_created_at(
     todo = await make_container().todos.create("buy milk")
 
     assert todo.created_at == fixed_now
+
+
+async def test_build_container_injected_id_factory_gives_new_todos_their_ids(
+    make_container, nth_id
+):
+    container = make_container()
+
+    first = await container.todos.create("first")
+    second = await container.todos.create("second")
+
+    assert (first.id, second.id) == (nth_id(1), nth_id(2))
+
+
+async def test_build_container_default_id_factory_gives_ascending_uuid7_ids():
+    container = build_container(Settings(database_url=None))
+
+    first = await container.todos.create("first")
+    second = await container.todos.create("second")
+
+    assert (first.id.version, second.id.version) == (7, 7)
+    assert first.id < second.id
+
+
+@pytest.mark.parametrize("n", [1, 2, 255, 2**48 - 1])
+def test_nth_id_is_shaped_like_a_uuid7(nth_id, n):
+    todo_id = nth_id(n)
+
+    assert todo_id.version == 7
+    assert todo_id.variant == uuid.RFC_4122
+    assert nth_id(n - 1) < todo_id
 
 
 def test_utc_now_returns_timezone_aware_utc_time():

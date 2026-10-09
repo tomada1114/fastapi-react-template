@@ -54,7 +54,7 @@ where marked; the real code keeps them, because ruff's `D` rules require them.
 ```python
 class TodoNotFoundError(AppError):
     # ... docstrings elided
-    def __init__(self, todo_id: int) -> None:
+    def __init__(self, todo_id: UUID) -> None:
         super().__init__(todo_id)
         self.todo_id = todo_id
 
@@ -63,7 +63,9 @@ class TodoNotFoundError(AppError):
 ```
 
 A message-only error takes the message as its one argument, built in a variable first:
-`normalize_title` builds `msg` and raises `InvalidTodoError(msg)`.
+`normalize_title` builds `msg` and raises `InvalidTodoError(msg)`; `InvalidCursorError`
+and `InvalidPageLimitError` are message-only too. `InvalidCursorError`'s fixed message
+never echoes the cursor, which is client input of any length.
 
 ## Raise in the core, translate in the adapter
 
@@ -72,10 +74,11 @@ driver's failure into the error the port's `Raises:` section promises, because t
 port's docstring is the contract and
 `backend/tests/adapters/test_repository_contract.py` holds every adapter to it.
 `InMemoryTodoRepository` turns a `KeyError` into
-`TodoNotFoundError`; `SqliteTodoRepository` answers an id outside SQLite's 64-bit range
-(`SQLITE_MIN_INTEGER`, `SQLITE_MAX_INTEGER`) as not found before binding it, instead of
-letting `OverflowError` escape. A driver failure with no domain meaning — a locked
-database, a full disk — stays a bug and propagates.
+`TodoNotFoundError`, and both repositories raise `InvalidCursorError` for a page cursor
+they did not issue (`adapters/cursor.py`). A port may also promise a builtin exception
+for a bug: `add` of an id already stored raises `ValueError`, so `SqliteTodoRepository`
+translates only `sqlite3.IntegrityError` into it. A driver failure with no meaning in
+the port — a locked database, a full disk — stays a bug and propagates.
 
 ## The HTTP mapping
 
@@ -86,17 +89,21 @@ table is `_status_for` in `api/app.py`, and nowhere else:
 |---|---|
 | `TodoNotFoundError` | 404 `HTTPStatus.NOT_FOUND` |
 | `InvalidTodoError` | 422 `HTTPStatus.UNPROCESSABLE_CONTENT` |
+| `InvalidCursorError` | 422 `HTTPStatus.UNPROCESSABLE_CONTENT` |
+| `InvalidPageLimitError` | 422 `HTTPStatus.UNPROCESSABLE_CONTENT` |
 | any other `AppError` | 400 `HTTPStatus.BAD_REQUEST` |
 
 The body is always `ErrorResponse`, `{"detail": str(error)}`. FastAPI's own 422 for a
-request that does not parse (a missing field, a non-integer path parameter) keeps its
-list-shaped `detail`, so a client tells the two apart by the type of `detail`.
+request that does not parse (a missing field, a path id that is not a UUID, a
+non-integer `limit`) keeps its list-shaped `detail`, so a client tells the two apart by
+the type of `detail`.
 
 Each status names a cause. 404 means the named thing does not exist. 422 means the
 request parsed but its input breaks a domain rule on a field — `InvalidTodoError`'s
-kind of failure. A new error class gets its own case when a specific status names its
-cause: 404 for something missing, 409 `HTTPStatus.CONFLICT` for a conflict with the
-current state such as a duplicate, 422 for invalid input.
+kind of failure, and a cursor or page limit the core rejects. A new error class gets
+its own case when a specific status names its cause: 404 for something missing, 409
+`HTTPStatus.CONFLICT` for a conflict with the current state such as a duplicate, 422
+for invalid input.
 
 400 is only the fallback for an `AppError` that has no case yet: it keeps an unmapped
 subclass the client's problem, never an unhandled 500, and
@@ -117,7 +124,7 @@ Adding a status for a new error:
 match error:
     case TodoNotFoundError():
         status = HTTPStatus.NOT_FOUND
-    case InvalidTodoError():
+    case InvalidTodoError() | InvalidCursorError() | InvalidPageLimitError():
         status = HTTPStatus.UNPROCESSABLE_CONTENT
     case _:
         status = HTTPStatus.BAD_REQUEST

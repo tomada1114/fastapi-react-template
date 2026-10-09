@@ -6,6 +6,11 @@ HTTP status), so the core never needs to know which one called it.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
 
 class AppError(Exception):
     """Base class for every error the application raises on purpose.
@@ -18,7 +23,7 @@ class AppError(Exception):
 class TodoNotFoundError(AppError):
     """Raised when no to-do has the requested id."""
 
-    def __init__(self, todo_id: int) -> None:
+    def __init__(self, todo_id: UUID) -> None:
         """Keep the missing id so callers can report it without parsing text.
 
         The id is the exception's only argument, so pickling (as process
@@ -31,9 +36,24 @@ class TodoNotFoundError(AppError):
         self.todo_id = todo_id
 
     def __str__(self) -> str:
-        """Return the message entry points show their users."""
+        """Return the message entry points show their users.
+
+        A ``UUID`` formats as its canonical hyphenated form, whatever spelling
+        the caller parsed it from.
+        """
         return f"To-do {self.todo_id} not found"
 
 
 class InvalidTodoError(AppError):
     """Raised when input would create a to-do that breaks a domain rule."""
+
+
+class InvalidCursorError(AppError):
+    """Raised when a page cursor is not one the store issued.
+
+    The message never echoes the cursor: it is client input of any length.
+    """
+
+
+class InvalidPageLimitError(AppError):
+    """Raised when a page would hold fewer than one item or more than the maximum."""

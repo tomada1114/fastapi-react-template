@@ -120,8 +120,10 @@ request that removes it, so the tests and the 80% coverage floor still measure r
 code:
 
 - the domain in `backend/src/my_app/core/` (`models.py`, `ports.py`, `services.py`, and
-  the `TodoNotFoundError`/`InvalidTodoError` in `errors.py`), and the adapters in
-  `backend/src/my_app/adapters/` that implement its repository port;
+  the `TodoNotFoundError`, `InvalidTodoError`, `InvalidCursorError`, and
+  `InvalidPageLimitError` in `errors.py`), and the adapters in
+  `backend/src/my_app/adapters/` that implement its repository port, with the cursor
+  helper they share (`cursor.py`, which the app's own paged port can adapt);
 - the API's wrappers: `backend/src/my_app/api/routers/todos.py` and the to-do models
   in `api/schemas.py`;
 - their tests under `backend/tests/core/`, `backend/tests/adapters/`, and

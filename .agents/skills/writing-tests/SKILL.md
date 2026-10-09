@@ -134,8 +134,8 @@ checked.
 - Mock only at a boundary: I/O, network, clock, a subprocess, an external service —
   never the unit under test and never an internal collaborator.
 - Prefer a fake (a real in-memory implementation) to a mock for a repository or a store.
-  `InMemoryTodoRepository` is the core's fake and `fixed_clock` fixes time; both are
-  real code paths, so the code under test runs as it does in production.
+  `InMemoryTodoRepository` is the core's fake, `fixed_clock` fixes time, and `new_id`
+  fixes ids; all are real code paths, so the code under test runs as in production.
 - Assert on outcomes and captured arguments, not on how many times something was called
   — except when the call itself is the contract: retry or rate-limit behavior, a step
   that must be skipped, proving that no network call happened.

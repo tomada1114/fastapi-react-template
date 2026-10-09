@@ -70,7 +70,7 @@ def test_create_app_without_settings_reads_the_environment(tmp_path, monkeypatch
     with TestClient(create_app()) as writer:
         created = writer.post("/todos", json={"title": "from env"})
     with TestClient(create_app()) as reader:
-        titles = [todo["title"] for todo in reader.get("/todos").json()]
+        titles = [todo["title"] for todo in reader.get("/todos").json()["items"]]
 
     assert created.status_code == HTTPStatus.CREATED
     assert titles == ["from env"]
@@ -81,7 +81,7 @@ def test_create_app_each_call_owns_an_independent_store():
         first.post("/todos", json={"title": "only in first"})
 
     with TestClient(create_app(Settings())) as second:
-        assert second.get("/todos").json() == []
+        assert second.get("/todos").json()["items"] == []
 
 
 def test_create_app_with_sqlite_keeps_todos_across_apps(tmp_path):
@@ -90,7 +90,7 @@ def test_create_app_with_sqlite_keeps_todos_across_apps(tmp_path):
         first.post("/todos", json={"title": "survives"})
 
     with TestClient(create_app(settings)) as second:
-        titles = [todo["title"] for todo in second.get("/todos").json()]
+        titles = [todo["title"] for todo in second.get("/todos").json()["items"]]
 
     assert titles == ["survives"]
 

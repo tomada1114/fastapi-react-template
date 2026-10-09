@@ -33,8 +33,8 @@ tests that already cover the code are its check.
 Decide this before the test, because the layer decides which surface the test drives.
 
 - **A decision** — a rule, a calculation, a state transition — goes in `core/`, tested
-  by calling the service or model directly with the in-memory fake and `fixed_clock`.
-  **REQUIRED:** `designing-core-logic`.
+  by calling the service or model directly with the in-memory fake, `fixed_clock`, and
+  `new_id`. **REQUIRED:** `designing-core-logic`.
 - **A route** only translates between HTTP and a service; what belongs in one, and
   what moves down into the core, is **REQUIRED:** `building-api-routes`.
 - **A storage detail** is an adapter. **REQUIRED:** `designing-core-logic`.

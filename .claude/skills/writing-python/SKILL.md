@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 ## Choosing a type for a value
 
 - **An internal value:** `@dataclass(frozen=True, slots=True)`. A change is a new value
-  built with `dataclasses.replace`, never an in-place edit (`Todo`, `TodoDraft`,
+  built with `dataclasses.replace`, never an in-place edit (`Todo`, `Page`,
   `composition.Container`).
 - **Pydantic `BaseModel`:** only at a serialization boundary — the wire format in
   `api/schemas.py` and the environment in `settings.py`. Never in `core/`.

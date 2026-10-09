@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from my_app.core.errors import InvalidTodoError
-from my_app.core.models import MAX_TITLE_LENGTH, Todo, TodoDraft, normalize_title
+from my_app.core.models import MAX_TITLE_LENGTH, Todo, normalize_title
 
 
 @pytest.mark.parametrize(
@@ -41,16 +41,12 @@ def test_normalize_title_out_of_range_raises_invalid_todo_error(raw_title, lengt
         normalize_title(raw_title)
 
 
-@pytest.fixture(params=[TodoDraft, Todo], ids=["draft", "todo"])
-def make_model(request, fixed_now):
-    """Build a ``TodoDraft`` or a ``Todo``; both enforce the same invariants."""
+@pytest.fixture
+def make_model(nth_id, fixed_now):
+    """Build a ``Todo``, which enforces its invariants on every construction."""
 
-    def _make(
-        title: str = "buy milk", created_at: datetime = fixed_now
-    ) -> Todo | TodoDraft:
-        if request.param is Todo:
-            return Todo(id=1, title=title, created_at=created_at)
-        return TodoDraft(title=title, created_at=created_at)
+    def _make(title: str = "buy milk", created_at: datetime = fixed_now) -> Todo:
+        return Todo(id=nth_id(1), title=title, created_at=created_at)
 
     return _make
 
@@ -81,8 +77,8 @@ def test_model_naive_created_at_raises_value_error(make_model):
         make_model(created_at=naive)
 
 
-def test_replace_with_invalid_title_raises_invalid_todo_error(fixed_now):
-    todo = Todo(id=1, title="buy milk", created_at=fixed_now)
+def test_replace_with_invalid_title_raises_invalid_todo_error(nth_id, fixed_now):
+    todo = Todo(id=nth_id(1), title="buy milk", created_at=fixed_now)
 
     with pytest.raises(InvalidTodoError, match=r"got 0$"):
         replace(todo, title="")

@@ -2,9 +2,10 @@
 
 ALLOWED_STDLIB is the authoritative import boundary; Ruff's TID251 is a
 fast subset. The AST call check rejects bare I/O and dynamic-execution
-builtins, recognizable date/datetime clock reads, and local-time APIs without
-explicit timezones. Both gates walk core subpackages and imports inside
-type-checking branches.
+builtins, recognizable date/datetime clock reads, local-time APIs without
+explicit timezones, and the uuid generators that read a clock, randomness, or
+the host. Both gates walk core subpackages and imports inside type-checking
+branches.
 """
 
 from __future__ import annotations
@@ -44,12 +45,17 @@ ALLOWED_STDLIB = frozenset(
         "textwrap",
         "types",
         "typing",
+        # For the UUID type only: the generators below read a clock,
+        # randomness, or the host, so the call check rejects them and ids
+        # arrive through the IdFactory port.
+        "uuid",
     }
 )
 FORBIDDEN_BUILTIN_CALLS = frozenset(
     {"open", "input", "print", "breakpoint", "exec", "eval", "compile", "__import__"}
 )
 CLOCK_READ_METHODS = frozenset({"now", "utcnow", "today"})
+UUID_GENERATORS = frozenset({"uuid1", "uuid4", "uuid6", "uuid7"})
 CORE_MODULE_PATHS = sorted(CORE_DIR.rglob("*.py"))
 
 
@@ -113,8 +119,14 @@ def _forbidden_calls(source: str) -> set[str]:
         if _uses_local_timezone(node):
             forbidden.add(f"line {node.lineno}: {ast.unparse(node.func)}")
         match node.func:
-            case ast.Name(id=name) if name in FORBIDDEN_BUILTIN_CALLS:
+            case ast.Name(id=name) if (
+                name in FORBIDDEN_BUILTIN_CALLS or name in UUID_GENERATORS
+            ):
                 forbidden.add(f"line {node.lineno}: {name}")
+            case ast.Attribute(
+                value=ast.Name(id="uuid") | ast.Attribute(attr="uuid"), attr=generator
+            ) if generator in UUID_GENERATORS:
+                forbidden.add(f"line {node.lineno}: {ast.unparse(node.func)}")
             case ast.Attribute(value=receiver, attr=method) if (
                 method in CLOCK_READ_METHODS
             ):
@@ -165,7 +177,6 @@ def test_core_module_calls_no_io_builtin(path):
         pytest.param(
             "from urllib.request import urlopen", "urllib.request", id="urllib"
         ),
-        pytest.param("import uuid", "uuid", id="uuid"),
         pytest.param(
             "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import os",
             "os",
@@ -205,6 +216,8 @@ def test_import_check_subpackage_relative_escape_is_rejected():
     [
         pytest.param("from datetime import datetime", CORE_PACKAGE, id="stdlib"),
         pytest.param("from decimal import Decimal", CORE_PACKAGE, id="decimal"),
+        pytest.param("from uuid import UUID", CORE_PACKAGE, id="uuid-type"),
+        pytest.param("import uuid", CORE_PACKAGE, id="uuid-module"),
         pytest.param(
             "from my_app.core.errors import AppError", CORE_PACKAGE, id="core-absolute"
         ),
@@ -241,6 +254,15 @@ def test_import_check_allowed_import_is_accepted(source, package):
         pytest.param(
             "datetime.date.today()", "datetime.date.today", id="module-date-today"
         ),
+        pytest.param("uuid.uuid1()", "uuid.uuid1", id="module-uuid1"),
+        pytest.param("uuid.uuid4()", "uuid.uuid4", id="module-uuid4"),
+        pytest.param("uuid.uuid6()", "uuid.uuid6", id="module-uuid6"),
+        pytest.param("uuid.uuid7()", "uuid.uuid7", id="module-uuid7"),
+        pytest.param("uuid1()", "uuid1", id="bare-uuid1"),
+        pytest.param("uuid4()", "uuid4", id="bare-uuid4"),
+        pytest.param("uuid6()", "uuid6", id="bare-uuid6"),
+        pytest.param("uuid7()", "uuid7", id="bare-uuid7"),
+        pytest.param("ids.uuid.uuid7()", "ids.uuid.uuid7", id="attribute-uuid7"),
     ],
 )
 def test_call_check_forbidden_call_is_rejected(source, call):
@@ -255,6 +277,13 @@ def test_call_check_forbidden_call_is_rejected(source, call):
         pytest.param("value.today()", id="unrelated-receiver"),
         pytest.param("clock()", id="injected-clock"),
         pytest.param('message = "open(x)"', id="string-literal"),
+        pytest.param("UUID(int=0)", id="uuid-construction"),
+        pytest.param(
+            'uuid.UUID("01900000-0000-7000-8000-000000000001")', id="uuid-parse"
+        ),
+        pytest.param('uuid.uuid5(uuid.NAMESPACE_URL, "x")', id="uuid5-deterministic"),
+        pytest.param("new_id()", id="injected-id-factory"),
+        pytest.param("generator.uuid7()", id="unrelated-uuid-receiver"),
     ],
 )
 def test_call_check_allowed_call_is_accepted(source):
