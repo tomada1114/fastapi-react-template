@@ -29,11 +29,6 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
-[project.optional-dependencies]
-# The OpenRouter LLM adapter (src/my_app/adapters/openrouter.py). Without it the
-# app runs with the LLM closed; see the integrating-llm skill.
-ai = ["httpx>=0.28"]
-
 [project.urls]
 Homepage = "https://github.com/your-username/fastapi-react-template"
 Repository = "https://github.com/your-username/fastapi-react-template"

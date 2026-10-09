@@ -5,7 +5,5 @@ Imports stay within the core and the deterministic standard-library allowlist,
 I/O and dynamic-execution builtins, recognizable date/datetime clock reads,
 and local-time APIs without explicit timezones. Ruff's TID251 is a fast subset
 of the import rule. The same services therefore
-serve every entry point and every storage adapter. That holds for the
-optional LLM layer too: ``ports.LlmPort`` and the values in ``llm`` are plain
-Python, and only an adapter speaks HTTP to a provider.
+serve every entry point and every storage adapter.
 """

@@ -9,10 +9,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from datetime import datetime
 
-    from my_app.core.llm import LlmCompletion, LlmMessage
     from my_app.core.models import Todo, TodoDraft
 
 
@@ -91,54 +89,4 @@ class TodoRepository(Protocol):
 
         Raises:
             TodoNotFoundError: If no to-do has this id.
-        """
-
-
-@runtime_checkable
-class LlmPort(Protocol):
-    """Asks a language model for one chat completion.
-
-    Every implementation that can complete must pass the shared contract suite
-    in ``tests/adapters/test_llm_contract.py``. An implementation is safe to
-    call from several threads, since FastAPI runs synchronous routes in a pool.
-    """
-
-    def complete(
-        self,
-        messages: Sequence[LlmMessage],
-        *,
-        model: str | None = None,
-        max_tokens: int,
-        timeout: float,
-    ) -> LlmCompletion:
-        """Send ``messages`` and return the model's answer.
-
-        The arguments are checked with ``core.llm.check_completion_request``
-        before any request is made.
-
-        Args:
-            messages: The conversation, oldest message first.
-            model: The model to ask; None means the model this adapter was
-                built with.
-            max_tokens: The most tokens the answer may use.
-            timeout: The call's budget in seconds, retries and the waits
-                between them included. It is enforced between steps, not as
-                a hard cutoff: an adapter bounds each network phase by the
-                budget left and checks the deadline between phases, so a
-                pathologically slow server can still exceed it. A caller that
-                needs a hard cutoff runs the call under its own cancellation.
-
-        Returns:
-            The answer, the model that gave it, and the tokens it used.
-
-        Raises:
-            ValueError: If an argument breaks its rule; that is a bug in the
-                caller, not a domain error.
-            LlmConfigurationError: If the LLM is not configured, or the
-                provider rejected the key or the account.
-            LlmRateLimitError: If the provider kept rate-limiting until the
-                retry bound or the deadline ran out; try again later.
-            LlmTimeoutError: If the call did not finish within ``timeout``.
-            LlmProviderError: If the provider failed, could not be reached, or
-                answered with something that is not a completion.
         """

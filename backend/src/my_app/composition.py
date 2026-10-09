@@ -11,16 +11,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Self
 
-from my_app.adapters.closed_llm import ClosedLlm
 from my_app.adapters.memory import InMemoryTodoRepository
 from my_app.adapters.sqlite import SqliteTodoRepository
-from my_app.core.errors import LlmConfigurationError
 from my_app.core.services import TodoService
 
 if TYPE_CHECKING:
     from types import TracebackType
 
-    from my_app.core.ports import Clock, LlmPort, TodoRepository
+    from my_app.core.ports import Clock, TodoRepository
     from my_app.settings import Settings
 
 
@@ -80,41 +78,3 @@ def _build_repository(settings: Settings, _resources: ExitStack) -> TodoReposito
     if (path := settings.sqlite_path) is not None:
         return SqliteTodoRepository(path)
     return InMemoryTodoRepository()
-
-
-def build_llm(settings: Settings) -> LlmPort:
-    """Return the ``LlmPort`` the settings ask for: closed unless a key is set.
-
-    Not wired into ``Container``: no service consumes an LLM yet. A service
-    that does takes ``llm: LlmPort`` in its constructor, and
-    ``build_container`` passes it ``build_llm(settings)``.
-
-    Args:
-        settings: Opens the LLM through ``openrouter_api_key``, and picks the
-            default model through ``llm_model``.
-
-    Returns:
-        ``ClosedLlm`` when no key is set, so neither the OpenRouter adapter nor
-        ``httpx`` is imported; otherwise ``OpenRouterLlm``.
-
-    Raises:
-        LlmConfigurationError: If a key is set but ``httpx`` is not installed,
-            because the ``ai`` extra was left out.
-    """
-    if settings.openrouter_api_key is None:
-        return ClosedLlm()
-    try:
-        from my_app.adapters.openrouter import (  # noqa: PLC0415 - httpx comes only with the optional `ai` extra
-            OpenRouterLlm,
-        )
-    except ModuleNotFoundError as error:
-        if error.name != "httpx":
-            raise
-        msg = (
-            "OPENROUTER_API_KEY is set but httpx is not installed: "
-            "install the 'ai' extra (uv sync --extra ai)"
-        )
-        raise LlmConfigurationError(msg) from error
-    return OpenRouterLlm(
-        settings.openrouter_api_key.get_secret_value(), model=settings.llm_model
-    )

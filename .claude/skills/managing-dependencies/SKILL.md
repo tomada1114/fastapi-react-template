@@ -53,14 +53,12 @@ has not happened yet.
   `[dependency-groups] dev`, which the whole workspace shares. A new group needs a
   reason — CI installs `--group dev` only.
 - A runtime package only some deployments need goes in an extra under
-  `backend/pyproject.toml`'s `[project.optional-dependencies]` — the `ai` extra
-  carries `httpx` for the LLM adapter — never in a group: a group is not part of a
-  built package, so a deployment could not ask for it. Code that needs an extra's
-  package imports it lazily and fails with a message naming the extra
-  (`integrating-llm`).
+  `backend/pyproject.toml`'s `[project.optional-dependencies]`, never in a group: a
+  group is not part of a built package, so a deployment could not ask for it. Code that
+  needs an extra's package imports it lazily and fails with a message naming the extra.
 - Declare a range, `>=X.Y`, never an exact pin; `uv.lock` pins the exact versions.
 - Add from the repository root with `uv add --package my-app <package>` (runtime;
-  `--optional ai` for the extra) or `uv add --group dev <package>`, rather than typing a
+  `--optional <extra>` for an extra) or `uv add --group dev <package>`, rather than typing a
   version: under the window below, a hand-typed recent version may not resolve. A bare
   `uv add <package>` at the root fails, since the virtual workspace root has no
   `[project]` table (observed with `uv add --frozen`, 2026-10-08).

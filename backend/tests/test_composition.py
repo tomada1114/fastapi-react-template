@@ -1,52 +1,18 @@
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 import tomllib
 from contextlib import ExitStack, suppress
 from datetime import UTC
 from pathlib import Path
 
 import pytest
-from pydantic import SecretStr
 
 from my_app import composition
-from my_app.adapters.closed_llm import ClosedLlm
 from my_app.adapters.memory import InMemoryTodoRepository
-from my_app.adapters.openrouter import OpenRouterLlm
-from my_app.composition import Container, build_container, build_llm, utc_now
-from my_app.core.errors import LlmConfigurationError
-from my_app.settings import OPENROUTER_API_KEY_ENV, Settings
-from tests.settings_env import without_settings_env
+from my_app.composition import Container, build_container, utc_now
+from my_app.settings import Settings
 
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
-_LLM_MODULES = '("httpx", "my_app.adapters.openrouter")'
-# Run in a fresh interpreter: this test process has long since imported httpx.
-# The first probe is an install with the `ai` extra and no key; the second
-# hides httpx, as an install without the extra has none.
-_PROBE_WITH_EXTRA = (
-    "import sys\n"
-    "from my_app.api.app import create_app\n"
-    "from my_app.composition import build_llm\n"
-    "from my_app.settings import Settings\n"
-    "create_app(Settings())\n"
-    "build_llm(Settings())\n"
-    f"print(sorted(m for m in {_LLM_MODULES} if m in sys.modules))\n"
-)
-_PROBE_WITHOUT_EXTRA = (
-    "import sys\n"
-    "sys.modules['httpx'] = None\n"
-    "from my_app.api.app import create_app\n"
-    "from my_app.composition import build_container, build_llm\n"
-    "from my_app.settings import Settings\n"
-    "create_app(Settings())\n"
-    "llm = build_llm(Settings())\n"
-    "with build_container(Settings()) as container:\n"
-    "    container.todos.create('x')\n"
-    "    count = len(container.todos.list_todos())\n"
-    "print(type(llm).__name__, count)\n"
-)
 
 
 def test_build_container_default_settings_uses_an_independent_memory_store(
@@ -79,76 +45,12 @@ def test_utc_now_returns_timezone_aware_utc_time():
     assert utc_now().tzinfo is UTC
 
 
-def test_build_llm_without_key_returns_closed_llm():
-    assert isinstance(build_llm(Settings()), ClosedLlm)
-
-
-def test_build_llm_with_key_returns_openrouter_with_the_configured_model():
-    settings = Settings(
-        openrouter_api_key=SecretStr("test-key"), llm_model="test/model"
-    )
-
-    llm = build_llm(settings)
-
-    assert isinstance(llm, OpenRouterLlm)
-    assert llm.model == "test/model"
-
-
-def test_build_llm_with_key_and_default_model_uses_the_default(monkeypatch):
-    monkeypatch.setenv(OPENROUTER_API_KEY_ENV, "test-key")
-
-    llm = build_llm(Settings())
-
-    assert isinstance(llm, OpenRouterLlm)
-    assert llm.model == "deepseek/deepseek-v4.1-flash"
-
-
-def test_build_llm_with_key_but_without_httpx_raises_configuration_error(
-    monkeypatch,
-):
-    monkeypatch.setitem(sys.modules, "httpx", None)
-    monkeypatch.delitem(sys.modules, "my_app.adapters.openrouter", raising=False)
-
-    with pytest.raises(
-        LlmConfigurationError,
-        match=r"httpx is not installed: install the 'ai' extra \(uv sync --extra ai\)",
-    ):
-        build_llm(Settings(openrouter_api_key=SecretStr("test-key")))
-
-
-def test_build_llm_import_error_other_than_httpx_propagates(monkeypatch):
-    monkeypatch.setitem(sys.modules, "my_app.adapters.openrouter", None)
-
-    with pytest.raises(ModuleNotFoundError, match=r"my_app\.adapters\.openrouter"):
-        build_llm(Settings(openrouter_api_key=SecretStr("test-key")))
-
-
-def _run_probe(probe: str) -> str:
-    result = subprocess.run(  # noqa: S603 - fixed argv: this interpreter and a literal
-        [sys.executable, "-c", probe],
-        env=without_settings_env(os.environ),
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    return result.stdout.strip()
-
-
-def test_app_with_extra_and_no_key_loads_no_llm_code():
-    assert _run_probe(_PROBE_WITH_EXTRA) == "[]"
-
-
-def test_app_without_extra_imports_and_runs_with_the_llm_closed():
-    assert _run_probe(_PROBE_WITHOUT_EXTRA) == "ClosedLlm 1"
-
-
-def test_pyproject_httpx_is_only_in_the_ai_extra():
+def test_pyproject_httpx_is_not_a_runtime_dependency():
     project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]
 
     runtime = [dep for dep in project["dependencies"] if dep.startswith("httpx")]
 
     assert runtime == []
-    assert "httpx>=0.28" in project["optional-dependencies"]["ai"]
 
 
 def test_container_close_releases_registered_resource_once(make_container):

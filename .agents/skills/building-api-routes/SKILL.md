@@ -25,12 +25,10 @@ This skill describes the HTTP entry point, the only one the template ships. Drop
 is a deletion, never a core change, and leaves the core as a library with no entry
 point of its own:
 
-- delete `backend/src/my_app/api/` and `backend/tests/api/`, and the `create_app` lines
-  of the probes in `backend/tests/test_composition.py`;
+- delete `backend/src/my_app/api/` and `backend/tests/api/`;
 - remove the `fastapi` and `uvicorn` runtime dependencies from `backend/pyproject.toml`
-  and the `httpx2` dev dependency `TestClient` runs on from the root `pyproject.toml`
-  (and the `httpx` one too, unless you keep the LLM layer, whose adapter tests use it),
-  then run `uv lock`;
+  and the `httpx2` and `httpx` dev dependencies `TestClient` uses from the root
+  `pyproject.toml`, then run `uv lock`;
 - remove the `dev` recipes, `backend/justfile`'s and the root's `dev: backend::dev`, and
   the lines that name them (README's Quickstart and Development block, AGENTS.md's
   Quick Reference and the paragraph under it, `backend/AGENTS.md`;
@@ -40,7 +38,7 @@ point of its own:
   to describe the core alone; in the paragraph after AGENTS.md's Quick Reference,
   remove the server instructions that require the deleted API;
 - update README: remove Quickstart's `just dev`, curl, API docs and HTTP table, all
-  HTTP status/`detail` prose, LLM-backed route guidance, and the server Configuration
+  HTTP status/`detail` prose, and the server Configuration
   note; rewrite Architecture for the core alone and remove the pointer to this deleted
   skill;
 - replace the HTTP request in `.github/ISSUE_TEMPLATE/bug_report.yml`'s reproduction

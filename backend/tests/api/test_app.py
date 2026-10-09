@@ -3,28 +3,16 @@ from __future__ import annotations
 from contextlib import ExitStack
 from http import HTTPStatus
 from importlib import metadata, reload
-from typing import TYPE_CHECKING
 
 import httpx2
-import pytest
 from fastapi.testclient import TestClient
 
 import my_app
 from my_app.api import app as app_module
 from my_app.api.app import create_app
-from my_app.composition import Container, build_llm
-from my_app.core.errors import (
-    AppError,
-    LlmConfigurationError,
-    LlmError,
-    LlmProviderError,
-    LlmRateLimitError,
-    LlmTimeoutError,
-)
+from my_app.composition import Container
+from my_app.core.errors import AppError
 from my_app.settings import Settings
-
-if TYPE_CHECKING:
-    from my_app.core.llm import LlmMessage
 
 UNMAPPED_MESSAGE = "a rule with no status of its own"
 
@@ -69,64 +57,6 @@ def test_unmapped_app_error_returns_400_not_500(make_container):
 
     assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json() == {"detail": UNMAPPED_MESSAGE}
-
-
-@pytest.mark.parametrize(
-    ("error", "status"),
-    [
-        pytest.param(
-            LlmConfigurationError("LLM is not configured"),
-            HTTPStatus.SERVICE_UNAVAILABLE,
-            id="configuration-503",
-        ),
-        pytest.param(
-            LlmRateLimitError("rate-limited"),
-            HTTPStatus.TOO_MANY_REQUESTS,
-            id="rate-limit-429",
-        ),
-        pytest.param(
-            LlmTimeoutError("timed out"), HTTPStatus.GATEWAY_TIMEOUT, id="timeout-504"
-        ),
-        pytest.param(
-            LlmProviderError("provider failed"),
-            HTTPStatus.BAD_GATEWAY,
-            id="provider-502",
-        ),
-        pytest.param(
-            LlmError("unmapped llm failure"), HTTPStatus.BAD_GATEWAY, id="base-502"
-        ),
-    ],
-)
-def test_llm_error_returns_its_status_with_the_message(make_container, error, status):
-    app = create_app(container=make_container())
-
-    @app.get("/llm-error")
-    def _raise_llm_error() -> None:
-        raise error
-
-    with TestClient(app) as client:
-        response = client.get("/llm-error")
-
-    assert response.status_code == status
-    assert response.json() == {"detail": str(error)}
-
-
-def test_llm_route_without_key_answers_503(make_container):
-    app = create_app(container=make_container())
-
-    @app.get("/llm")
-    def _complete() -> str:
-        llm = build_llm(Settings())
-        messages: list[LlmMessage] = [{"role": "user", "content": "hi"}]
-        return llm.complete(messages, max_tokens=16, timeout=5).text
-
-    with TestClient(app) as client:
-        response = client.get("/llm")
-
-    assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
-    assert response.json() == {
-        "detail": "LLM is not configured: set OPENROUTER_API_KEY to enable it"
-    }
 
 
 def test_create_app_without_settings_reads_the_environment(tmp_path, monkeypatch):

@@ -125,9 +125,8 @@ the same kind rather than a direct call.
 ## Settings are read once, at the boundary
 
 `settings.py`'s `Settings` is the only place configuration enters, from
-`MY_APP_`-prefixed environment variables (`ENV_PREFIX`). The one unprefixed variable is
-the vendor's own `OPENROUTER_API_KEY`, read through a `validation_alias`
-(`integrating-llm`). A new setting is a field on `Settings`:
+`MY_APP_`-prefixed environment variables (`ENV_PREFIX`). A new setting is a field on
+`Settings`:
 
 - validated in a `field_validator`, so a bad value fails at startup with a message that
   says what to set, rather than on the first request;
