@@ -47,10 +47,12 @@ def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | No
 
     The sources are the ship contract's `blocked-by=` field (`none` counts as
     stated) and `Depends on: #N` lines. Prose phrasings are not read here, and
-    neither is a `Depends on:` line inside a code block or span: a quoted
-    example states nothing.
+    neither is a `Depends on:` line inside a code block or span or an HTML
+    comment: a quoted example or a template's hidden placeholder states nothing.
     """
-    spans = _code_spans(body)
+    spans = _code_spans(body) + [
+        m.span() for m in re.finditer(r"<!--.*?(?:-->|\Z)", body, re.DOTALL)
+    ]
     lines = [
         m
         for m in DEPENDS_ON_LINE_RE.finditer(body)

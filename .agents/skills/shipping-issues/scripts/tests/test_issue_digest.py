@@ -182,6 +182,8 @@ class StructuredDependencySourcesTest(unittest.TestCase):
             "```\nDepends on: #99\n```",
             "    Depends on: #99",
             "`Depends on: #99`",
+            "<!--\nDepends on: #99\n-->",
+            "<!-- Depends on: #99 -->",
         ):
             with self.subTest(example=example):
                 body = f"Blocked by #3.\n\nExample:\n\n{example}\n"
