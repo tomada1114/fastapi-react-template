@@ -2,10 +2,19 @@
 
 ## Overview
 
-A Python application built with [uv](https://docs.astral.sh/uv/) and
-[hatchling](https://hatch.pypa.io/), in a strict `src/` layout with comprehensive
-type checking and linting. A framework-free core carries one entry point, a
-FastAPI HTTP API. The sample domain is a to-do list — replace it with your own.
+A FastAPI application in a [uv](https://docs.astral.sh/uv/) workspace, laid out
+by area. The sample domain is a to-do list — replace it with your own.
+
+| Area | Holds |
+|---|---|
+| `backend/` | The FastAPI app, a uv workspace member: its `pyproject.toml`, `src/my_app/`, `tests/`, a `justfile` module (`just backend <recipe>`), and its own `AGENTS.md` |
+| The root | The workspace (`pyproject.toml`, `uv.lock`) and the repository's tooling: the `justfile` with the aggregate gates, `scripts/`, the harness and script tests under `tests/`, `.agents/skills/`, `.github/` |
+
+Where to work:
+
+- Working under `backend/`: read `backend/AGENTS.md` first. It holds the
+  backend's architecture and its narrowest checks; this file still applies.
+- Anywhere else: this file is the whole guide.
 
 Every task here:
 
@@ -102,11 +111,9 @@ being run at all.
 
 | What you changed | The narrowest check that can fail |
 |---|---|
-| A module under `backend/src/my_app/<layer>/` | `uv run --locked --directory backend pytest tests/<layer>/` |
-| `settings.py` or `composition.py` | `uv run --locked --directory backend pytest tests/test_settings.py tests/test_composition.py` |
-| A repository adapter | `uv run --locked --directory backend pytest tests/adapters/test_repository_contract.py` |
-| One test | `uv run --locked pytest tests/test_<module>.py::test_<name>` |
-| Any Python file's lint or types | `uv run --locked ruff check <file>`, then `uv run --locked mypy` and `uv run --locked --directory backend mypy` |
+| Anything under `backend/` | `backend/AGENTS.md`'s "Validating a change" table |
+| One root test (`tests/`) | `uv run --locked pytest tests/test_<module>.py::test_<name>` |
+| A root Python file's lint or types (`scripts/`, `tests/`, skill scripts) | `uv run --locked ruff check <file>`, then `uv run --locked mypy` |
 | A script under `scripts/` | `uv run --locked pytest tests/test_<script>.py` |
 | A skill under `.agents/skills/` | `just agents-sync && just agents-check && just check-harness && just test-skills` |
 | Dependencies in `pyproject.toml` or `backend/pyproject.toml` | `uv lock`, `uv sync --all-groups --locked`, then `just verify` |
@@ -115,25 +122,6 @@ being run at all.
 
 The state of the work comes from Git, fresh test output, and CI — never from
 prose or a test count in a prompt.
-
-## Architecture
-
-```
-src/my_app/
-├── core/            # Framework-free: domain model, ports (Protocols, LlmPort included), services, errors
-├── adapters/        # Port implementations: in-memory and SQLite repositories; fake, closed, and OpenRouter LLM adapters (httpx, optional ai extra)
-├── api/             # FastAPI: create_app(settings) factory, routers (api/routers/), Pydantic schemas
-├── settings.py      # pydantic-settings `Settings`, read from MY_APP_* environment variables and the unprefixed OPENROUTER_API_KEY
-└── composition.py   # Composition root: wires adapters into services for the API
-```
-
-- Dependencies point inward: `api/` calls `core/` services and gets
-  them only from `composition.build_container`; `adapters/` implement
-  `core/ports.py`; `core/` imports nothing outside the stdlib and itself.
-  Ruff's `TID251` banned-api rule and `tests/core/test_imports.py` fail the
-  build otherwise (`designing-core-logic`).
-- Domain errors derive from `core.errors.AppError`; the API maps them in one
-  place (`api/app.py`), per `designing-errors`.
 
 ## Skills
 
