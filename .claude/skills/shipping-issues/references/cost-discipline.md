@@ -112,6 +112,7 @@ pins its own effort, which a per-spawn `model` cannot carry.
 | Implementation (step 3)    | `executor`; `architect` when [foundational](#the-foundation-exception-architect-for-what-the-backlog-builds-on)         |
 | Review fix (step 5)        | `executor`                                                                       |
 | CI repair (step 6)         | `executor` for attempts 1–2; `architect` from attempt 3                                                                                                                                       |
+| Follow-up or PR body drafting, from findings this session already verified | `worker` — single-shot, no repository tools; never code changes or review fixes |
 | Design decision (step 8b)  | `architect`                                                                                                                                                                                   |
 
 Implementation, priority research and review fixes are fully specified work with a clear
