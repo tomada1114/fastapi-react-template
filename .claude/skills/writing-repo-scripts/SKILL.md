@@ -34,8 +34,8 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
   `language: python`, so ruff's `per-file-target-version` holds it to Python 3.10
   syntax. It inherits `GIT_*` from the hook on purpose, because `git commit -a` hands
   the hook a temporary index through `GIT_INDEX_FILE`.
-- `pyproject.toml`'s `banned-api` applies here as it does to the core: no fastapi,
-  uvicorn, sqlite3, or httpx.
+- No fastapi, uvicorn, sqlite3, or httpx, as in the core. Review holds this: the
+  `banned-api` table lives in `backend/pyproject.toml` and does not reach `scripts/`.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and
   `print` is its output channel.
 
@@ -136,7 +136,7 @@ def _load_module() -> ModuleType:
 - A script that runs `git` is tested against a real repository under `tmp_path` with
   the user's and the system's git configuration switched off, as
   `tests/test_check_staged.py` does.
-- Coverage measures `src/` only, so nothing forces these tests; write them anyway.
+- Coverage measures `backend/src` only, so nothing forces these tests; write them anyway.
   **BACKGROUND:** `placing-tests`.
 
 ## Adding a script

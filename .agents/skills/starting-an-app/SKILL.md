@@ -119,13 +119,14 @@ The to-do list is a deletable illustration, not the app. Replace it in the same 
 request that removes it, so the tests and the 80% coverage floor still measure real
 code:
 
-- the domain in `src/my_app/core/` (`models.py`, `ports.py`, `services.py`, and the
-  `TodoNotFoundError`/`InvalidTodoError` in `errors.py`), and the adapters in
-  `src/my_app/adapters/` that implement its repository port;
-- the API's wrappers: `src/my_app/api/routers/todos.py` and the to-do models in
-  `api/schemas.py`;
-- their tests under `tests/core/`, `tests/adapters/`, and `tests/api/`, and the
-  contract suite's parameters in `tests/adapters/test_repository_contract.py`;
+- the domain in `backend/src/my_app/core/` (`models.py`, `ports.py`, `services.py`, and
+  the `TodoNotFoundError`/`InvalidTodoError` in `errors.py`), and the adapters in
+  `backend/src/my_app/adapters/` that implement its repository port;
+- the API's wrappers: `backend/src/my_app/api/routers/todos.py` and the to-do models
+  in `api/schemas.py`;
+- their tests under `backend/tests/core/`, `backend/tests/adapters/`, and
+  `backend/tests/api/`, and the contract suite's parameters in
+  `backend/tests/adapters/test_repository_contract.py`;
 - README's Quickstart, the HTTP table, and the Configuration section;
 - the examples the code-writing skills quote from the sample (`writing-python`,
   `designing-errors`, `designing-core-logic`, `building-api-routes`,
@@ -133,10 +134,10 @@ code:
   then `just agents-sync`.
 
 Keep what is general: `core.errors.AppError` and the one place the API maps it (its
-handler in `api/app.py`), the composition root, `settings.py` and its environment prefix, the health route, the
-banned-api lint rule that keeps the core framework-free, and `tests/conftest.py`'s fixed
-clock. Then search the tree for `Todo`, `todo`, and `to-do`, and judge each hit: an app
-whose own name holds one of them keeps those.
+handler in `api/app.py`), the composition root, `settings.py` and its environment
+prefix, the health route, the banned-api lint rule that keeps the core framework-free,
+and `backend/tests/conftest.py`'s fixed clock. Then search the tree for `Todo`, `todo`,
+and `to-do`, and judge each hit: an app whose own name holds one of them keeps those.
 
 ## What the new app keeps
 

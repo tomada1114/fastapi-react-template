@@ -1,12 +1,12 @@
 ---
 name: integrating-llm
 description: >
-  Covers the optional LLM layer: LlmPort and its value types in src/my_app/core/llm.py,
-  the LlmError family, the fake, closed, and OpenRouter adapters, composition.build_llm,
-  OPENROUTER_API_KEY and MY_APP_LLM_MODEL, the ai extra, retries and the request
-  deadline, and the shared LLM contract suite. Use when calling a model from a service,
-  wiring an LLM-backed route, testing code that uses the LLM, changing the OpenRouter
-  adapter, adding a provider, or removing the layer.
+  Covers the optional LLM layer: LlmPort and its value types in
+  backend/src/my_app/core/llm.py, the LlmError family, the fake, closed, and OpenRouter
+  adapters, composition.build_llm, OPENROUTER_API_KEY and MY_APP_LLM_MODEL, the ai
+  extra, retries and the request deadline, and the shared LLM contract suite. Use when
+  calling a model from a service, wiring an LLM-backed route, testing code that uses
+  the LLM, changing the OpenRouter adapter, adding a provider, or removing the layer.
 ---
 
 # Integrating an LLM
@@ -23,14 +23,14 @@ that calls a model is tested. **Does not own:** which HTTP status an `LlmError` 
 
 | File | Holds |
 |---|---|
-| `src/my_app/core/llm.py` | `LlmMessage`, `LlmUsage`, `LlmCompletion`, `DEFAULT_LLM_TIMEOUT_SECONDS`, `check_completion_request` |
-| `src/my_app/core/ports.py` | `LlmPort`, its contract in the docstrings |
-| `src/my_app/core/errors.py` | `LlmError` and its four subclasses |
-| `src/my_app/adapters/fake_llm.py` | `FakeLlm`, the fake for tests, recording `FakeLlmCall`s |
-| `src/my_app/adapters/closed_llm.py` | `ClosedLlm`, what an app without a key gets |
-| `src/my_app/adapters/openrouter.py` | `OpenRouterLlm`, the only module importing `httpx` |
-| `src/my_app/composition.py` | `build_llm(settings)` |
-| `tests/adapters/test_llm_contract.py` | the one contract suite every completing adapter runs |
+| `backend/src/my_app/core/llm.py` | `LlmMessage`, `LlmUsage`, `LlmCompletion`, `DEFAULT_LLM_TIMEOUT_SECONDS`, `check_completion_request` |
+| `backend/src/my_app/core/ports.py` | `LlmPort`, its contract in the docstrings |
+| `backend/src/my_app/core/errors.py` | `LlmError` and its four subclasses |
+| `backend/src/my_app/adapters/fake_llm.py` | `FakeLlm`, the fake for tests, recording `FakeLlmCall`s |
+| `backend/src/my_app/adapters/closed_llm.py` | `ClosedLlm`, what an app without a key gets |
+| `backend/src/my_app/adapters/openrouter.py` | `OpenRouterLlm`, the only module importing `httpx` |
+| `backend/src/my_app/composition.py` | `build_llm(settings)` |
+| `backend/tests/adapters/test_llm_contract.py` | the one contract suite every completing adapter runs |
 
 The core stays HTTP-free (`designing-core-logic`'s "The direction dependencies
 point"); only an adapter speaks to a provider.
@@ -141,8 +141,8 @@ https://openrouter.ai/docs/api-reference/chat-completion (checked 2026-10-06).
 - **A route test** builds the app with a container whose service holds a `FakeLlm`
   and asserts the status and exact body (`building-api-routes`).
 - **An adapter test** serves the provider from `httpx.MockTransport` and injects
-  `sleep` and `monotonic`, as `tests/adapters/test_openrouter.py` does: no network,
-  no real waiting.
+  `sleep` and `monotonic`, as `backend/tests/adapters/test_openrouter.py` does: no
+  network, no real waiting.
 - **No live call in the suite.** It would bill, flake, and need a key in CI, and a
   skipped test is a weakened gate (AGENTS.md's "Security and human approval"). The
   owner checks a live key by hand:
@@ -151,7 +151,7 @@ https://openrouter.ai/docs/api-reference/chat-completion (checked 2026-10-06).
 OPENROUTER_API_KEY=... uv run --locked --extra ai python -c "from my_app.composition import build_llm; from my_app.settings import Settings; print(build_llm(Settings()).complete([{'role': 'user', 'content': 'Say hi'}], max_tokens=16, timeout=30))"
 ```
 
-`tests/test_composition.py` pins the closed default: a fresh interpreter imports the
+`backend/tests/test_composition.py` pins the closed default: a fresh interpreter imports the
 app, builds it with no key, and finds neither `httpx` nor the OpenRouter adapter
 loaded; another hides `httpx`, builds the app, and drives the to-do service through
 `build_container`, with `ClosedLlm` as the model.
@@ -161,8 +161,8 @@ loaded; another hides `httpx`, builds the app, and drives the to-do service thro
 1. A new adapter module in `adapters/` that satisfies `LlmPort`, calls
    `check_completion_request` first and sends the message tuple it returns, and maps
    its failures onto the four errors.
-2. A `pytest.param` in `LLM_FACTORIES` in `tests/adapters/test_llm_contract.py`, and
-   `tests/adapters/test_<adapter>.py` for what only it does.
+2. A `pytest.param` in `LLM_FACTORIES` in `backend/tests/adapters/test_llm_contract.py`,
+   and `backend/tests/adapters/test_<adapter>.py` for what only it does.
 3. A `Settings` field that chooses between providers, read in `build_llm`; a new
    package goes through `managing-dependencies` first.
 
@@ -171,11 +171,11 @@ loaded; another hides `httpx`, builds the app, and drives the to-do service thro
 Delete `core/llm.py`, `LlmPort` from `core/ports.py`, the `Llm*Error` classes and their
 cases in `_status_for` (`api/app.py`), `adapters/fake_llm.py`, `adapters/closed_llm.py`,
 `adapters/openrouter.py`, `build_llm`, the two settings with their
-`_isolate_settings_env` lines in `tests/conftest.py`, and the LLM tests
-(`tests/core/test_llm.py`, the `tests/adapters/test_*llm*.py` and `test_openrouter.py`
-files, and the LLM cases in `tests/core/test_errors.py`, `tests/test_settings.py`,
-`tests/test_composition.py`, and `tests/api/test_app.py`). Remove the `ai` extra and
-run `uv lock`. Then drop the LLM text elsewhere:
+`_isolate_settings_env` lines in `backend/tests/conftest.py`, and the LLM tests under
+`backend/tests/` (`core/test_llm.py`, the `adapters/test_*llm*.py` and
+`adapters/test_openrouter.py` files, and the LLM cases in `core/test_errors.py`,
+`test_settings.py`, `test_composition.py`, and `api/test_app.py`). Remove the `ai`
+extra from `backend/pyproject.toml` and run `uv lock`. Then drop the LLM text elsewhere:
 
 - the docstrings of `core/__init__.py`, `adapters/__init__.py`, `settings.py`, and
   `_status_for`;
@@ -183,7 +183,7 @@ run `uv lock`. Then drop the LLM text elsewhere:
   tables, and its `LlmError` and `LlmConfigurationError` prose;
 - `managing-dependencies`' bullet on the `ai` extra, and `designing-core-logic`'s
   note on the unprefixed `OPENROUTER_API_KEY`;
-- AGENTS.md's Architecture tree lines for the LLM modules and the key;
+- `backend/AGENTS.md`'s Architecture tree lines for the LLM modules and the key;
 - the README's LLM rows and sentences, its Architecture line included, and the
   project's ADR for the layer, if it has one.
 

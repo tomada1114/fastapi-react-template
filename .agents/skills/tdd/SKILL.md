@@ -1,7 +1,7 @@
 ---
 name: tdd
 description: >
-  Settles the order of work for a behavior change under src/my_app/ or scripts/: which
+  Settles the order of work for a behavior change under backend/src/ or scripts/: which
   layer the code goes in, the failing test before the implementation, proving with
   uv run --locked pytest that it fails for the right reason (not an ImportError during
   collection), the smallest change that turns it green, refactoring with the tests on,
@@ -16,8 +16,9 @@ description: >
 before it, the proof that the test fails, the smallest change that passes, the refactor,
 and the commit. **Does not own:** how a test case is written (`writing-tests`); which
 file it goes in and the coverage floor (`placing-tests`); the layers themselves and the
-direction imports run (AGENTS.md's "Architecture", `designing-core-logic`); the map from
-a changed path to its narrowest check (AGENTS.md's "Validating a change").
+direction imports run (`backend/AGENTS.md`'s "Architecture", `designing-core-logic`);
+the map from a changed path to its narrowest check (the "Validating a change" tables of
+`backend/AGENTS.md` and AGENTS.md).
 
 A test written after the code asserts whatever the code happens to do. It passes on its
 first run, so nothing ever showed it can fail, and every gate is green over a test that
@@ -52,8 +53,10 @@ Decide this before the test, because the layer decides which surface the test dr
 
 ## Prove it fails, for the right reason
 
-Run the one test — `uv run --locked pytest tests/<layer>/test_<module>.py::test_<name>`
-— and read the failure. Red alone is not the proof; the reason is.
+Run the one test from the repository root — for the app,
+`uv run --locked --directory backend pytest tests/<layer>/test_<module>.py::test_<name>`;
+for a script, `uv run --locked pytest tests/test_<script>.py::test_<name>` — and read the
+failure. Red alone is not the proof; the reason is.
 
 | The run reports | Counts as red |
 |---|---|
@@ -76,7 +79,8 @@ has proven nothing.
 - Write only what the failing test demands. A branch no test asks for waits for the test
   that does.
 - Re-run the one test until it passes, then the layer's directory
-  (`uv run --locked pytest tests/<layer>/`) for whatever else the change reached.
+  (`uv run --locked --directory backend pytest tests/<layer>/`) for whatever else the
+  change reached.
 - Green reached by editing the test is not green. An assertion changes only when the
   expectation itself was wrong, and the pull request says so.
 
@@ -86,8 +90,8 @@ With the tests green, restructure — rename, extract into the core, remove dupl
 without changing behavior, re-running the tests after each step. A refactor that needs
 an assertion changed has changed behavior; that is a new red, not a refactor.
 
-Then widen to the narrowest check for what changed (AGENTS.md's "Validating a change"),
-and to `just verify` before calling the work done.
+Then widen to the narrowest check for what changed (`backend/AGENTS.md`'s or AGENTS.md's
+"Validating a change"), and to `just verify` before calling the work done.
 
 ## Fixing a bug
 

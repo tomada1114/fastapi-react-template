@@ -37,7 +37,8 @@ Each surface has one job; do not let one grow a second copy of another's content
 |---|---|---|
 | `README.md` | What the application does, the quickstart, the HTTP table, error statuses, the configuration table, the architecture | A route, status, or setting it documents changes |
 | `CONTRIBUTING.md` | Prerequisites, setup, the development commands, the pull request process, commit messages | Setup, the toolchain, or the pull request process changes |
-| `AGENTS.md` | What every agent task needs: the quick reference, the "Validating a change" table, the architecture, the Skills table, the approval rules, the enforcement layers | One of those facts changes |
+| `AGENTS.md` | What every agent task needs: the quick reference, the "Validating a change" table, the Skills table, the approval rules, the enforcement layers | One of those facts changes |
+| `backend/AGENTS.md` | What every task in `backend/` needs: its "Validating a change" table, its architecture, its skills | The backend's layout or narrowest checks change |
 | `.agents/skills/<name>/` | One kind of change's conventions, loaded on demand | Those conventions change (`authoring-skills`) |
 | `docs/architecture/` | ADRs and the roadmap | A decision owes an ADR, or the direction moves |
 | Docstrings | A function's contract and its why | The function changes (`writing-python`) |
@@ -61,7 +62,7 @@ reader of the diff catches it.
 |---|---|---|
 | A skill added, renamed, or deleted | Its row in AGENTS.md's Skills table | `tests/harness/test_skills.py` (`just check-harness`) |
 | A `just` recipe added, renamed, or removed | Its line in AGENTS.md's "Quick Reference", in the block for who runs it; `CONTRIBUTING.md` if it lists the recipe | `tests/harness/test_just_recipes.py` when a document it reads still names a renamed or removed one (its docstring lists them; not an ADR, the roadmap, `docs/product/`, or `.devcontainer/`); review for an added one |
-| A gate, or the narrowest check for one kind of change | Its row in AGENTS.md's "Validating a change" | review |
+| A gate, or the narrowest check for one kind of change | Its row in the "Validating a change" table of AGENTS.md, or of `backend/AGENTS.md` for the app | review |
 | An HTTP route | `README.md`'s HTTP table | review |
 | A `MY_APP_*` setting | `README.md`'s configuration table | review |
 | An `AppError` mapping | `README.md`'s error text | review |

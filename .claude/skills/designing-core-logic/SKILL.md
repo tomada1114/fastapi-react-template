@@ -2,12 +2,12 @@
 name: designing-core-logic
 description: >
   Covers what goes where beneath the entry points: models, rules, and services in
-  src/my_app/core/, ports as typing.Protocol, the injected Clock, adapters in
-  src/my_app/adapters/ and the shared repository contract suite, Settings in
+  backend/src/my_app/core/, ports as typing.Protocol, the injected Clock, adapters in
+  backend/src/my_app/adapters/ and the shared repository contract suite, Settings in
   settings.py, and the composition root's build_container and Container. Use when
   adding a use case, a domain rule or model, a port, a repository or other adapter, or
-  a MY_APP_ setting, or when ruff TID251 or tests/core/test_imports.py rejects an
-  import in the core.
+  a MY_APP_ setting, or when ruff TID251 or backend/tests/core/test_imports.py rejects
+  an import in the core.
 ---
 
 # Designing Core Logic
@@ -15,7 +15,7 @@ description: >
 **Owns:** the layers beneath the entry points — what belongs in `core/`, how a port and
 its adapters are shaped and tested, how configuration is read, and how
 `composition.py` wires adapters into services. **Does not own:** the layer map
-(AGENTS.md's "Architecture"); removing the API (`building-api-routes`); the
+(`backend/AGENTS.md`'s "Architecture"); removing the API (`building-api-routes`); the
 `AppError` hierarchy and its mapping (`designing-errors`); exposing a service over
 HTTP (`building-api-routes`); module-level Python style (`writing-python`).
 
@@ -24,18 +24,18 @@ HTTP (`building-api-routes`); module-level Python style (`writing-python`).
 `api/` calls services from `core/`, which it receives only from
 `composition.build_container`; `adapters/` implement the ports `core/` declares; `core/`
 imports only itself and the deterministic standard-library modules allowed by
-`ALLOWED_STDLIB` in `tests/core/test_imports.py`.
+`ALLOWED_STDLIB` in `backend/tests/core/test_imports.py`.
 
-- Enforced by: `tests/core/test_imports.py`, the authoritative allowlist. It rejects
-  every import outside the core and the allowlist, including third-party modules,
-  other application layers, relative escapes, and imports inside `TYPE_CHECKING`.
-  The check walks subpackages too. Adding an allowed module is a reviewed decision:
+- Enforced by: `backend/tests/core/test_imports.py`, the authoritative allowlist. It
+  rejects every import outside the core and the allowlist, including third-party
+  modules, other application layers, relative escapes, and imports inside
+  `TYPE_CHECKING`, in subpackages too. Adding an allowed module is a reviewed decision:
   it must do no I/O and read no clock, randomness, or environment; otherwise use a port.
-- Enforced by: `pyproject.toml` `[tool.ruff.lint.flake8-tidy-imports.banned-api]`
+- Enforced by: `backend/pyproject.toml`'s `[tool.ruff.lint.flake8-tidy-imports.banned-api]`
   (`TID251`), a fast subset for common framework and driver mistakes. Its
   per-file-ignores let the outer layers use those dependencies.
-- Enforced by: the AST call check in `tests/core/test_imports.py`, which rejects bare
-  calls to `open`, `input`, `print`, `breakpoint`, `exec`, `eval`, `compile`, and
+- Enforced by: the AST call check in `backend/tests/core/test_imports.py`, which rejects
+  bare calls to `open`, `input`, `print`, `breakpoint`, `exec`, `eval`, `compile`, and
   `__import__`, plus `now`, `utcnow`, or `today` on a receiver name or attribute ending
   in `datetime` or `date`. It also rejects `date.fromtimestamp` on recognizable
   `date` receivers, `datetime.fromtimestamp` on recognizable `datetime` receivers
@@ -101,7 +101,7 @@ review covers indirect calls and aliases the AST check cannot resolve. Current t
 arrives through `Clock`, which any zero-argument callable returning a
 timezone-aware `datetime` satisfies; a naive one is rejected by the model's invariant
 check as a bug. Production passes `composition.utc_now`; tests pass the `fixed_clock`
-fixture from `tests/conftest.py`, so a timestamp in an assertion is exact. Any other
+fixture from `backend/tests/conftest.py`, so a timestamp in an assertion is exact. Any other
 outside input — randomness, an identifier generator, a remote call — gets a port of
 the same kind rather than a direct call.
 
@@ -114,11 +114,11 @@ the same kind rather than a direct call.
 - Its queries are module constants spelled out in full, never assembled at run time
   (`adapters/sqlite.py`).
 - Every implementation of a port runs the one shared contract suite. A new repository
-  joins `tests/adapters/test_repository_contract.py` by adding a `pytest.param` to
-  `REPOSITORY_FACTORIES`; behavior only it has (the SQLite file outliving the object,
-  persistence details) goes in `tests/adapters/test_<adapter>.py`. Concurrent adds
+  joins `backend/tests/adapters/test_repository_contract.py` by adding a `pytest.param`
+  to `REPOSITORY_FACTORIES`; behavior only it has (the SQLite file outliving the object,
+  persistence details) goes in `backend/tests/adapters/test_<adapter>.py`. Concurrent adds
   must assign unique ids in every repository.
-- The in-memory adapter doubles as the core's fake: `tests/core/test_services.py`
+- The in-memory adapter doubles as the core's fake: `backend/tests/core/test_services.py`
   builds a service over `InMemoryTodoRepository()` and `fixed_clock` instead of mocking
   the port.
 
@@ -133,9 +133,9 @@ the vendor's own `OPENROUTER_API_KEY`, read through a `validation_alias`
   says what to set, rather than on the first request;
 - turned into the form the composition root needs by a property (`sqlite_path` turns
   `database_url` into a `Path`), so adapters never parse configuration strings;
-- deleted from the environment by `tests/conftest.py`'s autouse `_isolate_settings_env`
-  fixture, which derives the prefix and aliases from `Settings`, so a developer's
-  shell cannot leak into a test without a hand-kept variable list;
+- deleted from the environment by `backend/tests/conftest.py`'s autouse
+  `_isolate_settings_env` fixture, which derives the prefix and aliases from `Settings`,
+  so a developer's shell cannot leak into a test without a hand-kept variable list;
 - listed in the README's Configuration table.
 
 ## The composition root wires everything once
@@ -156,8 +156,8 @@ def build_container(settings: Settings, clock: Clock = utc_now) -> Container:
 ```
 
 Tests build containers through the same function: the `make_container` fixture in
-`tests/conftest.py` calls `build_container` with the fixed clock and in-memory storage
-by default, and `tests/test_composition.py` covers the wiring itself.
+`backend/tests/conftest.py` calls `build_container` with the fixed clock and in-memory
+storage by default, and `backend/tests/test_composition.py` covers the wiring itself.
 
 ## An adapter that holds a resource
 
@@ -181,7 +181,7 @@ a context manager. Current adapters acquire resources per call and register noth
 2. A method on the service, calling ports only, with `Args:`, `Returns:`, and `Raises:`.
 3. A port method if storage must do something new, implemented in every adapter, and a
    contract-suite test that every adapter must pass.
-4. Tests in `tests/core/` through the service's public methods, happy and error paths.
+4. Tests in `backend/tests/core/` through the service's public methods, happy and error paths.
 5. Expose it in each entry point the project keeps. **REQUIRED:** `building-api-routes`
    for a route, if the API exists.
 
@@ -193,9 +193,10 @@ For a new outside dependency — another store, a remote service, a source of ra
    what each method returns and raises.
 2. One adapter per technology in `adapters/`, satisfying the port by shape, translating
    its driver's failures into the domain errors the port names, and safe across threads.
-3. A contract suite for the port in `tests/adapters/test_<port>_contract.py`, written
-   once and parametrized over every implementation the way `REPOSITORY_FACTORIES` is,
-   plus `tests/adapters/test_<adapter>.py` for what only one adapter does.
+3. A contract suite for the port in `backend/tests/adapters/test_<port>_contract.py`,
+   written once and parametrized over every implementation the way
+   `REPOSITORY_FACTORIES` is, plus `backend/tests/adapters/test_<adapter>.py` for what
+   only one adapter does.
 4. An in-memory adapter that passes the same suite and serves as the core tests' fake.
 5. The service that needs it takes it as a constructor parameter; `build_container`
    builds the adapter (choosing between implementations by a `Settings` field when
@@ -205,5 +206,5 @@ For a new outside dependency — another store, a remote service, a source of ra
 7. A new setting follows "Settings are read once, at the boundary"; a new driver
    follows "The direction dependencies point".
 
-Run the narrowest checks while iterating: `uv run --locked pytest tests/core/
-tests/adapters/ tests/test_composition.py tests/test_settings.py`.
+Run the narrowest checks while iterating, from the repository root:
+`uv run --locked --directory backend pytest tests/core/ tests/adapters/ tests/test_composition.py tests/test_settings.py`.
