@@ -13,3 +13,7 @@ trim_trailing_whitespace = false
 
 [*.{yml,yaml}]
 indent_size = 2
+
+# package.json and the frontend's files: the JavaScript ecosystem's 2 spaces
+[{package.json,frontend/**}]
+indent_size = 2
