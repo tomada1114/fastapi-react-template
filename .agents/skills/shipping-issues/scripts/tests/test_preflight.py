@@ -410,6 +410,7 @@ class PreflightTest(unittest.TestCase):
             "package.json",
             "pnpm-workspace.yaml",
             ".node-version",
+            ".npmrc",
         ):
             with self.subTest(changed=name), tempfile.TemporaryDirectory() as td:
                 repo = Path(td)
@@ -587,6 +588,7 @@ class PreflightTest(unittest.TestCase):
             "package.json",
             "pnpm-workspace.yaml",
             ".node-version",
+            ".npmrc",
         ):
             with self.subTest(changed=name), tempfile.TemporaryDirectory() as td:
                 repo = Path(td)

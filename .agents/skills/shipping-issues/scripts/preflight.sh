@@ -20,7 +20,7 @@
 # every invocation across a single shipping-issues run: those facts are constant
 # for a repo as long as its lockfiles (uv.lock, pnpm-lock.yaml) and
 # build-config files (justfile, Makefile, pyproject.toml, package.json,
-# pnpm-workspace.yaml, .node-version) haven't changed, so a matching lockfile
+# pnpm-workspace.yaml, .node-version, .npmrc) haven't changed, so a matching lockfile
 # hash + config hash is treated as a cache hit. worktree_viable is never
 # detected here (git-worktree viability requires actually running a baseline
 # verify command, which is worktree_setup.sh's job, not preflight's) — it is
@@ -415,10 +415,10 @@ if [[ -n "$PROFILE_CACHE" ]]; then
   # `verify` recipe to the justfile doesn't change uv.lock), plus the
   # JavaScript files that change what `pnpm install` does: package.json (the
   # pinned pnpm and required Node), pnpm-workspace.yaml (the install policy),
-  # and .node-version.
+  # .node-version, and .npmrc (the registry and linker pnpm reads).
   meta_concat=""
   for f in Makefile makefile GNUmakefile justfile .justfile pyproject.toml \
-    package.json pnpm-workspace.yaml .node-version; do
+    package.json pnpm-workspace.yaml .node-version .npmrc; do
     if [[ -f "$repo_root/$f" ]]; then
       meta_concat+="$f:$(hash_file12 "$repo_root/$f");"
     fi
