@@ -2,12 +2,13 @@
 name: designing-core-logic
 description: >
   Covers what goes where beneath the entry points: models, rules, and services in
-  backend/src/my_app/core/, ports as typing.Protocol, the injected Clock, adapters in
+  backend/src/my_app/core/, ports as typing.Protocol any store can implement (app-made
+  UUIDv7 ids, cursor pages), the injected Clock and IdFactory, adapters in
   backend/src/my_app/adapters/ and the shared repository contract suite, Settings in
   settings.py, and the composition root's build_container and Container. Use when
   adding a use case, a domain rule or model, a port, a repository or other adapter, or
   a MY_APP_ setting, or when ruff TID251 or backend/tests/core/test_imports.py rejects
-  an import in the core.
+  core code.
 ---
 
 # Designing Core Logic
@@ -36,14 +37,15 @@ imports only itself and the deterministic standard-library modules allowed by
   per-file-ignores let the outer layers use those dependencies.
 - Enforced by: the AST call check in `backend/tests/core/test_imports.py`, which rejects
   bare calls to `open`, `input`, `print`, `breakpoint`, `exec`, `eval`, `compile`, and
-  `__import__`, plus `now`, `utcnow`, or `today` on a receiver name or attribute ending
-  in `datetime` or `date`. It also rejects `date.fromtimestamp` on recognizable
-  `date` receivers, `datetime.fromtimestamp` on recognizable `datetime` receivers
-  without an explicit timezone, and any attribute call to `astimezone` without an
-  explicit timezone. Positional or keyword `tz` arguments count as explicit unless
-  they are literal `None`. This is a structural check, not alias or data-flow/type
-  analysis: review must ensure supplied timezones are non-None and `astimezone`
-  receivers are timezone-aware.
+  `__import__`; `now`, `utcnow`, or `today` on a receiver name or attribute ending in
+  `datetime` or `date`; and `uuid1`, `uuid4`, `uuid6`, or `uuid7`, bare or on a `uuid`
+  receiver (the `UUID` type is allowed; ids come from `IdFactory`). It also rejects
+  `date.fromtimestamp` on recognizable `date` receivers, `datetime.fromtimestamp` on
+  recognizable `datetime` receivers without an explicit timezone, and any attribute
+  call to `astimezone` without an explicit timezone. Positional or keyword `tz`
+  arguments count as explicit unless they are literal `None`. This is a structural
+  check, not alias or data-flow/type analysis: review must ensure supplied timezones
+  are non-None and `astimezone` receivers are timezone-aware.
 
 A new framework or driver the core must not touch gets a `banned-api` entry in the same
 change that adds it; the per-file-ignores already let the outer layers use it.
@@ -53,8 +55,8 @@ change that adds it; the per-file-ignores already let the outer layers use it.
 A domain value is a frozen dataclass whose `__post_init__` refuses any state no rule
 allows. The check runs on every construction — an adapter rebuilding a row,
 `dataclasses.replace` producing a changed copy — so no code path can hold an invalid
-value. A value that does not have its identity yet is its own type: `TodoDraft` has no
-`id`, `Todo` has one, and both run `_check_invariants`.
+value. A `Todo` has its id from the start: the service takes it from `IdFactory` before
+any repository sees the value.
 
 A rule lives once, in the core, as a function every entry point reaches through a
 service. `normalize_title` strips and length-checks a title; the API's request model
@@ -64,11 +66,11 @@ the same message.
 ## Services are the use cases
 
 A service class groups the operations an entry point offers on one part of the domain.
-Its constructor takes the ports and the clock it needs; its methods take what a user
-supplies (`raw_title: str`, `todo_id: int`) and return domain models. Entry points call
-a service and nothing below it, so a rule added to a service holds for every entry
-point. A method's docstring records the behavior a caller may rely on — `complete`
-returns an already-completed to-do unchanged, so a retried request is safe.
+Its constructor takes the ports, the clock, and the id factory it needs; its methods
+take what a user supplies (`raw_title: str`, `todo_id: UUID`) and return domain models.
+Entry points call a service and nothing below it, so a rule added to a service holds for
+every entry point. A method's docstring records the behavior a caller may rely on —
+`complete` returns an already-completed to-do unchanged, so a retried request is safe.
 
 Excerpts in this skill drop docstrings where marked; the real code keeps them, because
 ruff's `D` rules require them.
@@ -76,12 +78,14 @@ ruff's `D` rules require them.
 ```python
 async def create(self, raw_title: str) -> Todo:
     # ... docstring elided
-    draft = TodoDraft(title=normalize_title(raw_title), created_at=self._clock())
-    return await self._repository.add(draft)
+    title = normalize_title(raw_title)
+    todo = Todo(id=self._new_id(), title=title, created_at=self._clock())
+    return await self._repository.add(todo)
 ```
 
 The repository path is async end to end: port methods, service methods, and routes are
-`async def`, awaiting the layer below; a rule, a calculation, and the `Clock` stay `def`.
+`async def`, awaiting the layer below; a rule, a calculation, `Clock`, and `IdFactory`
+stay `def`.
 
 ## Ports describe what the core needs from outside
 
@@ -91,6 +95,27 @@ it. The port's docstrings are the contract — what is returned, in what order, 
 is raised — and `TodoRepository` is `@runtime_checkable` so the contract suite can also
 assert that an adapter has every method.
 
+## Ports any store can implement
+
+A repository port must suit a SQL database and a key-value store such as DynamoDB
+alike, so every one follows six rules:
+
+1. **The application generates ids.** `Todo.id` is a `UUID` from the injected
+   `IdFactory`; no store assigns one. `add` of an id already stored raises `ValueError`
+   (a factory bug) and overwrites nothing, as a primary key or a conditional put does.
+2. **A method is one access pattern** — `get(todo_id)`, `list_page(cursor, limit)` —
+   never an arbitrary query, join, or filter builder.
+3. **A list pages by an opaque cursor, never by offset.** `list_page` returns a
+   `Page[Todo]` ascending by id, reading `limit + 1` items so `next_cursor` is `None`
+   exactly on the last page. `adapters/cursor.py` (`encode_after`, `decode_after`, which
+   raises `InvalidCursorError`) is the shared cursor; a store with its own token keeps it
+   in its adapter. The service owns the limit (`MAX_PAGE_LIMIT`, `InvalidPageLimitError`).
+4. **No store type crosses the adapter boundary** — no row, session, ORM object, or
+   query; the core sees only its own values.
+5. **A write that must be atomic across items is one port method,** implementable as a
+   SQL transaction or a DynamoDB `TransactWriteItems`.
+6. **Timestamps are timezone-aware UTC**; `Todo` rejects a naive `created_at`.
+
 ## Time and other outside inputs are injected
 
 The core takes time, randomness, environment values, and I/O through injected ports.
@@ -99,9 +124,11 @@ review covers indirect calls and aliases the AST check cannot resolve. Current t
 arrives through `Clock`, which any zero-argument callable returning a
 timezone-aware `datetime` satisfies; a naive one is rejected by the model's invariant
 check as a bug. Production passes `composition.utc_now`; tests pass the `fixed_clock`
-fixture from `backend/tests/conftest.py`, so a timestamp in an assertion is exact. Any other
-outside input — randomness, an identifier generator, a remote call — gets a port of
-the same kind rather than a direct call.
+fixture from `backend/tests/conftest.py`, so a timestamp in an assertion is exact. Ids
+arrive the same way through `IdFactory`: production passes `uuid.uuid7`, ascending in
+creation order; tests pass the `new_id` fixture, whose ids are v7-shaped and ascend
+(`nth_id(n)` is the n-th). Any other outside input — randomness, a remote call — gets a
+port of the same kind rather than a direct call.
 
 ## Adapters implement a port
 
@@ -117,10 +144,10 @@ the same kind rather than a direct call.
   joins `backend/tests/adapters/test_repository_contract.py` by adding a `pytest.param`
   to `REPOSITORY_FACTORIES`; behavior only it has (the SQLite file outliving the object,
   persistence details) goes in `backend/tests/adapters/test_<adapter>.py`. Concurrent adds
-  must assign unique ids in every repository (200 `add` calls in one task group).
+  must all be stored in every repository (200 `add` calls in one task group).
 - The in-memory adapter doubles as the core's fake: `backend/tests/core/test_services.py`
-  builds a service over `InMemoryTodoRepository()` and `fixed_clock` instead of mocking
-  the port.
+  builds a service over `InMemoryTodoRepository()`, `fixed_clock`, and `new_id` instead
+  of mocking the port.
 
 ## Settings are read once, at the boundary
 
@@ -140,38 +167,26 @@ the same kind rather than a direct call.
 ## The composition root wires everything once
 
 `composition.py` is the only module that constructs adapters and services.
-`build_container(settings, clock=utc_now)` picks adapters from the settings
-(`_build_repository`) and returns a frozen `Container` with one field per service; the
-API stores it on `app.state`. A new service is a new
-`Container` field built in `build_container`; a new adapter choice is a branch in the
-function that picks it, driven by a setting.
+`build_container(settings, clock=utc_now, new_id=uuid.uuid7)` picks adapters from the
+settings (`_build_repository`) and returns a frozen `Container` with one field per
+service; the API stores it on `app.state`. A new service is a new `Container` field
+built in `build_container`; a new adapter choice is a branch in the function that picks
+it, driven by a setting.
 
 ```python
-def build_container(settings: Settings, clock: Clock = utc_now) -> Container:
+def build_container(
+    settings: Settings, clock: Clock = utc_now, new_id: IdFactory = uuid.uuid7
+) -> Container:
     # ... docstring elided
     resources = AsyncExitStack()
     repository = _build_repository(settings, resources)
-    todos = TodoService(repository, clock)
+    todos = TodoService(repository, clock, new_id)
     return Container(todos=todos, _resources=resources)
 ```
 
-Tests build containers through the same function: the `make_container` fixture in
-`backend/tests/conftest.py` calls `build_container` with the fixed clock and in-memory
-storage by default, and `backend/tests/test_composition.py` covers the wiring itself.
-
-## An adapter that holds a resource
-
-`build_container` owns an `AsyncExitStack` and passes it to adapter builders: register
-cleanup with `resources.push_async_callback(adapter.aclose)`, and never close an adapter
-in a service. It stays a plain `def` (a bad setting must fail in `create_app`), so a
-build that raises runs no callback: register only an object that opens nothing when
-constructed, as its docstring says. The stack moves to the frozen `Container`: its
-`aclose()` is idempotent, `async with container:` forwards exception details to
-registered context managers and keeps their suppression decision, and a failing callback
-propagates after the rest run. The API's lifespan awaits `aclose()` on a container its
-factory built; a supplied `container=` stays caller-owned. Each `TestClient` context
-runs the app on its own loop, so never reuse a container holding a loop-bound resource
-across two of them. Current adapters register nothing here.
+Tests build containers through the same function: `backend/tests/conftest.py`'s
+`make_container` passes the fixed clock, `new_id`, and in-memory storage by default, and
+`backend/tests/test_composition.py` covers the wiring itself.
 
 ## Adding a use case
 
@@ -187,24 +202,11 @@ across two of them. Current adapters register nothing here.
 
 ## Adding a port and its adapters
 
-For a new outside dependency — another store, a remote service, a source of randomness:
-
-1. A `Protocol` in `core/ports.py`, typed with core models only, its I/O methods
-   `async def`, whose docstrings state what each method returns and raises.
-2. One adapter per technology in `adapters/`, satisfying the port by shape, translating
-   its driver's failures into the domain errors the port names, never blocking the loop.
-3. A contract suite for the port in `backend/tests/adapters/test_<port>_contract.py`,
-   written once and parametrized over every implementation the way
-   `REPOSITORY_FACTORIES` is, plus `backend/tests/adapters/test_<adapter>.py` for what
-   only one adapter does.
-4. An in-memory adapter that passes the same suite and serves as the core tests' fake.
-5. The service that needs it takes it as a constructor parameter; `build_container`
-   builds the adapter (choosing between implementations by a `Settings` field when
-   there is more than one) and passes it in, and a new service gets its `Container`
-   field.
-6. An adapter retaining a resource follows "An adapter that holds a resource".
-7. A new setting follows "Settings are read once, at the boundary"; a new driver
-   follows "The direction dependencies point".
+For a new outside dependency — another store, a remote service, a source of randomness —
+work through [references/adding-a-port.md](references/adding-a-port.md): the `Protocol`
+under "Ports any store can implement", one adapter per technology, its contract suite
+and in-memory fake, the wiring in `build_container`, and the cleanup of an adapter that
+holds a resource (`AsyncExitStack`, `Container.aclose()`).
 
 Run the narrowest checks while iterating, from the repository root:
 `uv run --locked --directory backend pytest tests/core/ tests/adapters/ tests/test_composition.py tests/test_settings.py`.

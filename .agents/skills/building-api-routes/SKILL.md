@@ -127,8 +127,8 @@ One module per resource, each with a single module-level `router = APIRouter(...
   the event loop rather than in FastAPI's worker threads.
   `test_create_app_every_route_is_a_coroutine_function` in
   `backend/tests/api/test_app.py` fails on a plain `def` route.
-- **Parameters are typed.** A path parameter typed `int` gives FastAPI's own 422 for a
-  non-integer; the body is a request model; the service is the `...Dep` alias.
+- **Parameters are typed.** A path id typed `UUID` gives FastAPI's own 422 for anything
+  that is not a UUID; the body is a request model; the service is the `...Dep` alias.
 - **The return annotation is the response model.** Return a response model built from
   the domain result, or `None` for a 204.
 - **Status codes are `HTTPStatus` members:** `status_code=HTTPStatus.CREATED` on a
@@ -144,7 +144,7 @@ One module per resource, each with a single module-level `router = APIRouter(...
 
 ```python
 @router.post("/{todo_id}/complete", responses=_NOT_FOUND)
-async def complete_todo(todo_id: int, service: TodoServiceDep) -> TodoResponse:
+async def complete_todo(todo_id: UUID, service: TodoServiceDep) -> TodoResponse:
     """Mark a to-do as completed."""
     return TodoResponse.from_domain(await service.complete(todo_id))
 ```
@@ -167,7 +167,9 @@ client.
 - A request model does not repeat a rule the core owns. `TodoCreateRequest.title` is a
   plain `str`, so the core's `InvalidTodoError` produces the one message both entry
   points share; a `Field(max_length=...)` there would answer the same mistake with
-  FastAPI's differently shaped 422. Types a parser enforces (`int`, `datetime`) stay.
+  FastAPI's differently shaped 422. Types a parser enforces (`int`, `UUID`, `datetime`)
+  stay. A query parameter follows the same rule: `list_todos`' `limit: int` has no
+  `Query(ge=, le=)`, because the core's `InvalidPageLimitError` owns the range.
 - Every domain error's body is `ErrorResponse`; its status is `designing-errors`'.
 
 ## Adding a route
@@ -177,14 +179,14 @@ Take reading one item by id, `GET /<resource>/{id}`, as the worked case:
 1. The service needs a method for it. `TodoService` has none for a single item yet,
    though the `TodoRepository` port already has `get`; add the method and its tests
    first. **REQUIRED:** `designing-core-logic`.
-2. Add the route to the resource's router module: an `int` path parameter, the service
+2. Add the route to the resource's router module: a `UUID` path parameter, the service
    dependency, the response model as the return type, `responses=_NOT_FOUND`, and a
    one-line docstring.
 3. The status for a missing item needs nothing new: the not-found error already maps to
    404 in `_status_for`. A new error type needs its mapping first. **REQUIRED:**
    `designing-errors`.
 4. Test it (below): 200 with the body a create returned, 404 with the exact `detail`, a
-   non-integer id in the parametrized 422 test, and its 404 in the OpenAPI test.
+   non-UUID id in the parametrized 422 test, and its 404 in the OpenAPI test.
 5. Add the route to the README's HTTP table.
 
 ## Testing a route

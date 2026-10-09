@@ -122,27 +122,27 @@ fi
 - **A host that runs long commands in the background** follows the same steps; the stop
   and the final check still happen before the turn ends.
 
-The output of that script under bash and zsh, observed 2026-10-08 (the port and
-timestamps vary):
+The output of that script under bash and zsh, observed 2026-10-09 (the port, the
+timestamps, and the generated id vary):
 
 ```console
 HTTP/1.1 200 OK
-date: Fri, 09 Oct 2026 02:33:43 GMT
+date: Fri, 09 Oct 2026 18:06:37 GMT
 server: uvicorn
 content-length: 15
 content-type: application/json
 
 {"status":"ok"}
 HTTP/1.1 201 Created
-date: Fri, 09 Oct 2026 02:33:43 GMT
+date: Fri, 09 Oct 2026 18:06:37 GMT
 server: uvicorn
-content-length: 88
+content-length: 125
 content-type: application/json
 
-{"id":1,"title":"buy milk","completed":false,"created_at":"2026-10-09T02:33:44.128732Z"}
-nothing listening on 64300
-INFO:     Uvicorn running on http://127.0.0.1:64300 (Press CTRL+C to quit)
-INFO:     Finished server process [72803]
+{"id":"01a121d8-7aea-7490-9f79-a15feba20afd","title":"buy milk","completed":false,"created_at":"2026-10-09T18:06:37.802851Z"}
+nothing listening on 60945
+INFO:     Uvicorn running on http://127.0.0.1:60945 (Press CTRL+C to quit)
+INFO:     Finished server process [98971]
 ```
 
 The server command is the one `just dev` runs, minus `--reload`, plus `--port`. The
