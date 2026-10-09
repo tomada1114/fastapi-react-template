@@ -36,14 +36,16 @@ formality. Step 4 repeats this review whenever a head changes:
 A `dependabot/uv/...` PR moves Python dependencies. Review it as closely as an Action:
 
 - A `uv` PR always moves `uv.lock`, and moves a manifest too when it raises a range:
-  `backend/pyproject.toml` for a runtime package or an extra, the root `pyproject.toml`
+  `backend/pyproject.toml` for a runtime package or a package in an extra, the root `pyproject.toml`
   for the `dev` group; a grouped PR may move both. A manifest change arrives with the
   `uv.lock` that `uv lock` generated for it, in the same PR; a manifest change without
   its lock is held. A `uv.lock`-only change is a lock refresh inside the existing ranges.
 - In either manifest, only the `>=X.Y` lower bound of a dependency that already exists
-  under `backend/pyproject.toml`'s `[project] dependencies` or the root's
-  `[dependency-groups]` may change. A new entry, a removed one, or anything under
-  `[tool.*]` — `exclude-newer` included — goes to "Stop and ask".
+  under `backend/pyproject.toml`'s `[project] dependencies` or
+  `[project.optional-dependencies]`, or the root's `[dependency-groups]`, may change. An
+  existing extra's lower bound is reviewed like a required one's: `uv.lock` pins both.
+  A new entry, a removed one, a new or removed extra, or anything under `[tool.*]` —
+  `exclude-newer` included — goes to "Stop and ask".
 - In `uv.lock`, what matters is that no `[[package]]` appears that the base did not
   lock: that is a new package, transitive or not — "Stop and ask", with
   `managing-dependencies`' review record. These changes are expected and fine:
