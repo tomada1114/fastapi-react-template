@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -43,6 +44,9 @@ class RequestIdMiddleware:
             else str(uuid.uuid7())
         )
         scope.setdefault("state", {})["request_id"] = request_id
+        # ASGI paths are decoded: keep control characters and Unicode line
+        # separators from creating additional physical text-log lines.
+        path = json.dumps(scope["path"], ensure_ascii=True)[1:-1]
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         status = 500
@@ -73,12 +77,12 @@ class RequestIdMiddleware:
                 logger.info(
                     "%s %s %s %.1fms",
                     scope["method"],
-                    scope["path"],
+                    path,
                     status,
                     duration_ms,
                     extra={
                         "method": scope["method"],
-                        "path": scope["path"],
+                        "path": path,
                         "status": status,
                         "duration_ms": duration_ms,
                         "request_id": request_id,

@@ -69,6 +69,8 @@ def configure_logging(level: str, fmt: Literal["text", "json"]) -> None:
             "%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s"
         )
     )
-    logger.addHandler(handler)
+    # This handler always accepts the logger's enabled records. Enrich before
+    # preserved handlers format them, while retaining those handlers' order.
+    logger.handlers.insert(0, handler)
     logger.setLevel(level)
     logger.propagate = True

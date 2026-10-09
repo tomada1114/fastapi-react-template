@@ -9,6 +9,7 @@ import logging
 import anyio
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from my_app.api.app import create_app
 from my_app.logging_config import configure_logging, request_id_var
@@ -91,6 +92,38 @@ def test_outside_request_and_text_format_include_none_identity(configured_loggin
     logger.handlers[0].setStream(stream)
     logging.getLogger("my_app.sample").info("outside")
     assert "[None] outside" in stream.getvalue()
+
+
+def test_preserved_handler_receives_identity_before_it_formats(configured_logging):
+    logger, _ = configured_logging
+    stream = io.StringIO()
+    external = logging.StreamHandler(stream)
+    external.setFormatter(logging.Formatter("%(request_id)s %(message)s"))
+    logger.addHandler(external)
+    configure_logging("INFO", "text")
+    token = request_id_var.set("external-id")
+    try:
+        logging.getLogger("my_app.adapters.sample").info("adapter")
+    finally:
+        request_id_var.reset(token)
+    logging.getLogger("my_app.adapters.sample").info("outside")
+    assert stream.getvalue().splitlines() == ["external-id adapter", "None outside"]
+
+
+@pytest.mark.parametrize("control", ["%0A", "%0D%0A", "%E2%80%A8", "%C2%85"])
+def test_text_access_log_escapes_decoded_path_controls(
+    configured_logging, make_container, control
+):
+    logger, _ = configured_logging
+    configure_logging("INFO", "text")
+    stream = io.StringIO()
+    logger.handlers[0].setStream(stream)
+    with TestClient(create_app(container=make_container())) as client:
+        response = client.get(f"/line{control}ERROR%20forged")
+    assert response.status_code == 404
+    lines = stream.getvalue().splitlines()
+    assert len(lines) == 1
+    assert "ERROR forged" in lines[0]
 
 
 @pytest.mark.anyio

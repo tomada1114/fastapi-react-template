@@ -100,7 +100,8 @@ Every HTTP response carries `X-Request-ID`. Send 1–128 ASCII letters, digits,
 dots, underscores or hyphens to retain your own ID; other values receive a UUIDv7.
 Problem Details includes the same `request_id`, including 500 and CORS failures.
 Application logs carry that ID; the access record contains method, path, status,
-and duration, without query strings or request bodies. `just backend dev` disables
+and duration, without query strings or request bodies. Paths escape control
+characters and Unicode to preserve one physical access line. `just backend dev` disables
 uvicorn's duplicate access log.
 
 The database must be migrated before the API uses it: the app never creates or
