@@ -69,7 +69,7 @@ just lock-check      # Fail when uv.lock is out of date, without changing it
 just verify          # Non-mutating gate: lock-check → agents-check → check-harness → lint → test-skills → test
 just check-harness   # Harness drift (skills, Skills table, recipes, this index, ruleset, labels, workflows) + the Product section check
 just test-skills     # Run the unittest suites bundled under .agents/skills/*/scripts/tests
-just worktree-prepare # Recreate the locked Python environment in an existing linked worktree
+just worktree-prepare # Recreate the locked environments (uv, then pnpm once pnpm-lock.yaml exists) in an existing linked worktree
 just worktree-setup ISSUE BRANCH BASE ROOT VERIFY # Provision one issue worktree with its baseline
 just worktree-clean ROOT BRANCH # Preview cleanup of one named worktree whose local tip is a merged PR's head; a failed gh fails the run
 just worktree-clean-apply ROOT BRANCH # Apply the preview; keeps dirty or unmerged worktrees
