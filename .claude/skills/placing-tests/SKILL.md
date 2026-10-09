@@ -21,7 +21,7 @@ them, and which coverage floor governs them. **Does not own:** how a test is wri
 
 | Code under test | Its test file |
 |---|---|
-| `src/my_app/<layer>/<module>.py` (`core`, `adapters`, `api`, `cli`) | `tests/<layer>/test_<module>.py` |
+| `src/my_app/<layer>/<module>.py` (`core`, `adapters`, `api`) | `tests/<layer>/test_<module>.py` |
 | A top-level module (`settings.py`, `composition.py`) | `tests/test_<module>.py` |
 | `scripts/<script>.py` | `tests/test_<script>.py` |
 | Agent tier definitions in `.claude/agents/` and `.codex/agents/` | `tests/test_agent_tiers.py` |
@@ -31,8 +31,6 @@ them, and which coverage floor governs them. **Does not own:** how a test is wri
   `tdd`.
 - Every directory under `tests/` carries an `__init__.py`; a new layer directory does
   too.
-- `tests/core/test_errors.py` and `tests/cli/test_errors.py` share a basename on
-  purpose: each mirrors its own `errors.py`.
 
 Three files hold a rule for a whole layer rather than one module, and grow by a new case
 rather than by a new file:

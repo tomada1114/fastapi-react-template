@@ -4,7 +4,7 @@ description: >
   Covers setting up an app cut from this template, from the first commit to its first
   feature: AGENTS.md's Product section and tests/test_product_section.py, the bootstrap
   pull request, the roadmap, just labels, GitHub security settings and secrets, just
-  ruleset and a private repository, keeping the HTTP API, the CLI, or both, removing the
+  ruleset and a private repository, keeping or dropping the HTTP API, removing the
   sample to-do domain, and the first ADRs (app shape, persistence). In the template it
   also covers the rename step, .template-origin, and the template smoke check. Use when
   starting an app, setting up the new repository, or a placeholder survived the rename.
@@ -17,8 +17,8 @@ rename, the Product section and roadmap as steps, the app's shape, removing the 
 the first ADRs, and the new repository's GitHub setup. **Does not own:** what the
 roadmap says (`steering-the-roadmap`); how an ADR is written
 (`recording-architecture-decisions`); labels and issue bodies (`triaging-issues`);
-what makes a CI job a required check (`changing-gates`); which files go with each entry
-point (`building-api-routes`, `designing-clis`).
+what makes a CI job a required check (`changing-gates`); which files go with the API
+(`building-api-routes`).
 
 Steps marked **human** are a person's: an agent never runs them, and only drafts or
 lists them for the owner. Steps that write to GitHub run only with the owner's sign-off
@@ -86,18 +86,18 @@ example an agent skill that cuts repositories from templates) follows the same o
 
 ## Choose the app's shape
 
-The template ships both entry points over one framework-free core: the FastAPI HTTP
-API and the Typer CLI. Decide which the app needs before its first feature, and write
-the answer into the Product section's core interaction:
+The template ships one entry point over a framework-free core: the FastAPI HTTP API.
+Decide what the app needs before its first feature, and write the answer into the
+Product section's core interaction:
 
-- **Both**, when people use it at a terminal and other programs call it over HTTP.
-- **API only**, for a service. **CLI only**, for a tool run by hand or by a scheduler.
+- **API**, for a service other programs call over HTTP — the shape the template ships.
+- **Core only**, for a library with no entry point of its own.
 
-Dropping an entry point is a list of deletions, never a core change: the "A project
-without the API" section of `building-api-routes` and "A project without the CLI" of
-`designing-clis` name every file, dependency, recipe, ruff entry, and skill that goes
-with each; README's "Architecture" points to those checklists. Run `uv lock` after
-removing a dependency, then `just verify`.
+Dropping the API is a list of deletions, never a core change: the "A project without
+the API" section of `building-api-routes` names every file, dependency, recipe, ruff
+entry, and skill that goes with it. Run `uv lock` after removing a dependency, then
+`just verify`. An app that needs admin commands adds a command-line entry point beside
+the API, over the same core.
 
 ## Record the first ADRs
 
@@ -105,7 +105,7 @@ Write each as Proposed (only the owner accepts), in `docs/architecture/adr/` wit
 row in `docs/architecture/README.md`, per **REQUIRED:**
 `recording-architecture-decisions`:
 
-- **App shape**: which entry points the app keeps, and why the other went.
+- **App shape**: whether the app keeps the API, and why.
 - **Persistence**: where and in what format the app keeps state — the in-memory
   repository, the stdlib SQLite adapter, or another store — with how a schema change
   reaches existing data. Write it as soon as the app keeps state of its own.
@@ -122,22 +122,18 @@ code:
 - the domain in `src/my_app/core/` (`models.py`, `ports.py`, `services.py`, and the
   `TodoNotFoundError`/`InvalidTodoError` in `errors.py`), and the adapters in
   `src/my_app/adapters/` that implement its repository port;
-- the entry points' wrappers: `src/my_app/api/routers/todos.py` and the to-do models
-  in `api/schemas.py`, and `src/my_app/cli/todo.py` with its registration in
-  `cli/main.py`;
-- their tests under `tests/core/`, `tests/adapters/`, `tests/api/`, and `tests/cli/`,
-  and the contract suite's parameters in `tests/adapters/test_repository_contract.py`;
-- README's Quickstart, the CLI/HTTP table, and the Configuration section, the `just run`
-  example in the `justfile`, and the command line in
-  `.github/ISSUE_TEMPLATE/bug_report.yml`;
+- the API's wrappers: `src/my_app/api/routers/todos.py` and the to-do models in
+  `api/schemas.py`;
+- their tests under `tests/core/`, `tests/adapters/`, and `tests/api/`, and the
+  contract suite's parameters in `tests/adapters/test_repository_contract.py`;
+- README's Quickstart, the HTTP table, and the Configuration section;
 - the examples the code-writing skills quote from the sample (`writing-python`,
-  `designing-errors`, `designing-core-logic`, `building-api-routes`, `designing-clis`,
+  `designing-errors`, `designing-core-logic`, `building-api-routes`,
   `running-the-app`): rewrite each with the app's own code, keeping the rule around it,
   then `just agents-sync`.
 
-Keep what is general: `core.errors.AppError` and the one place each entry point maps it
-(the API's handler in `api/app.py`, the CLI's exit codes in `cli/errors.py`), the
-composition root, `settings.py` and its environment prefix, the health route, the
+Keep what is general: `core.errors.AppError` and the one place the API maps it (its
+handler in `api/app.py`), the composition root, `settings.py` and its environment prefix, the health route, the
 banned-api lint rule that keeps the core framework-free, and `tests/conftest.py`'s fixed
 clock. Then search the tree for `Todo`, `todo`, and `to-do`, and judge each hit: an app
 whose own name holds one of them keeps those.

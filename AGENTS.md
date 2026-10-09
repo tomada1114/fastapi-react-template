@@ -128,8 +128,6 @@ src/my_app/
   build otherwise (`designing-core-logic`).
 - Domain errors derive from `core.errors.AppError`; the API maps them in one
   place (`api/app.py`), per `designing-errors`.
-- No module imports uvicorn (ruff's banned-api refuses it): it serves the app
-  from the command line (`just dev`), through `create_app` as a factory.
 
 ## Skills
 
@@ -145,18 +143,17 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `cloud-claude-shipping-issues` | Claude Code cloud sessions only (`CLAUDE_CODE_REMOTE=true`): shipping the next issue or the backlog over REST `gh api` calls, serially — rank, implement, PR, the PR's review, CI, merge, follow-ups |
 | `codex-shipping-issues` | shipping one GitHub issue from a Codex-managed checkout through a regular PR, up to three Codex review rounds with their findings addressed, current-head CI, and an explicitly authorized merge |
 | `create-pr` | opening or updating a pull request by hand |
-| `designing-clis` | adding or changing a `my-app` command, its arguments, or its output, and the CliRunner tests for it |
 | `designing-core-logic` | adding a use case, domain rule, port, adapter, or `MY_APP_*` setting, or wiring the composition root |
-| `designing-errors` | adding a failure mode, or choosing the HTTP status or exit code a domain error becomes |
+| `designing-errors` | adding a failure mode, or choosing the HTTP status a domain error becomes |
 | `integrating-llm` | calling a model through LlmPort, wiring an LLM-backed route, testing with FakeLlm, changing the OpenRouter adapter or its retries and deadline, setting OPENROUTER_API_KEY or MY_APP_LLM_MODEL, or removing the LLM layer |
 | `managing-dependencies` | adding, bumping, or removing a package, or changing the `exclude-newer` window, its Dependabot cooldown, or a one-package exception |
 | `merging-dependency-prs` | landing open Dependabot pull requests (GitHub Actions and `uv` bumps) |
 | `placing-tests` | adding a test file or a fixture, running one test, or a coverage run below the floor |
 | `recording-architecture-decisions` | a change owes an ADR, or an ADR under `docs/architecture/` is proposed, accepted, or superseded |
-| `running-the-app` | running the CLI or a server of your own to observe a change, and stopping that server afterwards |
+| `running-the-app` | running a server of your own to observe a change, and stopping that server afterwards |
 | `shipping-issues` | Claude Code only: shipping the next issue or the whole backlog: rank, implement, PR, the PR's own review and its findings, CI, merge |
 | `smart-commit` | grouping working-tree changes into commits, or a pre-commit hook refuses a commit |
-| `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping an entry point or the sample domain, the first ADRs; the template rename step |
+| `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the API or the sample domain, the first ADRs; the template rename step |
 | `steering-the-roadmap` | asked what to work on next, or the Now / Next / Later roadmap moves |
 | `tdd` | changing behavior under `src/` or `scripts/`, or fixing a bug: the failing test comes first |
 | `triaging-issues` | filing, labelling, or prioritizing an issue, or recording a problem found outside the task |

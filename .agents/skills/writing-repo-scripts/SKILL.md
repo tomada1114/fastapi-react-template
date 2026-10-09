@@ -35,7 +35,7 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
   syntax. It inherits `GIT_*` from the hook on purpose, because `git commit -a` hands
   the hook a temporary index through `GIT_INDEX_FILE`.
 - `pyproject.toml`'s `banned-api` applies here as it does to the core: no fastapi,
-  typer, uvicorn, sqlite3, or httpx.
+  uvicorn, sqlite3, or httpx.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and
   `print` is its output channel.
 
