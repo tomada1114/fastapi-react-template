@@ -224,8 +224,15 @@ async def _handle_validation_error(
 
 async def _handle_http_error(_: Request, error: HTTPException) -> Response:
     """Keep protocol headers and leave statuses that forbid a body empty."""
+    # This handler creates a new representation, so its metadata must describe
+    # that body. Preserve protocol headers such as Allow and WWW-Authenticate.
+    headers = {
+        name: value
+        for name, value in (error.headers or {}).items()
+        if name.lower() not in {"content-type", "content-length", "content-encoding"}
+    }
     if not is_body_allowed_for_status_code(error.status_code):
-        return Response(status_code=error.status_code, headers=error.headers)
+        return Response(status_code=error.status_code, headers=headers)
     code = {404: "not_found", 405: "method_not_allowed"}.get(
         error.status_code, "http_error"
     )
@@ -234,7 +241,7 @@ async def _handle_http_error(_: Request, error: HTTPException) -> Response:
         if isinstance(error.detail, str)
         else status_phrase(error.status_code)
     )
-    return _problem_response(error.status_code, detail, code, headers=error.headers)
+    return _problem_response(error.status_code, detail, code, headers=headers)
 
 
 async def _handle_unexpected_error(_: Request, error: Exception) -> JSONResponse:

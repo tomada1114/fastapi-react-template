@@ -580,3 +580,47 @@ def test_middleware_http_exception_returns_problem_without_server_error_log(
     assert not [
         record for record in caplog.records if record.name == "my_app.api.errors"
     ]
+
+
+@pytest.mark.parametrize("middleware", [False, True])
+@pytest.mark.parametrize(
+    "representation_headers",
+    [
+        {"cOnTeNt-TyPe": "text/plain", "CONTENT-LENGTH": "1"},
+        {"Content-Encoding": "gzip"},
+    ],
+)
+def test_http_exception_representation_headers_match_problem_body(
+    make_container, middleware, representation_headers
+):
+    app = create_app(container=make_container())
+    headers = {**representation_headers, "WWW-Authenticate": "Bearer", "Allow": "GET"}
+
+    async def failure() -> None:
+        raise HTTPException(401, "authentication required", headers=headers)
+
+    if middleware:
+
+        async def reject(request, call_next):
+            await failure()
+
+        app.add_middleware(BaseHTTPMiddleware, dispatch=reject)
+    else:
+        app.add_api_route("/failure", failure)
+
+    with TestClient(app) as client:
+        response = client.get("/failure")
+
+    assert response.status_code == 401
+    assert response.headers["content-type"] == "application/problem+json"
+    assert int(response.headers["content-length"]) == len(response.content)
+    assert "content-encoding" not in response.headers
+    assert response.headers["www-authenticate"] == "Bearer"
+    assert response.headers["allow"] == "GET"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unauthorized",
+        "status": 401,
+        "detail": "authentication required",
+        "code": "http_error",
+    }

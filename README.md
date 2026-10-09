@@ -63,7 +63,8 @@ raw input and server context are omitted. Domain errors have no `errors`.
 
 Unknown routes are 404 `not_found`; unsupported methods are 405
 `method_not_allowed` with the `Allow` header. Other HTTP exceptions use
-`http_error` and keep their headers; unregistered codes use title `Unknown Status`,
+`http_error` and keep protocol headers; body type, length, and encoding describe
+the new representation. Unregistered codes use title `Unknown Status`,
 and statuses forbidding a body remain empty.
 Unexpected exceptions return 500 `internal_error` with detail `An unexpected
 error occurred`, while the traceback is logged on `my_app.api.errors`.
