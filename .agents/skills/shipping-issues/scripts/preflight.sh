@@ -10,7 +10,7 @@
 # is present. Soft warnings are reported but do not fail.
 #
 # By default this checks only the local git state plus cheap, local repo-profile
-# facts (package manager, verify command, hooks). It makes no GitHub or network
+# facts (package managers, verify command, hooks). It makes no GitHub or network
 # calls at all — that is a deliberate property of this script, so --with-github
 # is how a caller opts into the (slower, network-dependent) GitHub checks. Later
 # steps that actually need GitHub still surface a problem on their own if the
@@ -18,8 +18,9 @@
 #
 # --profile-cache lets the caller avoid recomputing verify_command/hooks/etc on
 # every invocation across a single shipping-issues run: those facts are constant
-# for a repo as long as its lockfile and build-config files (justfile,
-# Makefile, pyproject.toml) haven't changed, so a matching lockfile
+# for a repo as long as its lockfiles (uv.lock, pnpm-lock.yaml) and
+# build-config files (justfile, Makefile, pyproject.toml, package.json,
+# pnpm-workspace.yaml, .node-version) haven't changed, so a matching lockfile
 # hash + config hash is treated as a cache hit. worktree_viable is never
 # detected here (git-worktree viability requires actually running a baseline
 # verify command, which is worktree_setup.sh's job, not preflight's) — it is
@@ -296,19 +297,44 @@ state_root="${state_root%/}"
 runstate="$state_root/shipping-issues/$runstate_leaf"
 emit runstate "$runstate"
 
-# This template provisions only uv; other stacks need their own profile.
+# This template provisions uv (Python) and pnpm (JavaScript), each detected on
+# its own lockfile; other stacks need their own profile. pkg_manager/lockfile
+# keep their Python-only meaning (plan.py reads pkg_manager); the JavaScript
+# side gets its own pair of keys.
 pkg_manager="none"
 lockfile="none"
 if [[ -f "$repo_root/uv.lock" ]]; then
   pkg_manager=uv
   lockfile="uv.lock"
 fi
+js_pkg_manager="none"
+js_lockfile="none"
+if [[ -f "$repo_root/pnpm-lock.yaml" ]]; then
+  js_pkg_manager=pnpm
+  js_lockfile="pnpm-lock.yaml"
+fi
 emit pkg_manager "$pkg_manager"
 emit lockfile "$lockfile"
+emit js_pkg_manager "$js_pkg_manager"
+emit js_lockfile "$js_lockfile"
 
+# One lockfile alone (uv.lock) hashes as that file, as before pnpm was
+# detected, so an existing uv-only cache stays comparable; with pnpm-lock.yaml
+# present the hash covers `<name>:<hash>;` for every lockfile present, so a
+# change to either misses the cache.
 lockfile_hash="none"
-if [[ "$lockfile" != "none" ]]; then
-  h="$(hash_file12 "$repo_root/$lockfile")"
+if [[ "$js_lockfile" == "none" ]]; then
+  if [[ "$lockfile" != "none" ]]; then
+    h="$(hash_file12 "$repo_root/$lockfile")"
+    [[ -n "$h" ]] && lockfile_hash="$h"
+  fi
+else
+  lock_concat=""
+  for f in "$lockfile" "$js_lockfile"; do
+    [[ "$f" == "none" ]] && continue
+    lock_concat+="$f:$(hash_file12 "$repo_root/$f");"
+  done
+  h="$(hash_str12 "$lock_concat")"
   [[ -n "$h" ]] && lockfile_hash="$h"
 fi
 emit lockfile_hash "$lockfile_hash"
@@ -378,9 +404,13 @@ worktree_viable="unknown"
 if [[ -n "$PROFILE_CACHE" ]]; then
   # meta_hash covers the small set of build-config files that can change
   # verify_command/hooks without touching the lockfile (e.g. adding a
-  # `verify` recipe to the justfile doesn't change uv.lock).
+  # `verify` recipe to the justfile doesn't change uv.lock), plus the
+  # JavaScript files that change what `pnpm install` does: package.json (the
+  # pinned pnpm and required Node), pnpm-workspace.yaml (the install policy),
+  # and .node-version.
   meta_concat=""
-  for f in Makefile makefile GNUmakefile justfile .justfile pyproject.toml; do
+  for f in Makefile makefile GNUmakefile justfile .justfile pyproject.toml \
+    package.json pnpm-workspace.yaml .node-version; do
     if [[ -f "$repo_root/$f" ]]; then
       meta_concat+="$f:$(hash_file12 "$repo_root/$f");"
     fi
@@ -393,7 +423,7 @@ if [[ -n "$PROFILE_CACHE" ]]; then
   # answer the old rules gave — a stale verify_command is a weaker baseline
   # gate that nothing else in the run would notice. Bump on ANY change to how
   # verify_command, verify_source, hooks or pkg_manager are derived.
-  profile_logic_version="4"
+  profile_logic_version="5"
 
   cache_hit=0
   if [[ -f "$PROFILE_CACHE" ]]; then
