@@ -169,15 +169,13 @@ async def test_list_page_exactly_limit_todos_returns_them_all_without_cursor(
 
 async def test_list_page_limit_one_visits_every_todo_once(repository, add_many):
     added = await add_many(3)
-    seen: list[Todo] = []
 
-    page = await repository.list_page(None, 1)
-    seen.extend(page.items)
-    while page.next_cursor is not None:
-        page = await repository.list_page(page.next_cursor, 1)
-        seen.extend(page.items)
+    first = await repository.list_page(None, 1)
+    second = await repository.list_page(first.next_cursor, 1)
+    third = await repository.list_page(second.next_cursor, 1)
 
-    assert seen == added
+    assert [first.items, second.items, third.items] == [(todo,) for todo in added]
+    assert third.next_cursor is None
 
 
 async def test_list_page_orders_by_id_not_by_insertion(repository, make_todo):
