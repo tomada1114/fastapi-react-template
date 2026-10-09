@@ -194,6 +194,34 @@ class StructuredDependencySourcesTest(unittest.TestCase):
                 self.assertIn(3, rec["depends_on"])
                 self.assertIn(3, rec["depends_on_open"])
 
+    def test_comment_opener_in_code_does_not_hide_a_stated_line(self):
+        body = "Use `<!--` to begin a comment. Blocked by #3.\n\nDepends on: #4\n"
+        issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(4)]
+        rec = self._record(issues, 1)
+        self.assertEqual(rec["depends_on"], [4])
+
+    def test_real_comment_after_a_quoted_opener_still_hides_its_line(self):
+        body = (
+            "Use `<!--` to begin a comment. Blocked by #3.\n\n"
+            "<!--\nDepends on: #99\n-->\n"
+        )
+        issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(99)]
+        rec = self._record(issues, 1)
+        self.assertIn(3, rec["depends_on_open"])
+
+    def test_ordered_and_task_list_depends_on_lines_are_stated(self):
+        for line in (
+            "1. Depends on: #4",
+            "2) Depends on: #4",
+            "- [ ] Depends on: #4",
+            "* [x] Depends on: #4",
+        ):
+            with self.subTest(line=line):
+                body = f"Blocked by #3.\n\n{line}\n"
+                issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(4)]
+                rec = self._record(issues, 1)
+                self.assertEqual(rec["depends_on"], [4])
+
     def test_contract_without_blocked_by_keeps_prose_edges(self):
         body = "depends on #3\n<!-- ship: tier=P2 touches=* -->"
         rec = self._record([gh_issue(1, body=body), gh_issue(3)], 1)

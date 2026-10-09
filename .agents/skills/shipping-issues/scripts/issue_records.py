@@ -37,7 +37,8 @@ DEP_PATTERNS = [
 # `## Dependencies`), optionally a list item. With the contract's `blocked-by=`
 # it is a structured source: when either is present, it alone sets depends_on.
 DEPENDS_ON_LINE_RE = re.compile(
-    r"^[ \t]*(?:[-*+][ \t]+)?depends[ \t]+on[ \t]*:[ \t]*" + _REF_LIST,
+    r"^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)?"
+    r"depends[ \t]+on[ \t]*:[ \t]*" + _REF_LIST,
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -50,9 +51,17 @@ def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | No
     neither is a `Depends on:` line inside a code block or span or an HTML
     comment: a quoted example or a template's hidden placeholder states nothing.
     """
-    spans = _code_spans(body) + [
-        m.span() for m in re.finditer(r"<!--.*?(?:-->|\Z)", body, re.DOTALL)
-    ]
+    code = _code_spans(body)
+    spans = list(code)
+    pos = body.find("<!--")
+    while pos != -1:
+        if any(start <= pos < end for start, end in code):
+            pos = body.find("<!--", pos + 4)
+            continue
+        close = body.find("-->", pos + 4)
+        end = len(body) if close == -1 else close + 3
+        spans.append((pos, end))
+        pos = body.find("<!--", end)
     lines = [
         m
         for m in DEPENDS_ON_LINE_RE.finditer(body)
