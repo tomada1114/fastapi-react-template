@@ -66,6 +66,8 @@ Unknown routes are 404 `not_found`; unsupported methods are 405
 `http_error` and keep protocol headers; body type, length, and encoding describe
 the new representation. Unregistered codes use title `Unknown Status`,
 and statuses forbidding a body remain empty.
+Rejected CORS preflights are 400 `http_error` Problem Details and retain the
+CORS policy headers; allowed preflights remain 200 with body `OK`.
 Unexpected exceptions return 500 `internal_error` with detail `An unexpected
 error occurred`, while the traceback is logged on `my_app.api.errors`.
 

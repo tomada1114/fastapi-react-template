@@ -38,11 +38,34 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Mapping
 
     from fastapi.routing import APIRoute
+    from starlette.datastructures import Headers
     from starlette.types import ASGIApp
 
 APP_TITLE = "My App"
 API_PREFIX = "/api"
 logger = logging.getLogger("my_app.api.errors")
+
+
+class _ProblemCorsMiddleware(CORSMiddleware):
+    """Keep Starlette's CORS policy while formatting preflight errors."""
+
+    def preflight_response(self, request_headers: Headers) -> Response:
+        """Preflights bypass exception handlers, so format rejections here."""
+        response = super().preflight_response(request_headers)
+        if response.status_code != HTTPStatus.BAD_REQUEST:
+            return response
+        headers = {
+            name: value
+            for name, value in response.headers.items()
+            if name.lower()
+            not in {"content-type", "content-length", "content-encoding"}
+        }
+        return _problem_response(
+            response.status_code,
+            bytes(response.body).decode("utf-8"),
+            "http_error",
+            headers=headers,
+        )
 
 
 class _ApiApp(FastAPI):
@@ -66,7 +89,7 @@ class _ApiApp(FastAPI):
                 middleware.app, handlers=handlers, debug=self.debug
             )
         if self.cors_origins:
-            middleware = CORSMiddleware(
+            middleware = _ProblemCorsMiddleware(
                 middleware,
                 allow_origins=self.cors_origins,
                 allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],

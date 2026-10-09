@@ -298,6 +298,88 @@ def test_cors_preflight_checks_origins_and_allows_json_post(
     assert response.headers.get("access-control-allow-origin") == allowed
     assert "POST" in response.headers["access-control-allow-methods"]
     assert "access-control-allow-credentials" not in response.headers
+    if status == HTTPStatus.OK:
+        assert response.text == "OK"
+        assert response.headers["content-type"] == "text/plain; charset=utf-8"
+        assert response.headers["content-length"] == "2"
+        assert response.headers["vary"] == "Origin"
+        assert response.headers["access-control-max-age"] == "600"
+        assert set(response.headers["access-control-allow-headers"].split(", ")) == {
+            "Accept",
+            "Accept-Language",
+            "Content-Language",
+            "Content-Type",
+        }
+
+
+@pytest.mark.parametrize(
+    ("overrides", "reason"),
+    [
+        pytest.param({"Origin": "https://evil.example"}, "origin", id="origin"),
+        pytest.param({"Access-Control-Request-Method": "TRACE"}, "method", id="method"),
+        pytest.param(
+            {"Access-Control-Request-Headers": "authorization"}, "headers", id="headers"
+        ),
+        pytest.param(
+            {
+                "Origin": "https://evil.example",
+                "Access-Control-Request-Method": "TRACE",
+                "Access-Control-Request-Headers": "authorization",
+            },
+            "origin, method, headers",
+            id="combined",
+        ),
+        pytest.param(
+            {"Access-Control-Request-Private-Network": "true"},
+            "private-network",
+            id="private-network",
+        ),
+    ],
+)
+def test_cors_rejected_preflight_returns_problem_details(
+    make_container, overrides, reason
+):
+    app = create_app(
+        Settings(cors_origins=["https://app.example.com"]), container=make_container()
+    )
+    headers = {
+        "Origin": "https://app.example.com",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+        **overrides,
+    }
+    origin = headers["Origin"]
+    with TestClient(app) as client:
+        response = client.options("/api/todos", headers=headers)
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Bad Request",
+        "status": 400,
+        "detail": f"Disallowed CORS {reason}",
+        "code": "http_error",
+    }
+    assert int(response.headers["content-length"]) == len(response.content)
+    assert "content-encoding" not in response.headers
+    assert response.headers.get("access-control-allow-origin") == (
+        origin if origin == "https://app.example.com" else None
+    )
+    assert response.headers["vary"] == "Origin"
+    assert (
+        response.headers["access-control-allow-methods"]
+        == "GET, POST, PUT, PATCH, DELETE"
+    )
+    assert set(response.headers["access-control-allow-headers"].split(", ")) == {
+        "Accept",
+        "Accept-Language",
+        "Content-Language",
+        "Content-Type",
+    }
+    assert response.headers["access-control-max-age"] == "600"
+    assert "access-control-allow-credentials" not in response.headers
+    assert "access-control-allow-private-network" not in response.headers
 
 
 def test_create_app_explicit_settings_control_cors_with_supplied_container(
