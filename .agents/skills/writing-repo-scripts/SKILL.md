@@ -37,6 +37,11 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
 - Enforced by: `tests/test_script_imports.py`, which checks repository and skill
   scripts against the stdlib shared by their floors (skills: 3.9; `check_staged.py`:
   3.10) and the project interpreter; other repository scripts use the project stdlib.
+  All categories reject Windows-only modules and macOS-only `_scproxy` so the same
+  script runs on macOS and Linux (CPython's platform module definitions,
+  https://github.com/python/cpython/blob/3.14/PC/config.c and
+  https://github.com/python/cpython/blob/3.14/Modules/Setup.stdlib.in,
+  checked 2026-10-09). Module-member compatibility still needs review.
   Absolute sibling imports are allowed. The backend's
   `banned-api` table does not reach `scripts/`.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and

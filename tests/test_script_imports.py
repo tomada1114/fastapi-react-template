@@ -9,6 +9,14 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The inventory includes modules from every platform. Keep the scripts portable
+# across macOS and Linux, including when the check runs on either host.
+# CPython PC/config.c and Modules/Setup.stdlib.in (3.14), checked 2026-10-09:
+# https://github.com/python/cpython/blob/3.14/PC/config.c
+# https://github.com/python/cpython/blob/3.14/Modules/Setup.stdlib.in
+HOST_SPECIFIC_MODULES = frozenset(
+    {"winreg", "msvcrt", "winsound", "_winapi", "_overlapped", "_msi", "nt", "_scproxy"}
+)
 # CPython 3.10's platform-independent inventory, pinned to its source revision:
 # https://github.com/python/cpython/blob/a8d15704295419e94f06e1e0727839113faabbf7/Python/stdlib_module_names.h
 STDLIB_PY310 = frozenset(
@@ -347,7 +355,7 @@ def script_import_findings(root: Path) -> list[str]:
             stdlib = STDLIB_PY310 & sys.stdlib_module_names
         else:
             stdlib = sys.stdlib_module_names
-        allowed = stdlib | {"__future__"} | siblings
+        allowed = (stdlib - HOST_SPECIFIC_MODULES) | {"__future__"} | siblings
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -456,10 +464,50 @@ def test_script_imports_project_scripts_allow_current_stdlib(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     "script", ["scripts/check_staged.py", ".agents/skills/sample/scripts/probe.py"]
 )
-def test_script_imports_older_stdlib_is_platform_independent(
+def test_script_imports_shared_older_stdlib_is_allowed(
     tmp_path: Path, script: str
 ) -> None:
     path = tmp_path / script
     path.parent.mkdir(parents=True)
-    path.write_text("import graphlib, zoneinfo, winreg, _ast\n", encoding="utf-8")
+    path.write_text(
+        "import json, pathlib, graphlib, zoneinfo, _ast\n", encoding="utf-8"
+    )
     assert script_import_findings(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "scripts/probe.py",
+        "scripts/check_staged.py",
+        ".agents/skills/sample/scripts/probe.py",
+    ],
+)
+@pytest.mark.parametrize(
+    "module",
+    [
+        "winreg",
+        "msvcrt",
+        "winsound",
+        "_winapi",
+        "_overlapped",
+        "_msi",
+        "nt",
+        "_scproxy",
+    ],
+)
+@pytest.mark.parametrize(
+    "form",
+    [
+        "import {module}",
+        "from {module} import value",
+        "def main():\n    import {module}",
+    ],
+)
+def test_script_imports_host_specific_modules_are_rejected(
+    tmp_path: Path, script: str, module: str, form: str
+) -> None:
+    path = tmp_path / script
+    path.parent.mkdir(parents=True)
+    path.write_text(form.format(module=module), encoding="utf-8")
+    assert len(script_import_findings(tmp_path)) == 1
