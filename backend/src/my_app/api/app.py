@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 
 from my_app.api.routers import health, todos
 from my_app.api.schemas import ErrorResponse
@@ -24,7 +25,35 @@ from my_app.settings import Settings
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from fastapi.routing import APIRoute
+    from starlette.types import ASGIApp
+
 APP_TITLE = "My App"
+API_PREFIX = "/api"
+
+
+class _CorsApp(FastAPI):
+    """Keep CORS outside server-error handling while retaining the factory API."""
+
+    cors_origins: tuple[str, ...] = ()
+
+    def build_middleware_stack(self) -> ASGIApp:
+        """Build lazily so callers can still register middleware before startup."""
+        middleware = super().build_middleware_stack()
+        if self.cors_origins:
+            middleware = CORSMiddleware(
+                middleware,
+                allow_origins=self.cors_origins,
+                allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+                allow_headers=["Content-Type"],
+                allow_credentials=False,
+            )
+        return middleware
+
+
+def route_operation_id(route: APIRoute) -> str:
+    """Keep a route function name stable as its generated client name."""
+    return route.name
 
 
 def create_app(
@@ -38,7 +67,8 @@ def create_app(
 
     Args:
         settings: Configuration to build services from; read from the
-            environment when omitted. Ignored when ``container`` is given.
+            environment when omitted. Storage configuration is ignored when
+            ``container`` is given; HTTP settings still apply.
         container: Services already built by the composition root. Tests pass
             one built with a fixed clock; production code leaves it out. The
             caller owns a supplied container; lifespan shutdown awaits
@@ -47,9 +77,12 @@ def create_app(
     Returns:
         The application, ready for uvicorn or ``TestClient``.
     """
+    if settings is None:
+        # A supplied container already owns storage; only HTTP settings apply.
+        settings = Settings(database_url=None) if container is not None else Settings()
     owns_container = container is None
     if container is None:
-        container = build_container(settings if settings is not None else Settings())
+        container = build_container(settings)
     services = container
 
     @asynccontextmanager
@@ -60,10 +93,15 @@ def create_app(
             if owns_container:
                 await services.aclose()
 
-    app = FastAPI(title=APP_TITLE, lifespan=lifespan)
+    app = _CorsApp(
+        title=APP_TITLE,
+        lifespan=lifespan,
+        generate_unique_id_function=route_operation_id,
+    )
+    app.cors_origins = tuple(settings.cors_origins)
     app.state.container = services
     app.include_router(health.router)
-    app.include_router(todos.router)
+    app.include_router(todos.router, prefix=API_PREFIX)
     # The decorator form, unlike add_exception_handler, type-checks a handler
     # that takes AppError rather than any Exception.
     app.exception_handler(AppError)(_handle_app_error)

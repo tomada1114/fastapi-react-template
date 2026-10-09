@@ -76,10 +76,15 @@ from the environment when omitted), or takes one a test built, and stores it on
 at startup. Its lifespan awaits `aclose()` only on the container it built; a supplied
 `container=` stays caller-owned. Use `TestClient` as a context manager to run lifespan
 shutdown.
-It includes each router and registers the `AppError` handler.
+It includes resource routers under `API_PREFIX` (`/api`), leaves probes such as
+`/healthz` at the root, and registers the `AppError` handler. It reads HTTP settings
+also when a caller supplies a container. A non-empty `cors_origins` wraps the complete
+middleware stack with CORS, including server-error responses; the stack is built
+lazily so a caller can still register middleware before startup.
 
-- A new router is a module under `api/routers/`, added to the
-  `from my_app.api.routers import ...` line and included with `app.include_router`.
+- A new router is a module under `api/routers/`, added to the imports and included with `app.include_router(router, prefix=API_PREFIX)`.
+- Each route function name is its public generated-client operation id; keep names
+  unique across routers. `route_operation_id` and the operation-id tests enforce it.
 - The API never constructs an adapter or a service: they come only from
   `composition.build_container` (`designing-core-logic`).
 - `just dev` serves it through `uvicorn my_app.api.app:create_app --factory`; an
@@ -92,9 +97,6 @@ request's application, plus an `Annotated` alias a route parameter uses as its t
 Reading from `request.app.state` rather than a module global lets every `create_app`
 call — one per test — own an independent store. A new service on `Container` gets its
 own function and alias in the same shape:
-
-Excerpts in this skill drop docstrings where marked; the real code keeps them, because
-ruff's `D` rules require them.
 
 ```python
 def get_todo_service(request: Request) -> TodoService:
@@ -149,8 +151,7 @@ async def complete_todo(todo_id: UUID, service: TodoServiceDep) -> TodoResponse:
     return TodoResponse.from_domain(await service.complete(todo_id))
 ```
 
-FastAPI reads a route's annotations at run time, so the types they name stay real
-imports. The root `pyproject.toml`'s `runtime-evaluated-decorators` (which
+FastAPI reads route annotations at run time, so their types stay real imports. The root `pyproject.toml`'s `runtime-evaluated-decorators` (which
 `backend/pyproject.toml` extends) lists the `APIRouter` and `FastAPI` decorators in
 use; a route registered through a decorator not on that list needs it added there
 (`writing-python`).

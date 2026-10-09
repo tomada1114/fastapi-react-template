@@ -72,9 +72,6 @@ Entry points call a service and nothing below it, so a rule added to a service h
 every entry point. A method's docstring records the behavior a caller may rely on —
 `complete` returns an already-completed to-do unchanged, so a retried request is safe.
 
-Excerpts in this skill drop docstrings where marked; the real code keeps them, because
-ruff's `D` rules require them.
-
 ```python
 async def create(self, raw_title: str) -> Todo:
     # ... docstring elided
@@ -162,7 +159,10 @@ port of the same kind rather than a direct call.
 - deleted from the environment by `backend/tests/conftest.py`'s autouse
   `_isolate_settings_env` fixture, which derives the prefix and aliases from `Settings`,
   so a developer's shell cannot leak into a test without a hand-kept variable list;
-- listed in the README's Configuration table.
+- listed in the README's Configuration table. `database_url` selects storage;
+  `cors_origins` is a comma-separated list of exact HTTP(S) origins, normalized and
+  validated here but consumed by the API factory rather than the composition root.
+  Blank values mean unset; a bad value names the rejected item at startup.
 
 ## The composition root wires everything once
 
