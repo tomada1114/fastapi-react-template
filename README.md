@@ -20,6 +20,7 @@ A short description of what this application does.
 ```bash
 uv sync --locked
 just dev   # HTTP API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C to stop)
+# without Just: uv run --locked uvicorn my_app.api.app:create_app --factory --reload
 ```
 
 With the server running, from another terminal:
