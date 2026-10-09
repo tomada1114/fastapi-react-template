@@ -113,6 +113,39 @@ jobs:
         working-directory: backend
         run: uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
+  postgres:
+    name: PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: my_app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Install the default dependencies
+        run: uv sync --group dev --locked --package my-app
+      - name: Migrate PostgreSQL through the development recipe
+        env:
+          MY_APP_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/my_app_test
+        run: uvx --from rust-just==1.47.1 just backend db-upgrade
+      - name: Run the PostgreSQL contract and migrations
+        env:
+          MY_APP_TEST_POSTGRES_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/my_app_test
+        run: uv run --locked --directory backend --extra postgres pytest -m postgres tests
+
   spell-check:
     name: Spell Check
     runs-on: ubuntu-latest

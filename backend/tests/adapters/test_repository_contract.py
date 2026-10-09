@@ -23,6 +23,7 @@ from my_app.adapters.sql.tables import metadata
 from my_app.core.errors import InvalidCursorError, TodoNotFoundError
 from my_app.core.models import Page, Todo
 from my_app.core.ports import TodoRepository
+from tests.conftest import POSTGRES_URL
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -42,6 +43,17 @@ async def _sql_sqlite(tmp_path: Path) -> AsyncIterator[TodoRepository]:
     try:
         async with engine.begin() as connection:
             await connection.run_sync(metadata.create_all)
+        yield SqlTodoRepository(engine)
+    finally:
+        await engine.dispose()
+
+
+@asynccontextmanager
+async def _sql_postgres(_: Path) -> AsyncIterator[TodoRepository]:
+    engine = make_engine(POSTGRES_URL or "")
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(metadata.tables["todos"].delete())
         yield SqlTodoRepository(engine)
     finally:
         await engine.dispose()
@@ -67,6 +79,7 @@ VALID_CURSOR = _urlsafe_unpadded(NEVER_ASSIGNED_ID.bytes)
 REPOSITORY_FACTORIES = [
     pytest.param(_in_memory, id="in-memory"),
     pytest.param(_sql_sqlite, id="sql-sqlite"),
+    pytest.param(_sql_postgres, marks=pytest.mark.postgres, id="sql-postgres"),
 ]
 UNKNOWN_IDS = [
     pytest.param(UUID(int=0), id="nil"),
@@ -92,7 +105,7 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture(params=REPOSITORY_FACTORIES)
-async def repository(request, tmp_path):
+async def repository(request, tmp_path, migrated_postgres_url):
     """Each implementation in turn, released after the test."""
     async with request.param(tmp_path) as built:
         yield built

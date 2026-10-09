@@ -20,6 +20,10 @@ fmt:
 test:
     uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
+# Run the shared contract and migrations on a disposable PostgreSQL database, serially
+test-postgres:
+    MY_APP_TEST_POSTGRES_URL="${MY_APP_TEST_POSTGRES_URL:-postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/my_app_test}" uv run --locked --extra postgres pytest -m postgres tests
+
 # Resolve only for a database recipe, once at its entry. A dependent migration
 # receives that same URL; lint/test never read the developer's dotenv file.
 # Settings applies environment > backend/.env; a blank URL uses the dev default.
@@ -31,13 +35,13 @@ database_url_command := '''
 # A SQLite file's parent directory is created first; SQLite will not create it.
 db-upgrade url=(shell(database_url_command)):
     url={{ quote(url) }}; case "$url" in sqlite+aiosqlite:///*) path="${url#sqlite+aiosqlite:///}"; mkdir -p "$(dirname "${path%%\?*}")" ;; esac
-    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked alembic upgrade head
+    url={{ quote(url) }}; set --; case "$url" in postgresql+asyncpg:*) set -- --extra postgres ;; esac; MY_APP_DATABASE_URL="$url" uv run --locked "$@" alembic upgrade head
 
 # Autogenerate a revision from the change to adapters/sql/tables.py, against the migrated database
 db-revision MESSAGE url=(shell(database_url_command)): (db-upgrade url)
-    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked alembic revision --autogenerate -m {{ quote(MESSAGE) }}
+    url={{ quote(url) }}; set --; case "$url" in postgresql+asyncpg:*) set -- --extra postgres ;; esac; MY_APP_DATABASE_URL="$url" uv run --locked "$@" alembic revision --autogenerate -m {{ quote(MESSAGE) }}
 
 # Never ends on its own; an agent runs its own server on a free port instead (running-the-app).
 # Human-run: migrate the database, then serve the API on http://127.0.0.1:8000, reloading on source changes
 dev url=(shell(database_url_command)): (db-upgrade url)
-    MY_APP_DATABASE_URL={{ quote(url) }} uv run --locked uvicorn my_app.api.app:create_app --factory --reload
+    url={{ quote(url) }}; set --; case "$url" in postgresql+asyncpg:*) set -- --extra postgres ;; esac; MY_APP_DATABASE_URL="$url" uv run --locked "$@" uvicorn my_app.api.app:create_app --factory --reload
