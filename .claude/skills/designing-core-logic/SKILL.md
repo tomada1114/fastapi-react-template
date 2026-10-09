@@ -39,7 +39,7 @@ imports only itself and the deterministic standard-library modules allowed by
   bare calls to `open`, `input`, `print`, `breakpoint`, `exec`, `eval`, `compile`, and
   `__import__`; `now`, `utcnow`, or `today` on a receiver name or attribute ending in
   `datetime` or `date`; and `uuid1`, `uuid4`, `uuid6`, `uuid7`, or `getnode`, bare or on
-  a `uuid` receiver. `uuid8` requires all blocks explicitly non-None, without unpacking.
+  a `uuid` receiver. `uuid8` requires all blocks explicitly non-None, without unpacking (https://docs.python.org/3.14/library/uuid.html#uuid.uuid8, checked 2026-10-09).
   `UUID`, `uuid5`, and fully specified `uuid8` are allowed; ids come from `IdFactory`.
   It also rejects `date.fromtimestamp` on `date` receivers and `datetime.fromtimestamp` on
   recognizable `datetime` receivers without an explicit timezone, and any attribute
