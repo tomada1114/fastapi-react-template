@@ -330,11 +330,11 @@ def repository_from_url(url: str) -> tuple[str, str] | None:
     return parsed.netloc.lower(), match.group(1).lower()
 
 
-def closing_text(text: str) -> str:
-    """Mask examples without joining words across an ignored Markdown region."""
+def closing_text(text: str, *, boundary: str = " ") -> str:
+    """Mask examples with a boundary suited to the caller's keyword grammar."""
     for start, end in sorted(_code_spans(text), reverse=True):
-        text = text[:start] + " " * (end - start) + text[end:]
-    return re.sub(r"<!--(?:.*?-->|.*\Z)", " ", text, flags=re.DOTALL)
+        text = text[:start] + boundary * (end - start) + text[end:]
+    return re.sub(r"<!--(?:.*?-->|.*\Z)", boundary, text, flags=re.DOTALL)
 
 
 def pr_issue_references(pr: RawPr, repository: tuple[str, str] | None) -> set[int]:
@@ -901,7 +901,7 @@ def squeeze(text: str | None, limit: int) -> str:
 
 def extract_deps(body: str, title: str, self_number: int) -> dict[str, list[int]]:
     haystack = f"{title}\n{body or ''}"
-    prose = closing_text(haystack)
+    prose = closing_text(haystack, boundary="|")
     deps: dict[str, set[int]] = {
         "depends_on": set(),
         "blocks": set(),

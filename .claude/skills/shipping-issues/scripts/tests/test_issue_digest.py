@@ -134,6 +134,19 @@ class ExtractDepsTest(unittest.TestCase):
                 self.assertEqual(deps["depends_on"], [3])
                 self.assertEqual(deps["blocks"], [4])
 
+    def test_ignored_regions_do_not_join_dependency_phrases(self):
+        for region in (
+            "`example`",
+            "<!-- example -->",
+            "\n\n```\nexample\n```\n\n",
+            "\n\n    example\n\n",
+        ):
+            with self.subTest(region=region):
+                body = f"requires {region} #99. Blocks #3,{region}#98"
+                deps = idg.extract_deps(body, "t", self_number=1)
+                self.assertEqual(deps["depends_on"], [])
+                self.assertEqual(deps["blocks"], [3])
+
     def test_quoted_comment_opener_keeps_real_prose_edges(self):
         body = "Use `<!--` for a comment. Blocked by #3."
         deps = idg.extract_deps(body, "t", self_number=1)
