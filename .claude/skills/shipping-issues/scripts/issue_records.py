@@ -166,13 +166,13 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     paragraphs: list[tuple[int, int]] = []
     pos = 0
-    # char, length, start, quote depth, list-content indent
-    fence: tuple[str, int, int, int, int] | None = None
+    # char, length, start, container depth
+    fence: tuple[str, int, int, int] | None = None
     in_comment = False
     para_start: int | None = None
     indented: tuple[int, int] | None = None  # (start, end of last non-blank line)
-    list_indents: list[int] = []
-    previous_quote_depth = 0
+    # Ordered prefixes: quote markers and list-content widths may alternate.
+    containers: list[tuple[str, int]] = []
 
     def end_paragraph(at: int) -> None:
         nonlocal para_start
@@ -182,35 +182,37 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
 
     for line in body.splitlines(keepends=True):
         stripped = line.rstrip("\r\n").expandtabs(4)
-        quote_depth = 0
-        while fence is None or quote_depth < fence[3]:
-            quote = _BLOCKQUOTE_RE.match(stripped)
-            if quote is None:
-                break
-            stripped = stripped[quote.end() :]
-            quote_depth += 1
-        if quote_depth != previous_quote_depth:
-            list_indents.clear()
+        matched = 0
+        for kind, width in containers:
+            if kind == "quote":
+                quote = _BLOCKQUOTE_RE.match(stripped)
+                if quote is None:
+                    break
+                stripped = stripped[quote.end() :]
+            else:
+                if stripped.strip() and _indent_width(stripped) < width:
+                    break
+                stripped = stripped[width:]
+            matched += 1
+        if matched < len(containers):
+            containers = containers[:matched]
             end_paragraph(pos)
-        previous_quote_depth = quote_depth
-        if fence is not None and quote_depth < fence[3]:
-            spans.append((fence[2], pos))
-            fence = None
-        indent = _indent_width(stripped)
-        if fence is not None and stripped.strip() and indent < fence[4]:
-            spans.append((fence[2], pos))
-            fence = None
-        if stripped.strip():
-            while list_indents and indent < list_indents[-1]:
-                list_indents.pop()
-        if list_indents:
-            stripped = stripped[list_indents[-1] :]
+            if fence is not None:
+                spans.append((fence[2], pos))
+                fence = None
         if fence is None and not in_comment:
-            while marker := _LIST_ITEM_RE.match(stripped):
+            while True:
+                quote = _BLOCKQUOTE_RE.match(stripped)
+                marker = _LIST_ITEM_RE.match(stripped)
+                if quote is not None:
+                    containers.append(("quote", 0))
+                    stripped = stripped[quote.end() :]
+                elif marker is not None:
+                    containers.append(("list", marker.end()))
+                    stripped = stripped[marker.end() :]
+                else:
+                    break
                 end_paragraph(pos)
-                base = list_indents[-1] if list_indents else 0
-                list_indents.append(base + marker.end())
-                stripped = stripped[marker.end() :]
         blank = not stripped.strip()
         indent = _indent_width(stripped)
         if indented is not None:
@@ -222,7 +224,7 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             spans.append(indented)
             indented = None
         if fence is not None:
-            char, length, start, _, _ = fence
+            char, length, start, _ = fence
             close = re.fullmatch(
                 rf" {{0,3}}({re.escape(char)}{{{length},}})\s*", stripped
             )
@@ -237,8 +239,7 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
                 m.group(1)[0],
                 len(m.group(1)),
                 pos,
-                quote_depth,
-                list_indents[-1] if list_indents else 0,
+                len(containers),
             )
         elif _HTML_COMMENT_OPEN_RE.match(stripped):
             end_paragraph(pos)

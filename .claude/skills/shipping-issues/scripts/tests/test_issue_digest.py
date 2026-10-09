@@ -175,6 +175,28 @@ class ExtractDepsTest(unittest.TestCase):
                     idg.extract_deps(body, "", self_number=1)["depends_on"], [3]
                 )
 
+    def test_alternating_container_code_dependencies_are_ignored(self):
+        for body in (
+            "- > ~~~\n  > requires #99\n  > ~~~\n",
+            "1. > ~~~\n   > requires #99\n   > ~~~\n",
+            "- > - > ~~~\n  >   > requires #99\n  >   > ~~~\n",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(
+                    idg.extract_deps(body + "\nBlocked by #3", "", 1)["depends_on"],
+                    [3],
+                )
+
+    def test_alternating_container_exit_preserves_prose(self):
+        for body in (
+            "- > requires #3",
+            "1. > - > requires #3",
+            "- > ~~~\n  > requires #99\n\nRequires #3",
+            "- > ~~~\n  > requires #99\n  Requires #3",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+
     def test_ignored_regions_do_not_join_dependency_phrases(self):
         for region in (
             "`example`",
