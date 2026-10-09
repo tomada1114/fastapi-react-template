@@ -86,8 +86,8 @@ if TYPE_CHECKING:
 - A private helper is `_name`, an internal module `_name.py`; `__name` only to avoid a
   clash in a subclass hierarchy.
 - **Never shadow a builtin.** A function whose natural name is a builtin gets a
-  descriptive name instead: the route that lists to-dos is `def list_todos(...)` under
-  `@router.get("")`, never `def list(...)`.
+  descriptive name instead: the route that lists to-dos is `async def list_todos(...)`
+  under `@router.get("")`, never `async def list(...)`.
 
 ## Functions, modules, and docstrings
 

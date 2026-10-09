@@ -64,8 +64,8 @@ added for it.
   never worker threads and never `asyncio.sleep` to wait for something.
 - A cleanup callback a test registers on an `AsyncExitStack` is an `async def` passed
   with its arguments, `resources.push_async_callback(record, closed, "name")`; never a
-  coroutine object, which `filterwarnings = ["error"]` turns into a failure when it is
-  never awaited.
+  coroutine object, which `aclose()` then tries to call and fails with
+  `TypeError: 'coroutine' object is not callable`.
 - `TestClient` tests stay plain `def`: the client is synchronous and runs the app on its
   own loop (`building-api-routes`).
 
