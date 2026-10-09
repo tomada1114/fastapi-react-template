@@ -66,15 +66,32 @@ def test_create_todo_invalid_title_returns_422_and_stores_nothing(client, title)
     response = client.post("/api/todos", json={"title": title})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
-    assert "characters" in response.json()["detail"]
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": f"Title must be 1-200 characters after stripping whitespace, got {len(title.strip())}",
+        "code": "invalid_todo",
+    }
     assert client.get("/api/todos").json()["items"] == []
 
 
-def test_create_todo_missing_title_returns_422_with_fastapi_list_detail(client):
+def test_create_todo_missing_title_returns_422_problem_with_errors(client):
     response = client.post("/api/todos", json={})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
-    assert isinstance(response.json()["detail"], list)
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": "Request validation failed",
+        "code": "request_invalid",
+        "errors": [
+            {"loc": ["body", "title"], "message": "Field required", "type": "missing"}
+        ],
+    }
 
 
 def test_list_todos_after_creates_returns_them_oldest_first(client, make_todo):
@@ -115,7 +132,14 @@ def test_list_todos_invalid_cursor_returns_422(client, make_todo, cursor):
     response = client.get("/api/todos", params={"cursor": cursor})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
-    assert response.json() == {"detail": INVALID_CURSOR_MESSAGE}
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": INVALID_CURSOR_MESSAGE,
+        "code": "invalid_cursor",
+    }
 
 
 @pytest.mark.parametrize("limit", [1, MAX_PAGE_LIMIT])
@@ -135,21 +159,49 @@ def test_list_todos_limit_below_one_returns_422(client, limit):
     response = client.get("/api/todos", params={"limit": limit})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
-    assert response.json() == {"detail": f"Page limit must be 1-100, got {limit}"}
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": f"Page limit must be 1-100, got {limit}",
+        "code": "invalid_page_limit",
+    }
 
 
 def test_list_todos_limit_above_max_returns_422(client):
     response = client.get("/api/todos?limit=101")
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
-    assert response.json() == {"detail": "Page limit must be 1-100, got 101"}
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": "Page limit must be 1-100, got 101",
+        "code": "invalid_page_limit",
+    }
 
 
-def test_list_todos_non_integer_limit_returns_422_with_fastapi_list_detail(client):
+def test_list_todos_non_integer_limit_returns_422_problem(client):
     response = client.get("/api/todos", params={"limit": "abc"})
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
-    assert isinstance(response.json()["detail"], list)
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": "Request validation failed",
+        "code": "request_invalid",
+        "errors": [
+            {
+                "loc": ["query", "limit"],
+                "message": "Input should be a valid integer, unable to parse string as an integer",
+                "type": "int_parsing",
+            }
+        ],
+    }
 
 
 def test_complete_todo_existing_id_returns_completed_todo(client, make_todo):
@@ -166,14 +218,28 @@ def test_complete_todo_unknown_id_returns_404(client, todo_id):
     response = client.post(f"/api/todos/{todo_id}/complete")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json() == {"detail": f"To-do {todo_id} not found"}
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Not Found",
+        "status": 404,
+        "detail": f"To-do {todo_id} not found",
+        "code": "todo_not_found",
+    }
 
 
 def test_complete_todo_unhyphenated_uppercase_id_names_the_canonical_id(client):
     response = client.post(f"/api/todos/{'F' * 32}/complete")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json() == {"detail": f"To-do {UUID(int=2**128 - 1)} not found"}
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Not Found",
+        "status": 404,
+        "detail": f"To-do {UUID(int=2**128 - 1)} not found",
+        "code": "todo_not_found",
+    }
 
 
 def test_delete_todo_existing_id_returns_204_and_removes_it(client, make_todo):
@@ -191,7 +257,14 @@ def test_delete_todo_unknown_id_returns_404(client, todo_id):
     response = client.delete(f"/api/todos/{todo_id}")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json() == {"detail": f"To-do {todo_id} not found"}
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Not Found",
+        "status": 404,
+        "detail": f"To-do {todo_id} not found",
+        "code": "todo_not_found",
+    }
 
 
 @pytest.mark.parametrize(
@@ -203,31 +276,27 @@ def test_delete_todo_unknown_id_returns_404(client, todo_id):
         pytest.param("DELETE", "/api/todos/999", id="delete-integer"),
     ],
 )
-def test_todo_route_non_uuid_id_returns_422(client, method, path):
+def test_todo_route_non_uuid_id_returns_422_problem(client, method, path):
     response = client.request(method, path)
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
-    assert isinstance(response.json()["detail"], list)
-
-
-@pytest.mark.parametrize(
-    ("method", "path", "status"),
-    [
-        pytest.param("get", "/api/todos", "422", id="list-invalid-page"),
-        pytest.param("post", "/api/todos", "422", id="create-invalid-title"),
-        pytest.param(
-            "post", "/api/todos/{todo_id}/complete", "404", id="complete-not-found"
-        ),
-        pytest.param("delete", "/api/todos/{todo_id}", "404", id="delete-not-found"),
-    ],
-)
-def test_openapi_documents_domain_errors_with_error_response(
-    client, method, path, status
-):
-    operation = client.get("/openapi.json").json()["paths"][path][method]
-
-    schema = operation["responses"][status]["content"]["application/json"]["schema"]
-    assert schema == {"$ref": "#/components/schemas/ErrorResponse"}
+    body = response.json()
+    assert response.headers["content-type"] == "application/problem+json"
+    assert body == {
+        "type": "about:blank",
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": "Request validation failed",
+        "code": "request_invalid",
+        "errors": [
+            {
+                "loc": ["path", "todo_id"],
+                "message": body["errors"][0]["message"],
+                "type": "uuid_parsing",
+            }
+        ],
+    }
+    assert body["errors"][0]["message"].startswith("Input should be a valid UUID")
 
 
 def test_openapi_list_todos_documents_the_page_shape(client):

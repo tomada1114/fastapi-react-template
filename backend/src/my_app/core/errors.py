@@ -6,7 +6,7 @@ HTTP status), so the core never needs to know which one called it.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -19,9 +19,13 @@ class AppError(Exception):
     reports to its user, from a bug, which should surface as a traceback.
     """
 
+    code: ClassVar[str] = "app_error"
+
 
 class TodoNotFoundError(AppError):
     """Raised when no to-do has the requested id."""
+
+    code: ClassVar[str] = "todo_not_found"
 
     def __init__(self, todo_id: UUID) -> None:
         """Keep the missing id so callers can report it without parsing text.
@@ -47,6 +51,8 @@ class TodoNotFoundError(AppError):
 class InvalidTodoError(AppError):
     """Raised when input would create a to-do that breaks a domain rule."""
 
+    code: ClassVar[str] = "invalid_todo"
+
 
 class InvalidCursorError(AppError):
     """Raised when a page cursor is not one the store issued.
@@ -54,6 +60,10 @@ class InvalidCursorError(AppError):
     The message never echoes the cursor: it is client input of any length.
     """
 
+    code: ClassVar[str] = "invalid_cursor"
+
 
 class InvalidPageLimitError(AppError):
     """Raised when a page would hold fewer than one item or more than the maximum."""
+
+    code: ClassVar[str] = "invalid_page_limit"

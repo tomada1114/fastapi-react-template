@@ -50,12 +50,24 @@ creation order. `GET /api/todos` returns at most `limit` to-dos (default 50, at 
 the next page; `next_cursor` is `null` on the last one. `GET /api/todos` with no
 parameters is the first page, `{"items": [], "next_cursor": null}` when empty.
 
-An unknown id is a 404 from the API; a title that is empty or longer than 200
-characters after trimming, a `cursor` that is not a `next_cursor` the API
-returned, or a `limit` outside 1-100 is a 422. Either way the body is
-`{"detail": "<reason>"}` — only a request that does not parse at all (an `{id}`
-that is not a UUID, a `limit` that is not an integer) gets FastAPI's
-list-shaped `detail`.
+Every error uses RFC 9457 `application/problem+json`: `type: "about:blank"`,
+`title` (the status phrase), numeric `status`, client-safe `detail`, and a stable
+`code`. Clients branch on `code` and ignore unknown extensions.
+
+An unknown to-do is 404 `todo_not_found`. An invalid title, cursor, or page limit
+is 422 `invalid_todo`, `invalid_cursor`, or `invalid_page_limit`. An unmapped
+domain error falls back to 400 with its own code (`AppError` uses `app_error`).
+A request that does not parse is 422 `request_invalid`, detail `Request validation
+failed`, and `errors: [{"loc": [...], "message": "...", "type": "..."}]`;
+raw input and server context are omitted. Domain errors have no `errors`.
+
+Unknown routes are 404 `not_found`; unsupported methods are 405
+`method_not_allowed` with the `Allow` header. Other HTTP exceptions use
+`http_error` and keep protocol headers; body type, length, and encoding describe
+the new representation. Unregistered codes use title `Unknown Status`,
+and statuses forbidding a body remain empty.
+Unexpected exceptions return 500 `internal_error` with detail `An unexpected
+error occurred`, while the traceback is logged on `my_app.api.errors`.
 
 ## Configuration
 
