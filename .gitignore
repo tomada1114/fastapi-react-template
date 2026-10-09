@@ -40,8 +40,10 @@ coverage.xml
 # Codex CLI: personal project rules stay local; the rest of .codex/ is shared
 /.codex/rules/local.rules
 
-# Local SQLite databases (MY_APP_DATABASE_URL=sqlite:///<path>)
+# Local SQLite databases (MY_APP_DATABASE_URL=sqlite+aiosqlite:///<path>)
 *.db
+# The development database `just backend db-upgrade` and `just backend dev` use
+/backend/var/
 
 # Environment variables
 .env

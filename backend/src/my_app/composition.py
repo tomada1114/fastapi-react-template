@@ -13,7 +13,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Self
 
 from my_app.adapters.memory import InMemoryTodoRepository
-from my_app.adapters.sqlite import SqliteTodoRepository
+from my_app.adapters.sql.engine import make_engine
+from my_app.adapters.sql.repository import SqlTodoRepository
 from my_app.core.services import TodoService
 
 if TYPE_CHECKING:
@@ -84,13 +85,17 @@ def build_container(
     return Container(todos=todos, _resources=resources)
 
 
-def _build_repository(settings: Settings, _resources: AsyncExitStack) -> TodoRepository:
-    """Return the SQLite repository when a path is configured, else memory.
+def _build_repository(settings: Settings, resources: AsyncExitStack) -> TodoRepository:
+    """Return the SQL repository when a database URL is configured, else memory.
 
-    Neither current adapter holds a resource between calls. A resource-holding
-    adapter registers its cleanup on ``_resources`` before returning, under the
-    rule ``build_container`` states.
+    The SQL repository's engine is the one resource the container owns: it
+    connects on first use, so registering ``engine.dispose`` here leaves
+    nothing open if the build fails later, under the rule ``build_container``
+    states. The database must already be migrated; nothing here creates a
+    table.
     """
-    if (path := settings.sqlite_path) is not None:
-        return SqliteTodoRepository(path)
-    return InMemoryTodoRepository()
+    if settings.database_url is None:
+        return InMemoryTodoRepository()
+    engine = make_engine(settings.database_url)
+    resources.push_async_callback(engine.dispose)
+    return SqlTodoRepository(engine)

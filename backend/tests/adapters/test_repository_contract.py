@@ -8,6 +8,7 @@ application (the ``new_id`` fixture here), never from the store.
 from __future__ import annotations
 
 import base64
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -16,21 +17,34 @@ import anyio
 import pytest
 
 from my_app.adapters.memory import InMemoryTodoRepository
-from my_app.adapters.sqlite import SqliteTodoRepository
+from my_app.adapters.sql.engine import make_engine
+from my_app.adapters.sql.repository import SqlTodoRepository
+from my_app.adapters.sql.tables import metadata
 from my_app.core.errors import InvalidCursorError, TodoNotFoundError
 from my_app.core.models import Page, Todo
 from my_app.core.ports import TodoRepository
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
     from pathlib import Path
 
 
-def _in_memory(_: Path) -> TodoRepository:
-    return InMemoryTodoRepository()
+@asynccontextmanager
+async def _in_memory(_: Path) -> AsyncIterator[TodoRepository]:
+    yield InMemoryTodoRepository()
 
 
-def _sqlite(tmp_path: Path) -> TodoRepository:
-    return SqliteTodoRepository(tmp_path / "todos.db")
+@asynccontextmanager
+async def _sql_sqlite(tmp_path: Path) -> AsyncIterator[TodoRepository]:
+    # A fresh file per test, its schema built straight from the table metadata
+    # (test_sql_migrations.py holds the migrations to that same metadata).
+    engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'todos.db'}")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(metadata.create_all)
+        yield SqlTodoRepository(engine)
+    finally:
+        await engine.dispose()
 
 
 def _urlsafe_unpadded(raw: bytes) -> str:
@@ -52,7 +66,7 @@ VALID_CURSOR = _urlsafe_unpadded(NEVER_ASSIGNED_ID.bytes)
 
 REPOSITORY_FACTORIES = [
     pytest.param(_in_memory, id="in-memory"),
-    pytest.param(_sqlite, id="sqlite"),
+    pytest.param(_sql_sqlite, id="sql-sqlite"),
 ]
 UNKNOWN_IDS = [
     pytest.param(UUID(int=0), id="nil"),
@@ -78,8 +92,10 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.fixture(params=REPOSITORY_FACTORIES)
-def repository(request, tmp_path):
-    return request.param(tmp_path)
+async def repository(request, tmp_path):
+    """Each implementation in turn, released after the test."""
+    async with request.param(tmp_path) as built:
+        yield built
 
 
 @pytest.fixture
@@ -102,7 +118,7 @@ def add_many(repository, make_todo):
     return _add
 
 
-def test_repository_implements_every_port_method(repository):
+async def test_repository_implements_every_port_method(repository):
     assert isinstance(repository, TodoRepository)
 
 

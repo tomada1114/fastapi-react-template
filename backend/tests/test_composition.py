@@ -7,9 +7,11 @@ from datetime import UTC
 from pathlib import Path
 
 import pytest
+from sqlalchemy import event
 
 from my_app import composition
 from my_app.adapters.memory import InMemoryTodoRepository
+from my_app.adapters.sql.engine import make_engine
 from my_app.composition import Container, build_container, utc_now
 from my_app.core.models import Page
 from my_app.settings import Settings
@@ -35,15 +37,39 @@ async def test_build_container_default_settings_uses_an_independent_memory_store
     assert await second.todos.list_page() == Page(items=(), next_cursor=None)
 
 
-async def test_build_container_sqlite_settings_shares_the_file(
-    make_container, tmp_path
+async def test_build_container_sql_settings_shares_the_database(
+    make_container, migrated_sqlite_url
 ):
-    settings = Settings(database_url=f"sqlite:///{tmp_path / 'todos.db'}")
+    settings = Settings(database_url=migrated_sqlite_url)
     created = await make_container(settings).todos.create("buy milk")
 
     reopened = make_container(settings)
 
     assert (await reopened.todos.list_page()).items == (created,)
+
+
+async def test_build_container_sql_settings_disposes_the_engine_on_aclose(
+    monkeypatch, migrated_sqlite_url, fixed_clock, new_id
+):
+    disposed: list[str] = []
+
+    def recording_make_engine(url):
+        engine = make_engine(url)
+        event.listen(
+            engine.sync_engine, "engine_disposed", lambda _: disposed.append(url)
+        )
+        return engine
+
+    monkeypatch.setattr(composition, "make_engine", recording_make_engine)
+    container = build_container(
+        Settings(database_url=migrated_sqlite_url), clock=fixed_clock, new_id=new_id
+    )
+    await container.todos.create("opens a pooled connection")
+    assert disposed == []
+
+    await container.aclose()
+
+    assert disposed == [migrated_sqlite_url]
 
 
 async def test_build_container_injected_clock_stamps_created_at(

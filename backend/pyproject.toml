@@ -93,7 +93,8 @@ src = ["src", "tests"]
 [tool.mypy]
 # Run from this directory (`uv run --locked --directory backend mypy`); the
 # root pyproject.toml checks scripts/, the root tests/, and skill scripts.
-files = ["src", "tests"]
+# migrations/ holds Alembic's env.py and the revisions it generates.
+files = ["src", "tests", "migrations"]
 python_version = "3.14"
 strict = true
 warn_return_any = true

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ENV_PREFIX = "MY_APP_"
-SQLITE_URL_PREFIX = "sqlite:///"
+SQLITE_URL_PREFIX = "sqlite+aiosqlite:///"
+POSTGRESQL_URL_PREFIX = "postgresql+asyncpg://"
+# The blocking driver's form, refused with a pointer to the async one.
+SYNC_SQLITE_URL_PREFIX = "sqlite:///"
 SQLITE_MEMORY_PATH = ":memory:"
 
 
@@ -20,10 +21,13 @@ class Settings(BaseSettings):
     composition root sees them.
 
     Attributes:
-        database_url: ``sqlite:///<path>`` selects the SQLite repository at
-            that file; unset (or set to an empty string) keeps to-dos in
+        database_url: A SQLAlchemy URL for an async driver —
+            ``sqlite+aiosqlite:///<path>`` for a SQLite file or
+            ``postgresql+asyncpg://...`` for a PostgreSQL server — selects the
+            SQL repository; unset (or set to an empty string) keeps to-dos in
             memory for the life of the process. Read from
-            ``MY_APP_DATABASE_URL``.
+            ``MY_APP_DATABASE_URL``. The database must already be migrated
+            (``just backend db-upgrade``): the app never creates its schema.
     """
 
     model_config = SettingsConfigDict(env_prefix=ENV_PREFIX)
@@ -32,41 +36,59 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def _require_sqlite_file_url(cls, value: str | None) -> str | None:
-        """Reject any URL the SQLite repository could not use as a file.
+    def _require_async_database_url(cls, value: str | None) -> str | None:
+        """Reject any URL the SQL repository could not open.
 
-        Failing here, at startup, beats failing on the first request. An empty
-        value counts as unset: ``MY_APP_DATABASE_URL=`` in a shell or an env
-        file usually means "no database", not a malformed one.
+        String rules only, so this module imports no database library. Failing
+        here, at startup, beats failing on the first request. An empty value
+        counts as unset: ``MY_APP_DATABASE_URL=`` in a shell or an env file
+        usually means "no database", not a malformed one.
 
         Raises:
-            ValueError: If the URL is not ``sqlite:///<file path>``.
+            ValueError: If the URL names no supported async driver, or a
+                SQLite target that is not a file.
         """
         if not value:
             return None
-        path = value.removeprefix(SQLITE_URL_PREFIX)
-        if path == value or not path:
-            msg = f"must look like '{SQLITE_URL_PREFIX}<path>', got {value!r}"
-            raise ValueError(msg)
-        if path == SQLITE_MEMORY_PATH:
+        if value.startswith(SQLITE_URL_PREFIX):
+            _check_sqlite_path(value, value.removeprefix(SQLITE_URL_PREFIX))
+        elif value.startswith(POSTGRESQL_URL_PREFIX):
+            if value == POSTGRESQL_URL_PREFIX:
+                msg = (
+                    f"must name a server after '{POSTGRESQL_URL_PREFIX}', got {value!r}"
+                )
+                raise ValueError(msg)
+        elif value.startswith(SYNC_SQLITE_URL_PREFIX):
             msg = (
-                f"{value!r} is not supported: the repository opens a new "
-                "connection per call, so an in-memory SQLite database would be "
-                "empty every time. Unset the variable to use the in-memory store."
+                f"{value!r} names the blocking sqlite driver; use "
+                f"'{SQLITE_URL_PREFIX}<path>' instead"
             )
             raise ValueError(msg)
-        if path.endswith("/"):
-            msg = f"must name a file, not a directory, got {value!r}"
+        else:
+            msg = (
+                f"must start with '{SQLITE_URL_PREFIX}' or "
+                f"'{POSTGRESQL_URL_PREFIX}', got {value!r}"
+            )
             raise ValueError(msg)
         return value
 
-    @property
-    def sqlite_path(self) -> Path | None:
-        """The SQLite file ``database_url`` names, or None for the in-memory store.
 
-        ``sqlite:///app.db`` is relative to the working directory and
-        ``sqlite:////var/lib/app.db`` is absolute, as in SQLAlchemy's URLs.
-        """
-        if self.database_url is None:
-            return None
-        return Path(self.database_url.removeprefix(SQLITE_URL_PREFIX))
+def _check_sqlite_path(url: str, path: str) -> None:
+    """Refuse a SQLite target that is not a file the pool can share.
+
+    Raises:
+        ValueError: If ``path`` is empty, the in-memory database, or a
+            directory.
+    """
+    if not path:
+        msg = f"must name a file after '{SQLITE_URL_PREFIX}', got {url!r}"
+        raise ValueError(msg)
+    if path == SQLITE_MEMORY_PATH:
+        msg = (
+            f"{url!r} is not supported: each pooled connection would open its "
+            "own empty database. Unset the variable to use the in-memory store."
+        )
+        raise ValueError(msg)
+    if path.endswith("/"):
+        msg = f"must name a file, not a directory, got {url!r}"
+        raise ValueError(msg)
