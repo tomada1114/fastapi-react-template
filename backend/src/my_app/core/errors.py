@@ -37,32 +37,3 @@ class TodoNotFoundError(AppError):
 
 class InvalidTodoError(AppError):
     """Raised when input would create a to-do that breaks a domain rule."""
-
-
-# The LLM family. Each is message-only: the message is the one argument, so
-# pickling rebuilds an equal error. Every message is client-safe: it never
-# carries the API key, a prompt, a model's output, or the provider's own error
-# text, which can echo the prompt.
-
-
-class LlmError(AppError):
-    """Base for every failure an ``LlmPort`` reports."""
-
-
-class LlmConfigurationError(LlmError):
-    """The LLM is not usable as configured.
-
-    No key, the ``ai`` extra missing, or a key or account the provider rejected.
-    """
-
-
-class LlmRateLimitError(LlmError):
-    """The provider is rate-limiting requests and the retry bound or deadline ran out."""
-
-
-class LlmTimeoutError(LlmError):
-    """The call did not finish within its timeout, or the provider timed out."""
-
-
-class LlmProviderError(LlmError):
-    """The provider failed or answered with something that is not a usable completion."""

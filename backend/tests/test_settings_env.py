@@ -18,8 +18,6 @@ def test_settings_env_prefix_and_model_aliases_are_removed(monkeypatch):
     environment = {
         "MY_APP_FUTURE_SETTING": "1",
         "my_app_database_url": "postgresql://x",
-        "OPENROUTER_API_KEY": "fake-key",
-        "openrouter_api_key": "fake-key",
         "VENDOR_FUTURE": "future",
         "VENDOR_FALLBACK": "fallback",
         "UNRELATED": "preserved",

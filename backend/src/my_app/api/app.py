@@ -15,11 +15,6 @@ from my_app.composition import Container, build_container
 from my_app.core.errors import (
     AppError,
     InvalidTodoError,
-    LlmConfigurationError,
-    LlmError,
-    LlmProviderError,
-    LlmRateLimitError,
-    LlmTimeoutError,
     TodoNotFoundError,
 )
 from my_app.settings import Settings
@@ -78,9 +73,7 @@ def _status_for(error: AppError) -> HTTPStatus:
 
     The one place the mapping lives. Any ``AppError`` without a case here is
     still the client's problem, not the server's, so a new subclass is a 400
-    until it gets its own case — never an unhandled 500. An LLM failure is not
-    the client's: an unconfigured LLM is 503 (closed), and the provider's own
-    failures are 429, 504, or 502.
+    until it gets its own case — never an unhandled 500.
 
     Args:
         error: The domain error a service raised.
@@ -93,18 +86,6 @@ def _status_for(error: AppError) -> HTTPStatus:
             status = HTTPStatus.NOT_FOUND
         case InvalidTodoError():
             status = HTTPStatus.UNPROCESSABLE_CONTENT
-        case LlmConfigurationError():
-            status = HTTPStatus.SERVICE_UNAVAILABLE
-        case LlmRateLimitError():
-            status = HTTPStatus.TOO_MANY_REQUESTS
-        case LlmTimeoutError():
-            status = HTTPStatus.GATEWAY_TIMEOUT
-        case LlmProviderError():
-            status = HTTPStatus.BAD_GATEWAY
-        case LlmError():
-            # An LLM failure with no case of its own is upstream's too, never
-            # the client's 400.
-            status = HTTPStatus.BAD_GATEWAY
         case _:
             status = HTTPStatus.BAD_REQUEST
     return status
