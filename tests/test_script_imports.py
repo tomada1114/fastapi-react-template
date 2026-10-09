@@ -28,16 +28,8 @@ def script_import_findings(root: Path) -> list[str]:
                 modules = [alias.name.split(".")[0] for alias in node.names]
             elif isinstance(node, ast.ImportFrom):
                 if node.level:
-                    modules = (
-                        [node.module.split(".")[0]]
-                        if node.module
-                        else [alias.name for alias in node.names]
-                    )
-                    allowed_roots = siblings if node.level == 1 else set()
-                    findings.extend(
-                        f"{path.relative_to(root)}:{node.lineno}: {module}"
-                        for module in modules
-                        if module not in allowed_roots
+                    findings.append(
+                        f"{path.relative_to(root)}:{node.lineno}: relative import"
                     )
                     continue
                 modules = [node.module.split(".")[0]] if node.module else []
@@ -64,6 +56,8 @@ def test_script_imports_repository_uses_only_stdlib_and_siblings() -> None:
         pytest.param("def main():\n    import yaml", id="function-import"),
         pytest.param("if False:\n    import yaml", id="conditional-import"),
         pytest.param("from ..sibling import run", id="relative-escape"),
+        pytest.param("from .sibling import run", id="relative-sibling"),
+        pytest.param("from . import sibling", id="relative-module"),
     ],
 )
 def test_script_imports_third_party_or_relative_escape_is_rejected(
@@ -85,8 +79,7 @@ def test_script_imports_stdlib_and_siblings_are_allowed(
     (scripts / "sibling.py").write_text("", encoding="utf-8")
     (scripts / "probe.py").write_text(
         "from __future__ import annotations\nimport json\n"
-        "from pathlib import Path\nimport sibling\nfrom sibling import run\n"
-        "from .sibling import run\nfrom . import sibling\n",
+        "from pathlib import Path\nimport sibling\nfrom sibling import run\n",
         encoding="utf-8",
     )
     assert script_import_findings(tmp_path) == []
