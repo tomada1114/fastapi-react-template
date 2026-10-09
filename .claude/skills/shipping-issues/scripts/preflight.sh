@@ -445,7 +445,6 @@ if [[ -n "$PROFILE_CACHE" ]]; then
           verify_command)  VERIFY_COMMAND="$v" ;;
           verify_source)   VERIFY_SOURCE="$v" ;;
           hooks)           hooks="$v" ;;
-          pkg_manager)     pkg_manager="$v" ;;
           worktree_viable) [[ -n "$v" ]] && worktree_viable="$v" ;;
         esac
       done < <(printf '%s\n' "$cache_read" | tail -n +2)

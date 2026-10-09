@@ -321,14 +321,20 @@ class PreflightTest(unittest.TestCase):
             make_repo(repo, origin=True)
             (repo / "uv.lock").write_text("fixture\n", encoding="utf-8")
             cache = repo / "profile.json"
+            run_script(["--profile-cache", str(cache)], repo)
             run_script(
                 ["--profile-cache", str(cache), "--set-worktree-viable", "yes"], repo
             )
+            hit, hit_calls = run_script(["--profile-cache", str(cache)], repo)
+            self.assertEqual(hit.returncode, 0, hit.stderr)
+            self.assertIn("profile_cache: HIT\n", hit.stdout)
+            self.assertEqual(hit_calls, [])
             data = json.loads(cache.read_text(encoding="utf-8"))
-            data["profile_logic_version"] = "3"
+            data["logic_version"] = "3"
             data["verify_command"] = "cargo test"
             cache.write_text(json.dumps(data), encoding="utf-8")
             proc, calls = run_script(["--profile-cache", str(cache)], repo)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertIn("profile_cache: WRITTEN\n", proc.stdout)
             self.assertIn("verify_command: uv run --locked pytest\n", proc.stdout)
             self.assertIn("worktree_viable: yes\n", proc.stdout)
