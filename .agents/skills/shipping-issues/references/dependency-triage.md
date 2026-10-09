@@ -45,7 +45,11 @@ candidate.
 ## Dependency edges the regex misses
 
 `issue_digest.py` catches explicit `#N` references and common EN/JA dependency
-phrasings. These edges only appear on reading:
+phrasings (`depends on`, `blocked by`, `requires`, `#N に依存`, `#N の後`…; a bare
+English "after #N" is chronology and reads as a mention). When a body states its
+dependencies — a ship contract's `blocked-by=` or `Depends on: #N` lines — those alone
+set its `BLOCKED-BY` edges and the prose phrasings are ignored. These edges only appear
+on reading:
 
 - **Same-file collision** — two issues that both rewrite `foo.py` are not formally
   dependent, but they must not run in parallel worktrees, and the second one's branch

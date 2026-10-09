@@ -28,6 +28,9 @@ which is why `file_followup.py` writes a contract on everything this run files.
 | `design=`                 | the readiness gate                           | `design=open` holds the issue out of automatic implementation exactly as a `blocked: design` label does. |
 
 An empty `blocked-by=` reads as none; an empty `tier=` or `touches=` counts as missing.
+A `blocked-by=` field (even `none`) or any `Depends on: #N` line makes those the only
+source of the issue's dependencies: dependency phrasings in its prose are then read as
+mentions, not edges. `blocks=` is still merged with the prose `blocks #N` edges.
 A value may not itself start like `key=` (`touches=a=b.py` does not parse), and an
 empty field never swallows the field after it.
 
