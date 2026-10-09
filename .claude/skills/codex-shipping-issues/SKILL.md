@@ -59,8 +59,10 @@ checkout is busy, create a separate worktree from the current remote default bra
 with a unique branch and evidence directory; never nest it in a checkout or copy
 uncommitted changes. Verify worktree registration when using a host-managed worktree.
 
-- In a linked worktree, run `just worktree-prepare` to recreate the locked `.venv`
-  without rewriting shared hooks. In an independent checkout, run `just install`.
+- In a linked worktree, run `just worktree-prepare` to re-create the locked `.venv`
+  (`uv sync`) and, once `pnpm-lock.yaml` exists, `node_modules`
+  (`pnpm install --frozen-lockfile`) without rewriting shared hooks. In an independent
+  checkout, run `just install`.
 - For a manually managed issue worktree, use
   `just worktree-setup <issue> <branch> <base> <root> 'just verify'`, with `<root>`
   outside the primary checkout. Inspect its actual result and baseline.
@@ -68,7 +70,8 @@ uncommitted changes. Verify worktree registration when using a host-managed work
   cache/build and hook output destinations. Isolate outputs in this worktree;
   serialize shared Git mutations and preserve hooks.
 
-Never copy `.env*`, personal settings, credentials or `.venv` across checkouts.
+Never copy `.env*`, personal settings, credentials, `.venv` or `node_modules` across
+checkouts.
 Use fakes in tests. If acceptance requires unavailable credentials or services,
 report the missing evidence without narrowing acceptance.
 

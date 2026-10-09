@@ -136,10 +136,13 @@ clean:
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
     find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 
+# The pnpm install runs only once pnpm-lock.yaml exists, so a checkout without
+# the frontend's lockfile needs no pnpm.
 # Install dependencies in a Codex-managed linked worktree without rewriting
 # the shared pre-commit hook; install hooks once in the primary checkout.
 worktree-prepare:
     uv sync --all-groups --locked
+    if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; fi
 
 # Create one issue worktree using the existing shipping-issues provisioner.
 worktree-setup ISSUE BRANCH BASE ROOT VERIFY:

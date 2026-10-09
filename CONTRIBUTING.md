@@ -67,12 +67,15 @@ just worktree-setup 123 codex/123-short-description origin/main "$HOME/.local/st
 ```
 
 The existing `shipping-issues` provisioner creates the linked worktree, recreates its
-`.venv` from `uv.lock`, checks the shared hook, and runs the requested baseline. It
-never copies `.env*`, personal settings, or the primary checkout's `.venv`.
+`.venv` from `uv.lock` and, once `pnpm-lock.yaml` exists, its `node_modules` with
+`pnpm install --frozen-lockfile`, checks the shared hook, and runs the requested
+baseline. It never copies `.env*`, personal settings, or the primary checkout's `.venv`
+or `node_modules`.
 
 When Codex has already created a linked worktree, run `just worktree-prepare` from
-that checkout to recreate its locked environment. This runs `uv sync` only; it does
-not reinstall the shared hook. A fresh, independent checkout should use `just install`
+that checkout to recreate its locked environment. This runs `uv sync` and, once
+`pnpm-lock.yaml` exists, `pnpm install --frozen-lockfile`; it does not reinstall the
+shared hook. A fresh, independent checkout should use `just install`
 instead.
 
 Cleanup requires an explicit worktree root and branch. Preview first:

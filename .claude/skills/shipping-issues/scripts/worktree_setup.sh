@@ -3,12 +3,15 @@
 # environment, and report whether the project's own verification command is
 # already green there — BEFORE any implementation agent is spawned.
 #
-# A fresh `git worktree add` gives tracked files only: no .env, no .venv, so
-# the project's verification command fails before it reads a line of code.
-# This script installs dependencies with `uv sync --all-groups --locked` (the
-# same command `just install` runs) — it never copies a secret or
-# personal-permission file (.env*, .envrc, *.local, settings.local.json) or the
-# main checkout's .venv — checks that the shared pre-commit hook is installed,
+# A fresh `git worktree add` gives tracked files only: no .env, no .venv, no
+# node_modules, so the project's verification command fails before it reads a
+# line of code. This script installs dependencies with
+# `uv sync --all-groups --locked` when uv.lock exists, then
+# `pnpm install --frozen-lockfile` when pnpm-lock.yaml exists — each judged
+# from the new worktree's own files, not the main checkout's (the installs
+# `just install` runs) — it never copies a secret or personal-permission file
+# (.env*, .envrc, *.local, settings.local.json) or the main checkout's .venv or
+# node_modules — checks that the shared pre-commit hook is installed,
 # and (with --verify) runs the
 # project's verification command once as a baseline. A red baseline is the
 # repository's problem, not the issue's — finding it here costs one command
@@ -26,7 +29,7 @@
 #
 # --spec provisions several worktrees in ONE invocation, SEQUENTIALLY — never
 # in parallel. Two reasons: the dependency installs all contend for the same
-# package-manager cache (uv's cache), so running them
+# package-manager caches (uv's cache, pnpm's store), so running them
 # concurrently just serializes on filesystem locks anyway but with none of the
 # clarity; and a verify command that binds a fixed port or writes to one local
 # dev database fails in ways that look like the issue's fault when it's really
@@ -47,7 +50,9 @@
 #   * .venv is never copied. A virtualenv bakes absolute paths into
 #     pyvenv.cfg and its bin/ shims, so a copy of one is broken the moment
 #     it lives at a different path. It is always re-created by uv, never
-#     cloned.
+#     cloned. node_modules likewise: pnpm builds it from symlinks into
+#     node_modules/.pnpm and hard links into its store, so it is always
+#     re-created by pnpm.
 #   * Git hooks live in the main .git and are shared by every worktree, so
 #     this script never runs `pre-commit install` from a worktree: that would
 #     rewrite the shared hook to call the worktree's own .venv interpreter,
@@ -216,15 +221,19 @@ is_registered_worktree() {
 }
 
 # --- dependency-manager detection ---------------------------------------
-# This is purely a function of repo_root's file listing, so (unlike the
-# per-worktree steps below) it's computed once, not once per spec. Only uv is
-# provisioned by this template.
-deps_kind="none"
-deps_cmd=()
-if [[ -f "$repo_root/uv.lock" ]]; then
-  deps_kind=uv
-  deps_cmd=(uv sync --all-groups --locked)
-fi
+# This template provisions uv (uv.lock) and pnpm (pnpm-lock.yaml), each on its
+# own lockfile; another JavaScript lockfile selects nothing. A lockfile is
+# looked for in the tree the worktree holds — never the main checkout, which
+# may sit on another commit than --base (an un-pulled main, a feature branch).
+# A real run reads the created worktree; a dry run, which creates nothing, reads
+# the ref `git worktree add` would check out (checkout_ref, set per spec).
+has_lockfile() { # $1=file name at the tree's root
+  if [[ $DRY -eq 1 ]]; then
+    git -C "$repo_root" cat-file -e "$checkout_ref:$1" 2>/dev/null
+  else
+    [[ -f "$worktree_path/$1" ]]
+  fi
+}
 
 # A pre-commit config means commits are meant to run its hooks. The hook files
 # themselves live in the shared hooks directory, so they are checked, not
@@ -306,6 +315,13 @@ provision_one() {
   fi
 
   # --- 3. create the worktree ---------------------------------------------
+  # The ref the worktree checks out: an existing branch as it stands, else a
+  # new branch at the base.
+  if branch_exists "$p_branch"; then
+    checkout_ref="$p_branch"
+  else
+    checkout_ref="$p_base"
+  fi
   if [[ $DRY -eq 1 ]]; then
     echo "DRY: mkdir -p $p_root"
     if branch_exists "$p_branch"; then
@@ -336,17 +352,24 @@ provision_one() {
   fi
 
   # --- 4. install dependencies --------------------------------------------
-  local deps_failed=0
-  case "$deps_kind" in
-    uv) do_install "${deps_cmd[@]}" || deps_failed=1 ;;
-    none)
-      if [[ $DRY -eq 1 ]]; then
-        echo "DRY: deps: none"
-      else
-        emit deps "none"
-      fi
-      ;;
-  esac
+  # In order, uv then pnpm; the first failure blocks, so a failed uv sync
+  # never goes on to the pnpm install.
+  local deps_failed=0 has_uv=0 has_pnpm=0
+  has_lockfile uv.lock && has_uv=1
+  has_lockfile pnpm-lock.yaml && has_pnpm=1
+  if [[ $has_uv -eq 1 ]]; then
+    do_install uv sync --all-groups --locked || deps_failed=1
+  fi
+  if [[ $deps_failed -eq 0 && $has_pnpm -eq 1 ]]; then
+    do_install pnpm install --frozen-lockfile || deps_failed=1
+  fi
+  if [[ $has_uv -eq 0 && $has_pnpm -eq 0 ]]; then
+    if [[ $DRY -eq 1 ]]; then
+      echo "DRY: deps: none"
+    else
+      emit deps "none"
+    fi
+  fi
   if [[ $deps_failed -eq 1 ]]; then
     PROVISION_VERDICT="BLOCKED"
     echo "verdict: BLOCKED"

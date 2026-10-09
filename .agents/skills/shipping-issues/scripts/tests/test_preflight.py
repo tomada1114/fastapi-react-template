@@ -7,6 +7,7 @@ Run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -99,6 +100,17 @@ def run_script_host(args, repo, host):
 def without_runstate(stdout):
     """Drop the `runstate:` line: FakeGh gives every run its own temp dir."""
     return [ln for ln in stdout.splitlines() if not ln.startswith("runstate:")]
+
+
+def sha12(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()[:12]
+
+
+def profile_value(stdout: str, key: str) -> str:
+    prefix = key + ": "
+    return next(
+        ln[len(prefix) :] for ln in stdout.splitlines() if ln.startswith(prefix)
+    )
 
 
 class PreflightTest(unittest.TestCase):
@@ -322,6 +334,161 @@ class PreflightTest(unittest.TestCase):
             self.assertIn("worktree_viable: yes\n", proc.stdout)
             self.assertEqual(calls, [])
 
+    # --- JavaScript profile (pnpm-lock.yaml) -------------------------------
+
+    def test_uv_only_profile_keeps_the_single_file_lockfile_hash(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_bytes(b"version = 1\n")
+            proc, calls = run_script([], repo)
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("pkg_manager: uv\n", proc.stdout)
+        self.assertIn("lockfile: uv.lock\n", proc.stdout)
+        self.assertIn("js_pkg_manager: none\n", proc.stdout)
+        self.assertIn("js_lockfile: none\n", proc.stdout)
+        self.assertEqual(
+            profile_value(proc.stdout, "lockfile_hash"), sha12(b"version = 1\n")
+        )
+        self.assertEqual(calls, [])
+
+    def test_pnpm_lockfile_adds_js_keys_and_joins_the_lockfile_hash(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_bytes(b"version = 1\n")
+            (repo / "pnpm-lock.yaml").write_bytes(b"lockfileVersion: '9.0'\n")
+            proc, calls = run_script([], repo)
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("pkg_manager: uv\n", proc.stdout)
+        self.assertIn("lockfile: uv.lock\n", proc.stdout)
+        self.assertIn("js_pkg_manager: pnpm\n", proc.stdout)
+        self.assertIn("js_lockfile: pnpm-lock.yaml\n", proc.stdout)
+        joined = "uv.lock:{};pnpm-lock.yaml:{};".format(
+            sha12(b"version = 1\n"), sha12(b"lockfileVersion: '9.0'\n")
+        )
+        self.assertEqual(
+            profile_value(proc.stdout, "lockfile_hash"), sha12(joined.encode())
+        )
+        self.assertEqual(calls, [])
+
+    def test_pnpm_lockfile_without_uv_lockfile(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "pnpm-lock.yaml").write_bytes(b"lockfileVersion: '9.0'\n")
+            proc, _ = run_script([], repo)
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("pkg_manager: none\n", proc.stdout)
+        self.assertIn("lockfile: none\n", proc.stdout)
+        self.assertIn("js_pkg_manager: pnpm\n", proc.stdout)
+        self.assertIn("js_lockfile: pnpm-lock.yaml\n", proc.stdout)
+        joined = "pnpm-lock.yaml:{};".format(sha12(b"lockfileVersion: '9.0'\n"))
+        self.assertEqual(
+            profile_value(proc.stdout, "lockfile_hash"), sha12(joined.encode())
+        )
+
+    def test_other_javascript_lockfiles_select_no_js_stack(self):
+        for lockfile in ("package-lock.json", "yarn.lock", "bun.lock"):
+            with self.subTest(lockfile=lockfile), tempfile.TemporaryDirectory() as td:
+                repo = Path(td)
+                make_repo(repo, origin=True)
+                (repo / lockfile).write_text("fixture\n", encoding="utf-8")
+                proc, _ = run_script([], repo)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn("pkg_manager: none\n", proc.stdout)
+                self.assertIn("js_pkg_manager: none\n", proc.stdout)
+                self.assertIn("js_lockfile: none\n", proc.stdout)
+                self.assertIn("lockfile_hash: none\n", proc.stdout)
+
+    def test_profile_cache_invalidated_when_a_javascript_file_changes(self):
+        for name in (
+            "pnpm-lock.yaml",
+            "package.json",
+            "pnpm-workspace.yaml",
+            ".node-version",
+            ".npmrc",
+        ):
+            with self.subTest(changed=name), tempfile.TemporaryDirectory() as td:
+                repo = Path(td)
+                make_repo(repo, origin=True)
+                (repo / "uv.lock").write_text("fixture\n", encoding="utf-8")
+                (repo / name).write_text("v1\n", encoding="utf-8")
+                cache = repo / ".cache-outside-git" / "cache.json"
+
+                first, _ = run_script(["--profile-cache", str(cache)], repo)
+                hit, _ = run_script(["--profile-cache", str(cache)], repo)
+                (repo / name).write_text("v2\n", encoding="utf-8")
+                after, _ = run_script(["--profile-cache", str(cache)], repo)
+
+                self.assertIn("profile_cache: WRITTEN\n", first.stdout)
+                self.assertIn("profile_cache: HIT\n", hit.stdout)
+                self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+
+    def test_profile_cache_invalidated_when_a_pnpm_lockfile_appears(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_text("fixture\n", encoding="utf-8")
+            cache = repo / ".cache-outside-git" / "cache.json"
+
+            run_script(["--profile-cache", str(cache)], repo)
+            (repo / "pnpm-lock.yaml").write_text("fixture\n", encoding="utf-8")
+            after, _ = run_script(["--profile-cache", str(cache)], repo)
+
+        self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+        self.assertIn("js_pkg_manager: pnpm\n", after.stdout)
+
+    def test_a_logic_version_4_cache_recalculates_without_losing_viability(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_text("fixture\n", encoding="utf-8")
+            cache = repo / ".cache-outside-git" / "cache.json"
+
+            run_script(["--profile-cache", str(cache)], repo)
+            run_script(
+                ["--profile-cache", str(cache), "--set-worktree-viable", "yes"], repo
+            )
+            hit, _ = run_script(["--profile-cache", str(cache)], repo)
+            blob = json.loads(cache.read_text(encoding="utf-8"))
+            blob["logic_version"] = "4"
+            blob["verify_command"] = "cargo test"
+            cache.write_text(json.dumps(blob), encoding="utf-8")
+            after, calls = run_script(["--profile-cache", str(cache)], repo)
+            rewritten = json.loads(cache.read_text(encoding="utf-8"))
+
+        self.assertIn("profile_cache: HIT\n", hit.stdout)
+        self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+        self.assertIn("verify_command: uv run --locked pytest\n", after.stdout)
+        self.assertIn("worktree_viable: yes\n", after.stdout)
+        self.assertEqual(rewritten["logic_version"], "5")
+        self.assertEqual(calls, [])
+
+    def test_a_logic_version_4_cache_with_no_viability_recalculates_as_unknown(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_text("fixture\n", encoding="utf-8")
+            cache = repo / ".cache-outside-git" / "cache.json"
+
+            run_script(["--profile-cache", str(cache)], repo)
+            run_script(
+                ["--profile-cache", str(cache), "--set-worktree-viable", "no"], repo
+            )
+            blob = json.loads(cache.read_text(encoding="utf-8"))
+            blob["logic_version"] = "4"
+            cache.write_text(json.dumps(blob), encoding="utf-8")
+            after, _ = run_script(["--profile-cache", str(cache)], repo)
+
+        self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+        self.assertIn("worktree_viable: unknown\n", after.stdout)
+
     def test_hooks_pre_commit_config(self):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
@@ -393,8 +560,8 @@ class PreflightTest(unittest.TestCase):
 
     def test_recorded_worktree_viability_survives_an_invalidation(self):
         # worktree_viable is measured by running a gate in a real worktree, not
-        # derived from a config file, so a lockfile bump must not discard it —
-        # that value cost a whole dependency install to learn.
+        # derived from a config file, so a lockfile bump must not discard a
+        # `yes` — that value cost a whole dependency install to learn.
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
             make_repo(repo, origin=True)
@@ -403,12 +570,60 @@ class PreflightTest(unittest.TestCase):
 
             run_script(["--profile-cache", str(cache)], repo)
             run_script(
-                ["--profile-cache", str(cache), "--set-worktree-viable", "no"], repo
+                ["--profile-cache", str(cache), "--set-worktree-viable", "yes"], repo
             )
             (repo / "uv.lock").write_text("v2 — different lockfile", encoding="utf-8")
             after, _ = run_script(["--profile-cache", str(cache)], repo)
 
         self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+        self.assertIn("worktree_viable: yes\n", after.stdout)
+
+    def test_a_dependency_input_change_resets_a_recorded_no_to_unknown(self):
+        # A `no` may be the very failure the changed input fixes (a baseline red
+        # for want of node_modules before pnpm provisioning existed), and plan.py
+        # forces serial on `no`, so carrying it would never re-probe the repo.
+        for name in (
+            "uv.lock",
+            "pnpm-lock.yaml",
+            "package.json",
+            "pnpm-workspace.yaml",
+            ".node-version",
+            ".npmrc",
+        ):
+            with self.subTest(changed=name), tempfile.TemporaryDirectory() as td:
+                repo = Path(td)
+                make_repo(repo, origin=True)
+                (repo / "uv.lock").write_text("v1\n", encoding="utf-8")
+                (repo / name).write_text("v1\n", encoding="utf-8")
+                cache = repo / ".cache-outside-git" / "cache.json"
+
+                run_script(["--profile-cache", str(cache)], repo)
+                run_script(
+                    ["--profile-cache", str(cache), "--set-worktree-viable", "no"],
+                    repo,
+                )
+                (repo / name).write_text("v2\n", encoding="utf-8")
+                after, _ = run_script(["--profile-cache", str(cache)], repo)
+                rewritten = json.loads(cache.read_text(encoding="utf-8"))
+
+                self.assertIn("profile_cache: WRITTEN\n", after.stdout)
+                self.assertIn("worktree_viable: unknown\n", after.stdout)
+                self.assertEqual(rewritten["worktree_viable"], "unknown")
+
+    def test_a_recorded_no_on_the_current_profile_is_honored(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            make_repo(repo, origin=True)
+            (repo / "uv.lock").write_text("v1\n", encoding="utf-8")
+            cache = repo / ".cache-outside-git" / "cache.json"
+
+            run_script(["--profile-cache", str(cache)], repo)
+            run_script(
+                ["--profile-cache", str(cache), "--set-worktree-viable", "no"], repo
+            )
+            after, _ = run_script(["--profile-cache", str(cache)], repo)
+
+        self.assertIn("profile_cache: HIT\n", after.stdout)
         self.assertIn("worktree_viable: no\n", after.stdout)
 
     def test_set_worktree_viable_then_read_back_on_a_hit(self):
