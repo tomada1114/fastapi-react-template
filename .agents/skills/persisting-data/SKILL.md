@@ -157,11 +157,14 @@ Apache-2.0 license fits the dependency gate, unlike psycopg's LGPL license
 (https://pypi.org/project/asyncpg/0.31.0/ and https://pypi.org/project/psycopg/,
 checked 2026-10-09).
 
-`compose.yml` supplies an optional disposable database: run `docker compose up -d`,
+`compose.yml` supplies an optional disposable database: run `docker compose up -d --wait`,
 then `just backend test-postgres`. The recipe includes the extra and defaults to
 that database; `MY_APP_TEST_POSTGRES_URL` selects another disposable database.
 Never point it at application data: the shared contract empties the todos table
 before each test and the migration test drops and recreates it.
+
+Database migration and development recipes select the `postgres` extra when
+the resolved URL uses PostgreSQL; SQLite keeps the default environment.
 
 The `postgres` marker is deselected by default, so `just verify` needs no server.
 Selecting it with `-m postgres` fails when the URL is absent. The CI `PostgreSQL`
