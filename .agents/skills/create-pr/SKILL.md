@@ -92,7 +92,7 @@ Each row feeds a checklist item or the Summary:
 
 | In the diff | Then |
 |---|---|
-| A new package in `pyproject.toml` | Stop unless the owner already signed off on that package; then put the review record in the body. **BACKGROUND:** `managing-dependencies`. |
+| A new package in either `pyproject.toml` | Stop unless the owner already signed off on that package; then put the review record in the body. **BACKGROUND:** `managing-dependencies`. |
 | A weakened gate (`changing-gates`' list: a removed ruff rule, a `noqa` without a reason, a skipped test, …) | Stop. The PR waits until a human decides; it is not opened with the problem in it. |
 | New behavior without a test that covers it | Stop and add the test. **REQUIRED:** `tdd`. |
 | A new public function without type annotations or a docstring that says why | Add them. **BACKGROUND:** `writing-python`. |

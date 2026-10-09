@@ -4,7 +4,7 @@ description: >
   Use when landing open Dependabot pull requests, clearing a backlog of dependency
   updates, or several bot PRs contest the same workflow file or uv.lock. Covers the
   read-only survey, pre-1.0 minor updates treated as major risk, review of SHA-pinned
-  Action bumps and of uv PRs (pyproject.toml with uv.lock, a new locked package),
+  Action bumps and of uv PRs (either pyproject.toml with uv.lock, a new locked package),
   reviewing pre-commit hook revisions and locked Python tools, an exact approval
   plan, individual merges or a combined branch, and closing originals only after their
   replacement lands.
@@ -45,7 +45,9 @@ version is a reason to inspect, never a patch classification.
 
 The `uv` entry groups minor and patch updates into one `python-minor-patch` PR a month
 and opens one PR per major, under a 14-day cooldown equal to `exclude-newer`. Each always
-moves `uv.lock`, and moves `pyproject.toml` too when it raises a range. Its grouped title hides its members just the same:
+moves `uv.lock`, and moves a manifest too when it raises a range: `backend/pyproject.toml`
+for a runtime package or the `ai` extra, the root `pyproject.toml` for the `dev` group,
+so one PR may touch both. Its grouped title hides its members just the same:
 read every `version =` change in the `uv.lock` diff. Dependabot counts a 0.x minor
 (`ruff` is one) as a minor, so it arrives inside the group — review it as a major.
 
@@ -60,7 +62,7 @@ checked 2026-10-07).
 A row whose ecosystem is `other` is not something this repository's Dependabot config
 asks for — typically a security update the repository settings enabled for another
 Python ecosystem (a `dependabot/pip/...` branch). Hold it: Python dependencies arrive
-through the `uv` entry, and a `pyproject.toml`-only change cannot pass CI's
+through the `uv` entry, and a manifest-only change cannot pass CI's
 `uv sync --locked` anyway ([F4](references/failure-modes.md)). Report the advisory so a
 human can schedule the update.
 
@@ -157,8 +159,8 @@ These require a separate decision even if a batch was approved:
 - A new package in `uv.lock` — a `[[package]]` the base did not lock, a new transitive
   dependency included. It needs `managing-dependencies`' review record and the owner's
   yes, like any new package.
-- A `pyproject.toml` change beyond an existing dependency's range: a new entry, a
-  `[tool.*]` table, a move of `exclude-newer`, or a new or extended
+- A change to either `pyproject.toml` beyond an existing dependency's range: a new
+  entry, a `[tool.*]` table, a move of `exclude-newer`, or a new or extended
   `exclude-newer-package` entry. Removing a stale one, as the review checklist plans, is
   not.
 - A security update younger than the 14-day window, which `uv lock` refuses — usually

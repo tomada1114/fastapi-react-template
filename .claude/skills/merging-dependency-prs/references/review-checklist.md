@@ -35,21 +35,24 @@ formality. Step 4 repeats this review whenever a head changes:
 
 A `dependabot/uv/...` PR moves Python dependencies. Review it as closely as an Action:
 
-- A `uv` PR always moves `uv.lock`, and moves `pyproject.toml` too when it raises a
-  range. A `pyproject.toml` change arrives with the `uv.lock` that `uv lock` generated
-  for it, in the same PR; a `pyproject.toml` change without its lock is held. A
-  `uv.lock`-only change is a lock refresh inside the existing ranges.
-- In `pyproject.toml`, only the `>=X.Y` lower bound of a dependency that already exists
-  under `[project] dependencies` or `[dependency-groups]` may change. A new entry, a
-  removed one, or anything under `[tool.*]` — `exclude-newer` included — goes to
-  "Stop and ask".
+- A `uv` PR always moves `uv.lock`, and moves a manifest too when it raises a range:
+  `backend/pyproject.toml` for a runtime package or an extra, the root `pyproject.toml`
+  for the `dev` group; a grouped PR may move both. A manifest change arrives with the
+  `uv.lock` that `uv lock` generated for it, in the same PR; a manifest change without
+  its lock is held. A `uv.lock`-only change is a lock refresh inside the existing ranges.
+- In either manifest, only the `>=X.Y` lower bound of a dependency that already exists
+  under `backend/pyproject.toml`'s `[project] dependencies` or
+  `[project.optional-dependencies]`, or the root's `[dependency-groups]`, may change.
+  A new entry, a removed one, or anything under `[tool.*]` — `exclude-newer` included —
+  goes to "Stop and ask".
 - In `uv.lock`, what matters is that no `[[package]]` appears that the base did not
   lock: that is a new package, transitive or not — "Stop and ask", with
   `managing-dependencies`' review record. These changes are expected and fine:
   - an upgraded package's `version`, `sdist`, and `wheels`;
   - its own `dependencies` and their markers, as the new release declares them;
-  - the root `my-app` package's `[package.metadata]` `requires-dist` / `requires-dev`,
-    rewritten when a range in `pyproject.toml` moves;
+  - the `my-app` workspace member's `[package.metadata]` `requires-dist`, rewritten
+    when a range in `backend/pyproject.toml` moves, and `[manifest.dependency-groups]`,
+    rewritten when a `dev` range in the root `pyproject.toml` moves;
   - a `[[package]]` dropping out because nothing requires it any more.
 
   A change under `[options]` is "Stop and ask".
@@ -60,7 +63,7 @@ A `dependabot/uv/...` PR moves Python dependencies. Review it as closely as an A
   is the trigger that drops it (`managing-dependencies`).
 - CI's `uv sync --group dev --locked` passed on the current head — every job that
   installs the project starts with it,
-  and it refuses a lock that disagrees with `pyproject.toml`. `uv lock --check` (the
+  and it refuses a lock that disagrees with either manifest. `uv lock --check` (the
   first step of `just verify`) passes on a checkout of that head.
 - List every `version =` change of a grouped PR. A 0.x minor among them (`ruff`) is a
   major risk: read its changelog or release notes before approving.
