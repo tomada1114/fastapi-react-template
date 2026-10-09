@@ -33,7 +33,9 @@ limit of the host.
 
 The repository's `.claude/settings.json` holds a SessionStart hook that runs
 `just install` when `CLAUDE_CODE_REMOTE` is `true`, so the environment and the git
-hooks are in place before step 1. A single-repository cloud session reads that file,
+hooks are in place before step 1. It runs the `just` on `PATH` only when that is
+1.42.3 or later — the root justfile's module dependencies need it (CONTRIBUTING.md) —
+and otherwise `uvx --from 'rust-just>=1.42.3' just install`. A single-repository cloud session reads that file,
 and reads neither `~/.claude/settings.json` nor `.claude/settings.local.json`
 ([settings in cloud sessions](https://code.claude.com/docs/en/settings#settings-in-cloud-sessions),
 checked 2026-10-07): only what the repository commits applies. When `.venv` is missing
