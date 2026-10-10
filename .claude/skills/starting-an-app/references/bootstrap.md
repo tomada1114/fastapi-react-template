@@ -58,8 +58,9 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
   change (`git status --porcelain --untracked-files=all` must be empty);
 - `.template-origin` already present: the repository was bootstrapped;
 - a reserved name, checked in both the hyphenated and the underscored form: `app`,
-  `src`, `test`, `tests`, `core`, `api`, `cli`, `adapters`, `settings`, `my-app`,
-  `my_app`; a package the app or its tooling imports (`fastapi`, `typer`, `pydantic`,
+  `src`, `test`, `tests`, `core`, `api`, `adapters`, `settings`, `my-app`,
+  `my_app`; `cli` and `typer`, kept reserved for an app that adds a command-line
+  entry point back; a package the app or its tooling imports (`fastapi`, `pydantic`,
   `pydantic_settings`, `uvicorn`, `httpx`, `httpx2`, `starlette`, `pytest`, `ruff`, `mypy`),
   which the app's own module would shadow; every `scripts/*.py` stem; any Python
   keyword; and any standard-library module (`sys.stdlib_module_names`);
