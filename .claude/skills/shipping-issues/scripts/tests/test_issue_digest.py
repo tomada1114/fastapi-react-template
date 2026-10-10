@@ -224,6 +224,28 @@ class ExtractDepsTest(unittest.TestCase):
                 self.assertEqual(deps["depends_on"], [])
                 self.assertEqual(deps["blocks"], [3])
 
+    def test_empty_list_trailing_spaces_keep_default_padding(self):
+        for marker, width in (("-", 2), ("1.", 3)):
+            for padding in (" ", "  ", "    ", "     ", "\t"):
+                for residual in (2, 3, 4):
+                    with self.subTest(
+                        marker=marker, padding=padding, residual=residual
+                    ):
+                        body = (
+                            marker
+                            + padding
+                            + "\n\n"
+                            + " " * (width + residual)
+                            + "Depends on: #3"
+                        )
+                        expected = [3] if residual < 4 else []
+                        self.assertEqual(
+                            idg.extract_deps(body, "", 1)["depends_on"], expected
+                        )
+                        self.assertEqual(
+                            stated_depends_on(body, None), set(expected) or None
+                        )
+
     def test_quoted_comment_opener_keeps_real_prose_edges(self):
         body = "Use `<!--` for a comment. Blocked by #3."
         deps = idg.extract_deps(body, "t", self_number=1)

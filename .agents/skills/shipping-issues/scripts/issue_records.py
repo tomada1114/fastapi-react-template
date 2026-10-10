@@ -209,7 +209,9 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
                     stripped = stripped[quote.end() :]
                 elif marker is not None:
                     # An empty item has one implicit content-padding column.
-                    width = marker.end() + (not stripped[marker.end() :].strip())
+                    width = marker.end()
+                    if not stripped[marker.end() :].strip():
+                        width = len(stripped.rstrip()) + 1
                     containers.append(("list", width))
                     stripped = stripped[marker.end() :]
                 else:
