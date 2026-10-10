@@ -50,7 +50,13 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
   outside this contract. See Python's optional-build requirements and CPython's
   module definitions above, checked 2026-10-10:
   https://docs.python.org/3.14/using/configure.html#requirements-for-optional-modules.
-  Module-member compatibility still needs review.
+  Known stdlib submodule gaps are checked against frozen CPython source trees
+  for every supported minor (3.9 through 3.14 for skills; 3.10 through 3.14 for
+  `check_staged.py`). Both dotted imports and `from package import submodule`
+  are checked, including imports inside functions. Ordinary member imports
+  (`from datetime import datetime`) stay allowed; general member/API compatibility
+  and dynamic imports still need review. Source revisions and aliases are recorded
+  in `tests/test_script_imports.py`, checked 2026-10-10.
   Absolute sibling imports are allowed. The backend's
   `banned-api` table does not reach `scripts/`.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and

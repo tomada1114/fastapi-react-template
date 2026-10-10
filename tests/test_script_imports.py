@@ -380,6 +380,131 @@ STDLIB_PY39 = STDLIB_PY310 | {
 }
 
 
+# Known submodule gaps from each supported CPython minor's Lib tree.
+# Frozen source trees, fetched through GitHub MCP on 2026-10-10:
+# 3.9: 0bbaf5de9744ae1acea3e2c9ad2257d1cc68e847
+# 3.10: a8d15704295419e94f06e1e0727839113faabbf7
+# 3.11: 59d1bd5f0beb95f26771a96fe11eac1653d69ffa
+# 3.12: 58ed60b7415e218ce3d608302e39b5e55bfb0e88
+# 3.13: 24d048d3601c2f1d41fa357897c1c91bb0a0bc13
+# 3.14: 8b0ab08ef18c6d7517126016aa82ed78387d45e4
+# https://github.com/python/cpython/tree/8b0ab08ef18c6d7517126016aa82ed78387d45e4/Lib
+# Exclude known paths missing in any minor of the supported range. Module-to-
+# package moves count as the same module; os.path and collections.abc are aliases.
+# Root inventories already reject packages absent from either endpoint.
+INCOMPATIBLE_SUBMODULES_PY39 = frozenset(
+    {
+        "asyncio.graph",
+        "asyncio.mixins",
+        "asyncio.taskgroups",
+        "asyncio.timeouts",
+        "asyncio.tools",
+        "concurrent.futures.interpreter",
+        "concurrent.interpreters",
+        "concurrent.interpreters._crossinterp",
+        "concurrent.interpreters._queues",
+        "ctypes._layout",
+        "dbm.sqlite3",
+        "encodings._win_cp_codecs",
+        "ensurepip._bundled",
+        "importlib._abc",
+        "importlib._adapters",
+        "importlib._common",
+        "importlib.metadata._adapters",
+        "importlib.metadata._collections",
+        "importlib.metadata._functools",
+        "importlib.metadata._itertools",
+        "importlib.metadata._meta",
+        "importlib.metadata._text",
+        "importlib.metadata.diagnose",
+        "importlib.readers",
+        "importlib.resources._adapters",
+        "importlib.resources._common",
+        "importlib.resources._functional",
+        "importlib.resources._itertools",
+        "importlib.resources._legacy",
+        "importlib.resources.abc",
+        "importlib.resources.readers",
+        "importlib.resources.simple",
+        "importlib.simple",
+        "json.__main__",
+        "pathlib._abc",
+        "pathlib._local",
+        "pathlib._os",
+        "pathlib.types",
+        "pydoc_data.module_docs",
+        "re._casefix",
+        "re._compiler",
+        "re._constants",
+        "re._parser",
+        "sqlite3.__main__",
+        "string.templatelib",
+        "sysconfig.__main__",
+        "tkinter.tix",
+        "wsgiref.types",
+        "zipfile.__main__",
+        "zipfile._path",
+        "zipfile._path.glob",
+    }
+)
+INCOMPATIBLE_SUBMODULES_PY310 = frozenset(
+    {
+        "asyncio.graph",
+        "asyncio.taskgroups",
+        "asyncio.timeouts",
+        "asyncio.tools",
+        "concurrent.futures.interpreter",
+        "concurrent.interpreters",
+        "concurrent.interpreters._crossinterp",
+        "concurrent.interpreters._queues",
+        "ctypes._layout",
+        "dbm.sqlite3",
+        "encodings._win_cp_codecs",
+        "ensurepip._bundled",
+        "importlib._adapters",
+        "importlib._common",
+        "importlib.metadata.diagnose",
+        "importlib.resources._adapters",
+        "importlib.resources._common",
+        "importlib.resources._functional",
+        "importlib.resources._itertools",
+        "importlib.resources._legacy",
+        "importlib.resources.abc",
+        "importlib.resources.readers",
+        "importlib.resources.simple",
+        "importlib.simple",
+        "json.__main__",
+        "pathlib._abc",
+        "pathlib._local",
+        "pathlib._os",
+        "pathlib.types",
+        "pydoc_data.module_docs",
+        "re._casefix",
+        "re._compiler",
+        "re._constants",
+        "re._parser",
+        "sqlite3.__main__",
+        "string.templatelib",
+        "sysconfig.__main__",
+        "tkinter.tix",
+        "wsgiref.types",
+        "zipfile.__main__",
+        "zipfile._path",
+        "zipfile._path.glob",
+    }
+)
+INCOMPATIBLE_SUBMODULES_CURRENT = frozenset(
+    {
+        "ensurepip._bundled",
+        "importlib._adapters",
+        "importlib._common",
+        "importlib.resources._legacy",
+        "pathlib._abc",
+        "tkinter.tix",
+    }
+)
+
+
 def script_import_findings(root: Path) -> list[str]:
     """Report imports outside the stdlib or a script's own sibling modules."""
     paths = sorted(root.glob("scripts/*.py")) + sorted(
@@ -393,11 +518,15 @@ def script_import_findings(root: Path) -> list[str]:
         relative = path.relative_to(root)
         if relative.parts[0] == ".agents":
             stdlib = STDLIB_PY39 & sys.stdlib_module_names
+            incompatible = INCOMPATIBLE_SUBMODULES_PY39
         elif relative == Path("scripts/check_staged.py"):
             stdlib = STDLIB_PY310 & sys.stdlib_module_names
+            incompatible = INCOMPATIBLE_SUBMODULES_PY310
         else:
             stdlib = sys.stdlib_module_names
+            incompatible = INCOMPATIBLE_SUBMODULES_CURRENT
         allowed = (stdlib - HOST_SPECIFIC_MODULES) | {"__future__"} | siblings
+        unavailable = BUILD_OPTIONAL_MODULES | incompatible
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -413,7 +542,8 @@ def script_import_findings(root: Path) -> list[str]:
                 modules.extend(
                     f"{node.module}.{alias.name}"
                     for alias in node.names
-                    if f"{node.module}.{alias.name}" in BUILD_OPTIONAL_MODULES
+                    if node.module not in unavailable
+                    and f"{node.module}.{alias.name}" in unavailable
                 )
             else:
                 continue
@@ -423,7 +553,7 @@ def script_import_findings(root: Path) -> list[str]:
                 if module.split(".")[0] not in allowed
                 or any(
                     module == optional or module.startswith(optional + ".")
-                    for optional in BUILD_OPTIONAL_MODULES
+                    for optional in unavailable
                 )
             )
     return findings
@@ -646,5 +776,69 @@ def test_script_imports_modules_with_bundled_fallbacks_are_allowed(
     path.parent.mkdir()
     path.write_text(
         "import hashlib, decimal, uuid\nimport dbm.dumb\n", encoding="utf-8"
+    )
+    assert script_import_findings(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "script", ["scripts/check_staged.py", ".agents/skills/sample/scripts/probe.py"]
+)
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import concurrent.interpreters",
+        "from concurrent import interpreters",
+        "def main():\n    import concurrent.interpreters",
+        "def main():\n    from concurrent import interpreters",
+        "import concurrent.futures.interpreter",
+        "from concurrent.futures import interpreter",
+        "import asyncio.taskgroups",
+        "from asyncio import taskgroups",
+        "import importlib.resources.abc",
+        "from importlib.resources import abc",
+        "import string.templatelib",
+        "from string import templatelib",
+        "import importlib._adapters",
+        "from importlib import _adapters",
+    ],
+)
+def test_script_imports_incompatible_submodules_are_rejected(
+    tmp_path: Path, script: str, source: str
+) -> None:
+    path = tmp_path / script
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+    assert len(script_import_findings(tmp_path)) == 1
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "scripts/probe.py",
+        "scripts/check_staged.py",
+        ".agents/skills/sample/scripts/probe.py",
+    ],
+)
+def test_script_imports_shared_submodules_and_members_are_allowed(
+    tmp_path: Path, script: str
+) -> None:
+    path = tmp_path / script
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "import concurrent.futures, os.path, collections.abc\n"
+        "from concurrent import futures\nfrom datetime import datetime\n"
+        "from importlib.resources import files\n",
+        encoding="utf-8",
+    )
+    assert script_import_findings(tmp_path) == []
+
+
+def test_script_imports_project_allows_current_submodules(tmp_path: Path) -> None:
+    path = tmp_path / "scripts/probe.py"
+    path.parent.mkdir()
+    path.write_text(
+        "import concurrent.interpreters\nfrom concurrent import interpreters\n"
+        "import asyncio.taskgroups\nfrom string import templatelib\n",
+        encoding="utf-8",
     )
     assert script_import_findings(tmp_path) == []
