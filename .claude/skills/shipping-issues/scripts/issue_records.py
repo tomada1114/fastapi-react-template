@@ -126,7 +126,10 @@ _BACKTICK_RUN_RE = re.compile(r"`+")
 # after up to three spaces, with `<!--`. It runs to the line holding `-->`.
 _HTML_COMMENT_OPEN_RE = re.compile(r"^ {0,3}<!--")
 # A list item's first line: a bullet or an ordered marker, then a space or tab.
-_LIST_ITEM_RE = re.compile(r"^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)")
+_LIST_ITEM_RE = re.compile(
+    r"^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]{1,4}(?=\S|$)|[ \t]|$)"
+)
+_BLOCKQUOTE_RE = re.compile(r"^ {0,3}>[ \t]?")
 
 
 def _indent_width(line: str) -> int:
@@ -155,21 +158,21 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
     An indented code block starts on a line indented four or more columns (a
     tab counts to the next multiple of 4) that does not continue a paragraph:
     an indented line straight after paragraph text is a lazy continuation of
-    it. It runs across blank lines until a non-blank line indented less. Once
-    a list item has been seen, indented lines are read as its continuation
-    rather than code until a blank line is followed by an unindented,
-    non-list line. Code nested inside list items, other HTML blocks, and
-    backslash-escaped backticks are not modelled.
+    it. It runs across blank lines until a non-blank line indented less.
+    Blockquote markers and list-content indentation are removed for block
+    recognition, while returned offsets still refer to the original text.
+    Other HTML blocks and backslash-escaped backticks are not modelled.
     """
     spans: list[tuple[int, int]] = []
     paragraphs: list[tuple[int, int]] = []
     pos = 0
-    fence: tuple[str, int, int] | None = None  # (char, length, start)
+    # char, length, start, container depth
+    fence: tuple[str, int, int, int] | None = None
     in_comment = False
     para_start: int | None = None
     indented: tuple[int, int] | None = None  # (start, end of last non-blank line)
-    in_list = False
-    after_blank = True
+    # Ordered prefixes: quote markers and list-content widths may alternate.
+    containers: list[tuple[str, int]] = []
 
     def end_paragraph(at: int) -> None:
         nonlocal para_start
@@ -178,25 +181,54 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             para_start = None
 
     for line in body.splitlines(keepends=True):
-        stripped = line.rstrip("\r\n")
+        stripped = line.rstrip("\r\n").expandtabs(4)
+        matched = 0
+        for kind, width in containers:
+            if kind == "quote":
+                quote = _BLOCKQUOTE_RE.match(stripped)
+                if quote is None:
+                    break
+                stripped = stripped[quote.end() :]
+            else:
+                if stripped.strip() and _indent_width(stripped) < width:
+                    break
+                stripped = stripped[width:]
+            matched += 1
+        if matched < len(containers):
+            containers = containers[:matched]
+            end_paragraph(pos)
+            if fence is not None:
+                spans.append((fence[2], pos))
+                fence = None
+        if fence is None and not in_comment:
+            while True:
+                quote = _BLOCKQUOTE_RE.match(stripped)
+                marker = _LIST_ITEM_RE.match(stripped)
+                if quote is not None:
+                    containers.append(("quote", 0))
+                    stripped = stripped[quote.end() :]
+                elif marker is not None:
+                    # An empty item has one implicit content-padding column.
+                    width = marker.end()
+                    if not stripped[marker.end() :].strip():
+                        width = len(stripped.rstrip()) + 1
+                    containers.append(("list", width))
+                    stripped = stripped[marker.end() :]
+                else:
+                    break
+                end_paragraph(pos)
         blank = not stripped.strip()
         indent = _indent_width(stripped)
         if indented is not None:
             if blank or indent >= 4:
                 if not blank:
                     indented = (indented[0], pos + len(line))
-                after_blank = blank
                 pos += len(line)
                 continue
             spans.append(indented)
             indented = None
-        if fence is None and not in_comment and not blank:
-            if _LIST_ITEM_RE.match(stripped):
-                in_list = True
-            elif after_blank and indent == 0:
-                in_list = False
         if fence is not None:
-            char, length, start = fence
+            char, length, start, _ = fence
             close = re.fullmatch(
                 rf" {{0,3}}({re.escape(char)}{{{length},}})\s*", stripped
             )
@@ -207,17 +239,21 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             in_comment = "-->" not in stripped
         elif m := _FENCE_OPEN_RE.match(stripped):
             end_paragraph(pos)
-            fence = (m.group(1)[0], len(m.group(1)), pos)
+            fence = (
+                m.group(1)[0],
+                len(m.group(1)),
+                pos,
+                len(containers),
+            )
         elif _HTML_COMMENT_OPEN_RE.match(stripped):
             end_paragraph(pos)
             in_comment = "-->" not in stripped[stripped.index("<!--") + 4 :]
         elif blank:
             end_paragraph(pos)
-        elif indent >= 4 and para_start is None and not in_list:
+        elif indent >= 4 and para_start is None:
             indented = (pos, pos + len(line))
         elif para_start is None:
             para_start = pos
-        after_blank = blank
         pos += len(line)
     if fence is not None:
         spans.append((fence[2], len(body)))
@@ -330,11 +366,11 @@ def repository_from_url(url: str) -> tuple[str, str] | None:
     return parsed.netloc.lower(), match.group(1).lower()
 
 
-def closing_text(text: str) -> str:
-    """Mask examples without joining words across an ignored Markdown region."""
+def closing_text(text: str, *, boundary: str = " ") -> str:
+    """Mask examples with a boundary suited to the caller's keyword grammar."""
     for start, end in sorted(_code_spans(text), reverse=True):
-        text = text[:start] + " " * (end - start) + text[end:]
-    return re.sub(r"<!--(?:.*?-->|.*\Z)", " ", text, flags=re.DOTALL)
+        text = text[:start] + boundary * (end - start) + text[end:]
+    return re.sub(r"<!--(?:.*?-->|.*\Z)", boundary, text, flags=re.DOTALL)
 
 
 def pr_issue_references(pr: RawPr, repository: tuple[str, str] | None) -> set[int]:
@@ -901,13 +937,14 @@ def squeeze(text: str | None, limit: int) -> str:
 
 def extract_deps(body: str, title: str, self_number: int) -> dict[str, list[int]]:
     haystack = f"{title}\n{body or ''}"
+    prose = "\n".join(closing_text(part, boundary="|") for part in (title, body or ""))
     deps: dict[str, set[int]] = {
         "depends_on": set(),
         "blocks": set(),
         "mentions": set(),
     }
     for pattern, kind in DEP_PATTERNS:
-        for m in re.finditer(pattern, haystack, re.IGNORECASE):
+        for m in re.finditer(pattern, prose, re.IGNORECASE):
             for ref in re.findall(r"\d+", m.group(1)):
                 n = int(ref)
                 if n != self_number:

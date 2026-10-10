@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import issue_digest as idg
 from _fakegh import FakeGh
+from issue_records import stated_depends_on
 
 
 def gh_issue(
@@ -118,6 +119,138 @@ class ExtractDepsTest(unittest.TestCase):
         deps = idg.extract_deps("this blocks #9", "t", self_number=1)
         self.assertEqual(deps["blocks"], [9])
 
+    def test_quoted_dependency_phrases_do_not_create_edges(self):
+        for example in (
+            "```\nrequires #99; blocks #98\n```",
+            "~~~\nrequires #99; blocks #98\n~~~",
+            "    requires #99; blocks #98",
+            "`requires #99; blocks #98`",
+            "<!-- requires #99; blocks #98 -->",
+            "<!--\nrequires #99; blocks #98\n-->",
+            "<!-- requires #99; blocks #98",
+        ):
+            with self.subTest(example=example):
+                body = f"Blocked by #3. Blocks #4.\n\n{example}"
+                deps = idg.extract_deps(body, "t", self_number=1)
+                self.assertEqual(deps["depends_on"], [3])
+                self.assertEqual(deps["blocks"], [4])
+
+    def test_title_delimiters_do_not_hide_body_dependencies(self):
+        for title in ("Document <!-- syntax", "Document ` syntax"):
+            with self.subTest(title=title):
+                deps = idg.extract_deps(
+                    "Blocked by #3. Use `code` examples.", title, self_number=1
+                )
+                self.assertEqual(deps["depends_on"], [3])
+
+    def test_title_and_body_prose_dependencies_are_both_kept(self):
+        deps = idg.extract_deps("Blocked by #3", "Requires #4", self_number=1)
+        self.assertEqual(deps["depends_on"], [3, 4])
+
+    def test_container_code_dependencies_are_ignored(self):
+        for body in (
+            "- Example:\n\n      requires #99\n",
+            "1. Example:\n\n       requires #99\n",
+            "- Example:\n  - Nested:\n\n        requires #99\n",
+            "> ~~~text\n> requires #99\n> ~~~\n",
+            "> > ~~~text\n> > requires #99\n> > ~~~\n",
+            "- ~~~text\n  requires #99\n  ~~~\n",
+            "> - Example:\n>\n>       requires #99\n",
+            "~~~\n> ~~~\nrequires #99\n~~~\n",
+        ):
+            with self.subTest(body=body):
+                deps = idg.extract_deps(body + "\nBlocked by #3", "", self_number=1)
+                self.assertEqual(deps["depends_on"], [3])
+
+    def test_container_prose_dependencies_are_kept(self):
+        for body in (
+            "- Example:\n\n    requires #3\n",
+            "> requires #3\n",
+            "- Example:\n  - Nested:\n\n      requires #3\n",
+            "> ~~~\n> requires #99\n\nRequires #3\n",
+            "- ~~~\n  requires #99\n\nRequires #3\n",
+            "-   Example:\n\n      requires #3\n",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(
+                    idg.extract_deps(body, "", self_number=1)["depends_on"], [3]
+                )
+
+    def test_alternating_container_code_dependencies_are_ignored(self):
+        for body in (
+            "- > ~~~\n  > requires #99\n  > ~~~\n",
+            "1. > ~~~\n   > requires #99\n   > ~~~\n",
+            "- > - > ~~~\n  >   > requires #99\n  >   > ~~~\n",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(
+                    idg.extract_deps(body + "\nBlocked by #3", "", 1)["depends_on"],
+                    [3],
+                )
+
+    def test_alternating_container_exit_preserves_prose(self):
+        for body in (
+            "- > requires #3",
+            "1. > - > requires #3",
+            "- > ~~~\n  > requires #99\n\nRequires #3",
+            "- > ~~~\n  > requires #99\n  Requires #3",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+
+    def test_empty_list_marker_preserves_prose_and_masks_code(self):
+        for marker, width in (("-", 2), ("+", 2), ("*", 2), ("1.", 3), ("12)", 4)):
+            for residual in (0, 1, 2, 3, 4, 5):
+                with self.subTest(marker=marker, residual=residual):
+                    body = marker + "\n\n" + " " * (width + residual) + "Depends on: #3"
+                    expected = [3] if residual < 4 else []
+                    self.assertEqual(
+                        idg.extract_deps(body, "", 1)["depends_on"], expected
+                    )
+                    self.assertEqual(
+                        stated_depends_on(body, None), set(expected) or None
+                    )
+
+    def test_ignored_regions_do_not_join_dependency_phrases(self):
+        for region in (
+            "`example`",
+            "<!-- example -->",
+            "\n\n```\nexample\n```\n\n",
+            "\n\n    example\n\n",
+        ):
+            with self.subTest(region=region):
+                body = f"requires {region} #99. Blocks #3,{region}#98"
+                deps = idg.extract_deps(body, "t", self_number=1)
+                self.assertEqual(deps["depends_on"], [])
+                self.assertEqual(deps["blocks"], [3])
+
+    def test_empty_list_trailing_spaces_keep_default_padding(self):
+        for marker, width in (("-", 2), ("1.", 3)):
+            for padding in (" ", "  ", "    ", "     ", "\t"):
+                for residual in (2, 3, 4):
+                    with self.subTest(
+                        marker=marker, padding=padding, residual=residual
+                    ):
+                        body = (
+                            marker
+                            + padding
+                            + "\n\n"
+                            + " " * (width + residual)
+                            + "Depends on: #3"
+                        )
+                        expected = [3] if residual < 4 else []
+                        self.assertEqual(
+                            idg.extract_deps(body, "", 1)["depends_on"], expected
+                        )
+                        self.assertEqual(
+                            stated_depends_on(body, None), set(expected) or None
+                        )
+
+    def test_quoted_comment_opener_keeps_real_prose_edges(self):
+        body = "Use `<!--` for a comment. Blocked by #3."
+        deps = idg.extract_deps(body, "t", self_number=1)
+        self.assertEqual(deps["depends_on"], [3])
+
     def test_self_reference_excluded(self):
         deps = idg.extract_deps("depends on #1", "t", self_number=1)
         self.assertEqual(deps["depends_on"], [])
@@ -189,10 +322,8 @@ class StructuredDependencySourcesTest(unittest.TestCase):
                 body = f"Blocked by #3.\n\nExample:\n\n{example}\n"
                 issues = [gh_issue(1, body=body), gh_issue(3), gh_issue(99)]
                 rec = self._record(issues, 1)
-                # The quoted line is no stated source, so the prose blocker
-                # stays an edge (prose reading itself does not skip code).
-                self.assertIn(3, rec["depends_on"])
-                self.assertIn(3, rec["depends_on_open"])
+                self.assertEqual(rec["depends_on"], [3])
+                self.assertEqual(rec["depends_on_open"], [3])
 
     def test_comment_opener_in_code_does_not_hide_a_stated_line(self):
         body = "Use `<!--` to begin a comment. Blocked by #3.\n\nDepends on: #4\n"
