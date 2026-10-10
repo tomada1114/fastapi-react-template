@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import issue_digest as idg
 from _fakegh import FakeGh
+from issue_records import stated_depends_on
 
 
 def gh_issue(
@@ -196,6 +197,19 @@ class ExtractDepsTest(unittest.TestCase):
         ):
             with self.subTest(body=body):
                 self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+
+    def test_empty_list_marker_preserves_prose_and_masks_code(self):
+        for marker, width in (("-", 2), ("+", 2), ("*", 2), ("1.", 3), ("12)", 4)):
+            for residual in (0, 1, 2, 3, 4, 5):
+                with self.subTest(marker=marker, residual=residual):
+                    body = marker + "\n\n" + " " * (width + residual) + "Depends on: #3"
+                    expected = [3] if residual < 4 else []
+                    self.assertEqual(
+                        idg.extract_deps(body, "", 1)["depends_on"], expected
+                    )
+                    self.assertEqual(
+                        stated_depends_on(body, None), set(expected) or None
+                    )
 
     def test_ignored_regions_do_not_join_dependency_phrases(self):
         for region in (
