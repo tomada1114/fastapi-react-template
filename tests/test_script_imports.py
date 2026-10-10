@@ -57,6 +57,11 @@ BUILD_OPTIONAL_MODULES = frozenset(
         "_uuid",
         "zlib",
         "gzip",
+        "compression.bz2",
+        "compression.gzip",
+        "compression.lzma",
+        "compression.zlib",
+        "multiprocessing.sharedctypes",
     }
 )
 # CPython 3.10's platform-independent inventory, pinned to its source revision:
@@ -737,6 +742,11 @@ def test_script_imports_host_specific_modules_are_rejected(
         "_uuid",
         "zlib",
         "gzip",
+        "compression.bz2",
+        "compression.gzip",
+        "compression.lzma",
+        "compression.zlib",
+        "multiprocessing.sharedctypes",
     ],
 )
 @pytest.mark.parametrize(
