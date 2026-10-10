@@ -41,7 +41,16 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
   script runs on macOS and Linux (CPython's platform module definitions,
   https://github.com/python/cpython/blob/3.14/PC/config.c and
   https://github.com/python/cpython/blob/3.14/Modules/Setup.stdlib.in,
-  checked 2026-10-09). Module-member compatibility still needs review.
+  checked 2026-10-09). Supported interpreter builds are ordinary POSIX CPython
+  with core and bundled extensions intact; external-library extensions may be
+  absent, as on system Python. The static gate rejects those extensions and their
+  dependent import paths (including `_gdbm`, `dbm.gnu`, `ssl`, `sqlite3`, `ctypes`,
+  Tk and compression bindings). It permits bundled/pure-Python fallbacks such as
+  `hashlib`, `decimal`, `uuid` and `dbm.dumb`; arbitrary stripped/custom builds are
+  outside this contract. See Python's optional-build requirements and CPython's
+  module definitions above, checked 2026-10-10:
+  https://docs.python.org/3.14/using/configure.html#requirements-for-optional-modules.
+  Module-member compatibility still needs review.
   Absolute sibling imports are allowed. The backend's
   `banned-api` table does not reach `scripts/`.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and

@@ -17,6 +17,48 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 HOST_SPECIFIC_MODULES = frozenset(
     {"winreg", "msvcrt", "winsound", "_winapi", "_overlapped", "_msi", "nt", "_scproxy"}
 )
+# Supported builds: ordinary POSIX CPython with core/bundled extensions intact;
+# external-library extensions may be absent (including Apple's system Python).
+# Do not infer availability from the check runner's installed extensions.
+# CPython's optional build requirements and Setup.stdlib.in, checked 2026-10-10:
+# https://docs.python.org/3.14/using/configure.html#requirements-for-optional-modules
+# https://github.com/python/cpython/blob/3.14/Modules/Setup.stdlib.in
+# hashlib, decimal and uuid retain their bundled/pure-Python fallbacks.
+BUILD_OPTIONAL_MODULES = frozenset(
+    {
+        "_gdbm",
+        "_dbm",
+        "dbm.gnu",
+        "dbm.ndbm",
+        "dbm.sqlite3",
+        "bz2",
+        "_bz2",
+        "lzma",
+        "_lzma",
+        "_zstd",
+        "compression.zstd",
+        "ctypes",
+        "_ctypes",
+        "curses",
+        "_curses",
+        "_curses_panel",
+        "readline",
+        "rlcompleter",
+        "sqlite3",
+        "_sqlite3",
+        "ssl",
+        "_ssl",
+        "_hashlib",
+        "tkinter",
+        "_tkinter",
+        "idlelib",
+        "turtle",
+        "turtledemo",
+        "_uuid",
+        "zlib",
+        "gzip",
+    }
+)
 # CPython 3.10's platform-independent inventory, pinned to its source revision:
 # https://github.com/python/cpython/blob/a8d15704295419e94f06e1e0727839113faabbf7/Python/stdlib_module_names.h
 STDLIB_PY310 = frozenset(
@@ -359,20 +401,30 @@ def script_import_findings(root: Path) -> list[str]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                modules = [alias.name.split(".")[0] for alias in node.names]
+                modules = [alias.name for alias in node.names]
             elif isinstance(node, ast.ImportFrom):
                 if node.level:
                     findings.append(
                         f"{path.relative_to(root)}:{node.lineno}: relative import"
                     )
                     continue
-                modules = [node.module.split(".")[0]] if node.module else []
+                modules = [node.module] if node.module else []
+                # A from-import can name either a member or an optional module.
+                modules.extend(
+                    f"{node.module}.{alias.name}"
+                    for alias in node.names
+                    if f"{node.module}.{alias.name}" in BUILD_OPTIONAL_MODULES
+                )
             else:
                 continue
             findings.extend(
                 f"{path.relative_to(root)}:{node.lineno}: {module}"
                 for module in modules
-                if module not in allowed
+                if module.split(".")[0] not in allowed
+                or any(
+                    module == optional or module.startswith(optional + ".")
+                    for optional in BUILD_OPTIONAL_MODULES
+                )
             )
     return findings
 
@@ -511,3 +563,88 @@ def test_script_imports_host_specific_modules_are_rejected(
     path.parent.mkdir(parents=True)
     path.write_text(form.format(module=module), encoding="utf-8")
     assert len(script_import_findings(tmp_path)) == 1
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "scripts/probe.py",
+        "scripts/check_staged.py",
+        ".agents/skills/sample/scripts/probe.py",
+    ],
+)
+@pytest.mark.parametrize(
+    "module",
+    [
+        "_gdbm",
+        "_dbm",
+        "dbm.gnu",
+        "dbm.ndbm",
+        "dbm.sqlite3",
+        "bz2",
+        "_bz2",
+        "lzma",
+        "_lzma",
+        "_zstd",
+        "compression.zstd",
+        "ctypes",
+        "_ctypes",
+        "curses",
+        "_curses",
+        "_curses_panel",
+        "readline",
+        "rlcompleter",
+        "sqlite3",
+        "_sqlite3",
+        "ssl",
+        "_ssl",
+        "_hashlib",
+        "tkinter",
+        "_tkinter",
+        "idlelib",
+        "turtle",
+        "turtledemo",
+        "_uuid",
+        "zlib",
+        "gzip",
+    ],
+)
+@pytest.mark.parametrize(
+    "form",
+    [
+        "import {module}",
+        "from {module} import value",
+        "def main():\n    import {module}",
+    ],
+)
+def test_script_imports_external_build_modules_are_rejected(
+    tmp_path: Path, script: str, module: str, form: str
+) -> None:
+    path = tmp_path / script
+    path.parent.mkdir(parents=True)
+    path.write_text(form.format(module=module), encoding="utf-8")
+    assert len(script_import_findings(tmp_path)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["from dbm import gnu", "from dbm import ndbm", "from compression import zstd"],
+)
+def test_script_imports_optional_submodule_from_parent_is_rejected(
+    tmp_path: Path, source: str
+) -> None:
+    path = tmp_path / "scripts/probe.py"
+    path.parent.mkdir()
+    path.write_text(source, encoding="utf-8")
+    assert len(script_import_findings(tmp_path)) == 1
+
+
+def test_script_imports_modules_with_bundled_fallbacks_are_allowed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "scripts/probe.py"
+    path.parent.mkdir()
+    path.write_text(
+        "import hashlib, decimal, uuid\nimport dbm.dumb\n", encoding="utf-8"
+    )
+    assert script_import_findings(tmp_path) == []
