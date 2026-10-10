@@ -116,7 +116,7 @@ select = [
     # --- Ruff-specific ---
     "RUF",  # ruff-specific rules
     # --- Layer boundaries ---
-    "TID251", # banned-api: keeps the core framework-free (see banned-api below)
+    "TID251", # backend/ extends this selection with its banned-api table
 ]
 ignore = [
     "E501",   # line too long — handled by formatter
@@ -152,7 +152,6 @@ runtime-evaluated-decorators = [
 # its banned-api layer boundary.
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
-    "TID251",  # tests drive the API (TestClient/httpx)
     "S101",    # assert is fine in tests
     "ARG001",  # unused arguments (fixtures)
     "PLR2004", # magic numbers in tests
