@@ -128,8 +128,14 @@ def test_create_app_on_unmigrated_database_answers_500(sqlite_url):
 
 
 def test_create_app_every_route_is_a_coroutine_function(make_container):
-    # app.routes holds each included router as one opaque entry (fastapi
-    # 0.141); iter_route_contexts flattens them the way the OpenAPI builder does.
+    # FastAPI 0.141 keeps included routers opaque in app.routes. Its documented
+    # openapi() returns schema data, not endpoint callables, and omits routes
+    # with include_in_schema=False. The documented FastAPI/APIRouter references
+    # offer no flattened endpoint iterator, so retain the internal walker used
+    # by OpenAPI (checked 2026-10-10):
+    # https://fastapi.tiangolo.com/reference/fastapi/
+    # https://fastapi.tiangolo.com/reference/apirouter/
+    # The non-empty assertion below prevents an API change from silently passing.
     app_routes = create_app(container=make_container()).routes
     routes = [
         context.original_route
