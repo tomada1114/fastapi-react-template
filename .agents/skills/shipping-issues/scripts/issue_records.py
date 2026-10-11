@@ -130,6 +130,34 @@ _LIST_ITEM_RE = re.compile(
     r"^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]{1,4}(?=\S|$)|[ \t]|$)"
 )
 _BLOCKQUOTE_RE = re.compile(r"^ {0,3}>[ \t]?")
+_ATX_HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|$)")
+_THEMATIC_BREAK_RE = re.compile(
+    r"^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$"
+)
+
+
+def _continues_paragraph(line: str) -> bool:
+    """Whether a line may lazily continue an open container paragraph.
+
+    Fences, quotes, headings, thematic breaks and comment blocks interrupt
+    paragraphs. A non-empty bullet or a list starting at 1 can also do so;
+    other ordered markers and indented text can be paragraph continuations.
+    """
+    if not line.strip() or any(
+        pattern.match(line)
+        for pattern in (
+            _FENCE_OPEN_RE,
+            _BLOCKQUOTE_RE,
+            _ATX_HEADING_RE,
+            _THEMATIC_BREAK_RE,
+            _HTML_COMMENT_OPEN_RE,
+        )
+    ):
+        return False
+    marker = _LIST_ITEM_RE.match(line)
+    if marker is None or not line[marker.end() :].strip():
+        return True
+    return re.match(r"^ {0,3}(?:[-+*]|0*1[.)])(?:[ \t]|$)", line) is None
 
 
 def _indent_width(line: str) -> int:
@@ -194,13 +222,20 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
                     break
                 stripped = stripped[width:]
             matched += 1
-        if matched < len(containers):
+        lazy = (
+            matched < len(containers)
+            and para_start is not None
+            and fence is None
+            and not in_comment
+            and _continues_paragraph(stripped)
+        )
+        if matched < len(containers) and not lazy:
             containers = containers[:matched]
             end_paragraph(pos)
             if fence is not None:
                 spans.append((fence[2], pos))
                 fence = None
-        if fence is None and not in_comment:
+        if fence is None and not in_comment and not lazy:
             while True:
                 quote = _BLOCKQUOTE_RE.match(stripped)
                 marker = _LIST_ITEM_RE.match(stripped)

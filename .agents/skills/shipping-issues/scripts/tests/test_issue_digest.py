@@ -198,6 +198,67 @@ class ExtractDepsTest(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
 
+    def test_lazy_container_inline_code_ignores_quoted_dependencies(self):
+        for prefix, continuation in (
+            ("- ", ""),
+            ("1. ", ""),
+            ("> ", ""),
+            ("> > ", "> "),
+            ("- > - > ", "  > "),
+        ):
+            for ticks in ("`", "``", "````"):
+                with self.subTest(prefix=prefix, ticks=ticks):
+                    body = (
+                        f"{prefix}Example: {ticks}quoted\n"
+                        f"{continuation}Depends on: #99{ticks}\n\nDepends on: #3"
+                    )
+                    self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+                    self.assertEqual(stated_depends_on(body, None), {3})
+
+    def test_lazy_container_resumes_explicit_prefix_without_losing_inline_code(self):
+        for body in (
+            "- `example\nDepends on: #99\n  end`\n\nDepends on: #3",
+            "> `example\nDepends on: #99\n> end`\n\nDepends on: #3",
+            "- > `example\n  Depends on: #99\n  > end`\n\nDepends on: #3",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+                self.assertEqual(stated_depends_on(body, None), {3})
+
+    def test_lazy_container_noninterrupting_markers_stay_in_inline_code(self):
+        for continuation in (
+            "2. quoted",
+            "-",
+            "    - quoted",
+            "=======",
+            "####### text",
+        ):
+            body = f"> Example: `quoted\n{continuation}\nDepends on: #99`\n\nDepends on: #3"
+            with self.subTest(continuation=continuation):
+                self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+                self.assertEqual(stated_depends_on(body, None), {3})
+
+    def test_container_paragraph_break_keeps_following_dependencies(self):
+        for boundary in (
+            "\n",
+            "- next\n",
+            "01. next\n",
+            "> next\n",
+            "# heading\n",
+            "---\n",
+        ):
+            body = f"- `example\n{boundary}Depends on: #3`"
+            with self.subTest(boundary=boundary):
+                self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+                self.assertEqual(stated_depends_on(body, None), {3})
+
+    def test_container_exit_fence_keeps_later_prose_dependencies(self):
+        for prefix in ("- ", "> ", "- > "):
+            body = f"{prefix}`example\n~~~\nDepends on: #99\n~~~\nDepends on: #3`"
+            with self.subTest(prefix=prefix):
+                self.assertEqual(idg.extract_deps(body, "", 1)["depends_on"], [3])
+                self.assertEqual(stated_depends_on(body, None), {3})
+
     def test_empty_list_marker_preserves_prose_and_masks_code(self):
         for marker, width in (("-", 2), ("+", 2), ("*", 2), ("1.", 3), ("12)", 4)):
             for residual in (0, 1, 2, 3, 4, 5):
