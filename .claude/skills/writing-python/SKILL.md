@@ -134,11 +134,13 @@ if TYPE_CHECKING:
 - Catch the most specific exception that can happen, and handle it meaningfully or
   re-raise it; never swallow one, and never use one for ordinary control flow. Return
   `None` only when the caller expects absence.
-- No module under `backend/src/my_app/` logs yet; uvicorn's own log is the only one.
-  When one does, it uses a module-level `logging.getLogger(__name__)` and calls
+- Use a module-level `logging.getLogger(__name__)` and call
   `logger.exception(...)` inside the `except` block, which keeps the traceback — never
   `logger.error(str(error))`. **BACKGROUND:** `designing-errors` decides which errors
   are logged at all.
+- Application handlers attach the current request ID. Structured access fields use
+  `extra=` with `method`, `path`, `status`, and `duration_ms`; never log bodies,
+  query strings, secrets, or user text. Keep exception messages free of them too.
 
 ## Security
 

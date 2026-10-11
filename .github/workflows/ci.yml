@@ -121,6 +121,7 @@ jobs:
       postgres:
         image: postgres:18
         env:
+          # Public fixture value for this disposable test service; never reuse it.
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: my_app_test
         ports:

@@ -34,8 +34,31 @@ a new dependency proposal first. **REQUIRED:** `managing-dependencies`.
   `language: python`, so ruff's `per-file-target-version` holds it to Python 3.10
   syntax. It inherits `GIT_*` from the hook on purpose, because `git commit -a` hands
   the hook a temporary index through `GIT_INDEX_FILE`.
-- No fastapi, uvicorn, sqlite3, or httpx, as in the core. Review holds this: the
-  `banned-api` table lives in `backend/pyproject.toml` and does not reach `scripts/`.
+- Enforced by: `tests/test_script_imports.py`, which checks repository and skill
+  scripts against the stdlib shared by their floors (skills: 3.9; `check_staged.py`:
+  3.10) and the project interpreter; other repository scripts use the project stdlib.
+  All categories reject Windows-only modules and macOS-only `_scproxy` so the same
+  script runs on macOS and Linux (CPython's platform module definitions,
+  https://github.com/python/cpython/blob/3.14/PC/config.c and
+  https://github.com/python/cpython/blob/3.14/Modules/Setup.stdlib.in,
+  checked 2026-10-09). Supported interpreter builds are ordinary POSIX CPython
+  with core and bundled extensions intact; external-library extensions may be
+  absent, as on system Python. The static gate rejects those extensions and their
+  dependent import paths (including `_gdbm`, `dbm.gnu`, `ssl`, `sqlite3`, `ctypes`,
+  Tk and compression bindings). It permits bundled/pure-Python fallbacks such as
+  `hashlib`, `decimal`, `uuid` and `dbm.dumb`; arbitrary stripped/custom builds are
+  outside this contract. See Python's optional-build requirements and CPython's
+  module definitions above, checked 2026-10-10:
+  https://docs.python.org/3.14/using/configure.html#requirements-for-optional-modules.
+  Known stdlib submodule gaps are checked against frozen CPython source trees
+  for every supported minor (3.9 through 3.14 for skills; 3.10 through 3.14 for
+  `check_staged.py`). Both dotted imports and `from package import submodule`
+  are checked, including imports inside functions. Ordinary member imports
+  (`from datetime import datetime`) stay allowed; general member/API compatibility
+  and dynamic imports still need review. Source revisions and aliases are recorded
+  in `tests/test_script_imports.py`, checked 2026-10-10.
+  Absolute sibling imports are allowed. The backend's
+  `banned-api` table does not reach `scripts/`.
 - `scripts/**` is excused from ruff's `D1` and `T20`: a script is not a public API, and
   `print` is its output channel.
 
