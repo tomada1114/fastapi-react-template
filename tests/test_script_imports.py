@@ -556,6 +556,7 @@ def script_import_findings(root: Path) -> list[str]:
                 f"{path.relative_to(root)}:{node.lineno}: {module}"
                 for module in modules
                 if module.split(".")[0] not in allowed
+                or (module.split(".")[0] in siblings and module not in siblings)
                 or any(
                     module == optional or module.startswith(optional + ".")
                     for optional in unavailable
@@ -566,6 +567,60 @@ def script_import_findings(root: Path) -> list[str]:
 
 def test_script_imports_repository_uses_only_stdlib_and_siblings() -> None:
     assert script_import_findings(REPO_ROOT) == []
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "scripts/probe.py",
+        "scripts/check_staged.py",
+        ".agents/skills/sample/scripts/probe.py",
+    ],
+)
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("import sibling.child", id="dotted-import"),
+        pytest.param("from sibling.child import run", id="dotted-from"),
+        pytest.param("def main():\n    import sibling.child", id="nested-import"),
+        pytest.param(
+            "def main():\n    from sibling.child import run", id="nested-from"
+        ),
+    ],
+)
+def test_script_imports_flat_sibling_submodules_are_rejected(
+    tmp_path: Path, script: str, source: str
+) -> None:
+    path = tmp_path / script
+    path.parent.mkdir(parents=True)
+    (path.parent / "sibling.py").write_text("", encoding="utf-8")
+    path.write_text(source, encoding="utf-8")
+
+    assert len(script_import_findings(tmp_path)) == 1
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "scripts/probe.py",
+        "scripts/check_staged.py",
+        ".agents/skills/sample/scripts/probe.py",
+    ],
+)
+def test_script_imports_flat_siblings_members_and_shared_submodules_are_allowed(
+    tmp_path: Path, script: str
+) -> None:
+    path = tmp_path / script
+    path.parent.mkdir(parents=True)
+    (path.parent / "sibling.py").write_text("", encoding="utf-8")
+    path.write_text(
+        "import sibling\nfrom sibling import run\n"
+        "import concurrent.futures\nfrom datetime import datetime\n"
+        "def main():\n    import sibling\n    from sibling import run\n",
+        encoding="utf-8",
+    )
+
+    assert script_import_findings(tmp_path) == []
 
 
 @pytest.mark.parametrize("directory", ["scripts", ".agents/skills/sample/scripts"])
