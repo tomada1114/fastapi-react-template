@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import os
 from datetime import UTC, datetime
@@ -11,6 +12,7 @@ from uuid import UUID
 import pytest
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from my_app.composition import Container, build_container
 from my_app.settings import Settings
@@ -18,6 +20,8 @@ from tests.settings_env import without_settings_env
 
 FIXED_NOW = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
+# Capture before the autouse settings-isolation fixture deletes MY_APP_*.
+POSTGRES_URL = os.environ.get("MY_APP_TEST_POSTGRES_URL")
 
 
 def _fixed_clock() -> datetime:
@@ -131,3 +135,28 @@ def migrated_sqlite_url(alembic_config, sqlite_url):
     """``sqlite_url``, its file migrated to the head revision as the app needs."""
     command.upgrade(alembic_config, "head")
     return sqlite_url
+
+
+@pytest.fixture(scope="session")
+def migrated_postgres_url(request):
+    """Migrate only when PostgreSQL tests were selected, once per session."""
+    if not any(item.get_closest_marker("postgres") for item in request.session.items):
+        return None
+    if not POSTGRES_URL:
+        pytest.fail(
+            "MY_APP_TEST_POSTGRES_URL must name a disposable PostgreSQL database"
+        )
+
+    async def migrate():
+        engine = create_async_engine(POSTGRES_URL)
+        try:
+            async with engine.begin() as connection:
+                config = Config(ALEMBIC_INI)
+                config.attributes["configure_logging"] = False
+                config.attributes["connection"] = connection.sync_connection
+                await connection.run_sync(lambda _: command.upgrade(config, "head"))
+        finally:
+            await engine.dispose()
+
+    asyncio.run(migrate())
+    return POSTGRES_URL
