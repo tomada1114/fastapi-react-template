@@ -63,7 +63,8 @@ FORBIDDEN_PHRASES = (PLACEHOLDER_DISPLAY_NAME, PLACEHOLDER_AUTHOR)
 # Names an app slug may not take, in its hyphenated or its module form: the
 # layers' own package names and the placeholders (the issue's settled list);
 # the packages the app and its tooling import, which the app's own top-level
-# module would shadow; and every scripts/*.py stem, which `uv run python
+# module would shadow; cli and typer for an app that adds a command-line entry
+# point back; and every scripts/*.py stem, which `uv run python
 # scripts/<stem>.py` puts first on sys.path. Python keywords and stdlib modules
 # are checked separately.
 RESERVED_NAMES = frozenset(
