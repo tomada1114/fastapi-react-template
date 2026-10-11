@@ -82,7 +82,13 @@ D4). Core keeps rows inside the adapter, so the core's ports stay ones a
 key-value store could implement too; SQLModel would make one class both the API
 schema and the table, coupling the layers the core/adapter split separates.
 SQLite through `aiosqlite` is the local default, so a first run needs no
-Docker; PostgreSQL takes the same statements. Migrations run only when asked
+Docker; PostgreSQL takes the same statements, with asyncpg in an optional
+`postgres` extra. The same repository contract and migration round trip run
+against PostgreSQL in CI so dialect differences surface before deployment.
+asyncpg supplies an async driver under Apache-2.0 without extra runtime packages;
+the standard library has no PostgreSQL driver, and psycopg's LGPL license does
+not fit the dependency gate (https://pypi.org/project/asyncpg/0.31.0/ and
+https://pypi.org/project/psycopg/, checked 2026-10-09). Migrations run only when asked
 (`just backend db-upgrade`, which `just dev` runs first): an app that migrates
 or calls `create_all` at start-up hides a missing revision and races when two
 processes start at once. The `persisting-data` skill holds the workflow.

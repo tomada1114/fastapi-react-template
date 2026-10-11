@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import tomllib
 import uuid
 from contextlib import AsyncExitStack, suppress
@@ -19,6 +20,13 @@ from my_app.settings import Settings
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 pytestmark = pytest.mark.anyio
+
+
+def test_build_container_postgres_url_without_asyncpg_names_the_extra(monkeypatch):
+    monkeypatch.setitem(sys.modules, "asyncpg", None)
+    with pytest.raises(RuntimeError, match=r"postgres.*extra") as raised:
+        build_container(Settings(database_url="postgresql+asyncpg://localhost/test"))
+    assert isinstance(raised.value.__cause__, ModuleNotFoundError)
 
 
 async def _record(log: list[str], name: str) -> None:

@@ -38,14 +38,15 @@ imports only itself and the deterministic standard-library modules allowed by
 - Enforced by: the AST call check in `backend/tests/core/test_imports.py`, which rejects
   bare calls to `open`, `input`, `print`, `breakpoint`, `exec`, `eval`, `compile`, and
   `__import__`; `now`, `utcnow`, or `today` on a receiver name or attribute ending in
-  `datetime` or `date`; and `uuid1`, `uuid4`, `uuid6`, or `uuid7`, bare or on a `uuid`
-  receiver (the `UUID` type is allowed; ids come from `IdFactory`). It also rejects
-  `date.fromtimestamp` on recognizable `date` receivers, `datetime.fromtimestamp` on
+  `datetime` or `date`; and `uuid1`, `uuid4`, `uuid6`, `uuid7`, or `getnode`, bare or on
+  a `uuid` receiver. `uuid8` requires all blocks explicitly non-None, without unpacking (https://docs.python.org/3.14/library/uuid.html#uuid.uuid8, checked 2026-10-09).
+  `UUID`, `uuid5`, and fully specified `uuid8` are allowed; ids come from `IdFactory`.
+  It also rejects `date.fromtimestamp` on `date` receivers and `datetime.fromtimestamp` on
   recognizable `datetime` receivers without an explicit timezone, and any attribute
   call to `astimezone` without an explicit timezone. Positional or keyword `tz`
   arguments count as explicit unless they are literal `None`. This is a structural
-  check, not alias or data-flow/type analysis: review must ensure supplied timezones
-  are non-None and `astimezone` receivers are timezone-aware.
+  check, not alias or data-flow/type analysis: review must ensure UUID blocks and
+  timezones are non-None and `astimezone` receivers are timezone-aware.
 
 A new framework or driver the core must not touch gets a `banned-api` entry in the same
 change that adds it; the per-file-ignores already let the outer layers use it.
@@ -208,5 +209,4 @@ under "Ports any store can implement", one adapter per technology, its contract 
 and in-memory fake, the wiring in `build_container`, and the cleanup of an adapter that
 holds a resource (`AsyncExitStack`, `Container.aclose()`).
 
-Run the narrowest checks while iterating, from the repository root:
-`uv run --locked --directory backend pytest tests/core/ tests/adapters/ tests/test_composition.py tests/test_settings.py`.
+Run from the root: `uv run --locked --directory backend pytest tests/core/ tests/adapters/ tests/test_composition.py tests/test_settings.py`.

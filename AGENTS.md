@@ -63,6 +63,7 @@ just test            # Run tests in parallel: just backend test, then the root s
 just backend lint    # Lint and type-check the backend (ruff, ruff format --check, mypy strict)
 just backend fmt     # Format the backend
 just backend test    # Run the backend tests in parallel with branch coverage (80% floor)
+just backend test-postgres # Run the shared contract and migrations on a disposable PostgreSQL database
 just backend db-upgrade # Migrate MY_APP_DATABASE_URL's database (default: backend/var/dev.db) to the newest revision
 just backend db-revision MESSAGE # db-upgrade, then autogenerate a revision from a change to adapters/sql/tables.py
 just check           # Mutating dev check: fmt → lint → test
