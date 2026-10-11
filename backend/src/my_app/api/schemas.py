@@ -36,6 +36,7 @@ class ProblemDetails(BaseModel):
     status: int
     detail: str
     code: str
+    request_id: str
     errors: list[ProblemFieldError] | None = None
 
 

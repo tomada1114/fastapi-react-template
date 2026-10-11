@@ -11,6 +11,32 @@ from my_app.settings import Settings
 from tests.settings_env import settings_from_env_file
 
 
+@pytest.mark.parametrize("value", ["", "INFO", "info", "DEBUG", "warning", "ERROR"])
+def test_settings_log_level_normalizes_or_defaults(monkeypatch, value):
+    monkeypatch.setenv("MY_APP_LOG_LEVEL", value)
+    assert Settings().log_level == (value.upper() or "INFO")
+
+
+@pytest.mark.parametrize("value", ["", "text", "json"])
+def test_settings_log_format_defaults_or_preserves(monkeypatch, value):
+    monkeypatch.setenv("MY_APP_LOG_FORMAT", value)
+    assert Settings().log_format == (value or "text")
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("MY_APP_LOG_LEVEL", "TRACE"),
+        ("MY_APP_LOG_FORMAT", "xml"),
+        ("MY_APP_LOG_FORMAT", "JSON"),
+    ],
+)
+def test_settings_invalid_logging_value_fails(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_settings_database_url_unset_selects_in_memory_store():
     assert Settings().database_url is None
 
