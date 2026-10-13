@@ -12,9 +12,8 @@ description: >
 
 # Building API Routes
 
-**Owns:** everything under `backend/src/my_app/api/` and `backend/tests/api/` — the
-factory, the dependencies, the routers, the wire-format models, and how a route is
-tested.
+**Owns:** the factory, dependencies, routers, wire models and route tests under
+`backend/src/my_app/api/` and `backend/tests/api/`.
 **Does not own:** which status a domain error becomes (`designing-errors`); the service
 a route calls (`designing-core-logic`); trying a route against a live server
 (`running-the-app`); module-level Python style (`writing-python`).
@@ -187,7 +186,8 @@ Take reading one item by id, `GET /<resource>/{id}`, as the worked case:
    `designing-errors`.
 4. Test it (below): 200 with the body a create returned, 404 with the whole Problem body, a
    non-UUID id in the parametrized 422 test, and its 404 in the OpenAPI test.
-5. Add the route to the README's HTTP table.
+5. Update README's HTTP table. After a route, schema or `responses=` change,
+   re-run `just contract` and commit `frontend/openapi.json` in the same PR.
 
 ## Testing a route
 
