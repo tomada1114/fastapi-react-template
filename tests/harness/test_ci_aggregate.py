@@ -92,6 +92,16 @@ def test_ci_aggregate_on_repository_needs_every_gating_job() -> None:
     assert aggregate_findings(REPO_ROOT) == []
 
 
+def test_ci_aggregate_on_repository_runs_even_when_the_run_is_cancelled() -> None:
+    # `!cancelled()` skips the job on a manual cancel, and a skipped required
+    # check reports success, so a cancelled run could merge with no gate at all.
+    path = REPO_ROOT / CI_WORKFLOW
+    aggregate = jobs(read_workflow(path), path)[AGGREGATE]
+    assert str(aggregate.get("if", "")).removeprefix("${{").removesuffix(
+        "}}"
+    ).strip() == ("always()")
+
+
 def test_ci_aggregate_exempt_jobs_each_carry_a_reason() -> None:
     assert all(reason.strip() for reason in EXEMPT_JOBS.values())
 

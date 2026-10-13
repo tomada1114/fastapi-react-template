@@ -228,11 +228,13 @@ jobs:
   # gating job above and fails unless each succeeded, so a new gating job joins
   # `needs:` and the failing step's `if:`, never the ruleset; a job that does
   # not gate is exempted, with its reason, in tests/harness/test_ci_aggregate.py.
-  # `!cancelled()` runs it when a needed job failed or was skipped, both of
-  # which fail it; a run a newer push cancelled leaves the newer run to report.
+  # `always()` runs it when a needed job failed, was skipped, or was cancelled,
+  # each of which fails it. Not `!cancelled()`: that skips it on a cancelled
+  # run, and a skipped required check reports success. A run a newer push
+  # cancelled fails here on its old commit; the newer run reports the head.
   ci-result:
     name: CI result
-    if: ${{ !cancelled() }}
+    if: ${{ always() }}
     needs: [lint, coverage, frontend, postgres, spell-check, zizmor]
     runs-on: ubuntu-latest
     timeout-minutes: 5
