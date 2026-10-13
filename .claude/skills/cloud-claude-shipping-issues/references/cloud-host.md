@@ -45,6 +45,35 @@ A single-repository cloud session reads that file, and reads neither `~/.claude/
 checked 2026-10-07): only what the repository commits applies. When `.venv` is missing
 anyway, run `just install` once before the baseline.
 
+`just install` also runs `pnpm install --frozen-lockfile`, under the root `package.json`'s
+`devEngines.runtime` (`node` `^24.19.0`, `onFail: download`) and
+`"packageManager": "pnpm@11.18.0"`. The image's default Node is 22: "Node.js versions
+are installed at `/opt/node20`, `/opt/node21`, and `/opt/node22`, with 22 on PATH by
+default"
+([installed tools](https://code.claude.com/docs/en/cloud-environments#installed-tools),
+checked 2026-10-13), and the docs give no pnpm version. The route to Node 24 is the
+`devEngines` download, with nothing to configure:
+
+- the image's `pnpm` (`/opt/node22/bin/pnpm`, 10.28.0 on 2026-10-13) reads
+  `packageManager` and hands the command to pnpm 11.18.0, which it downloads into
+  `~/.local/share/pnpm/.tools/pnpm/11.18.0/` and runs on the image's Node 22;
+- `pnpm install` downloads the Node release `pnpm-lock.yaml` pins (`runtime:24.21.0`,
+  with its checksum) from `nodejs.org`, on the default allowlist
+  ([default allowed domains](https://code.claude.com/docs/en/cloud-environments),
+  checked 2026-10-13), and links it as `node_modules/.bin/node`: "Scripts use the local
+  runtime" ([`devEngines.runtime`](https://pnpm.io/package_json), checked 2026-10-08 in
+  #3 › D8; `pnpm.io` itself is refused from a session);
+- `pnpm exec` puts that directory ahead of `/opt/node22/bin`, so every frontend recipe
+  runs on Node 24 while the `node` on `PATH` stays 22. The check is therefore
+  `pnpm --dir frontend exec node --version`, never `node --version`.
+
+Verified in a real cloud session on 2026-10-13 (the default image, no setup script,
+#40): the SessionStart hook's `just install` exited 0 and installed `node 24.21.0`;
+`pnpm --version` printed 11.18.0, `pnpm --dir frontend exec node --version` v24.21.0,
+and `just verify` passed. If that ever stops holding, the run stops
+([stop conditions](../SKILL.md#stop-conditions)); an environment setup script that
+installs Node 24, or any other route, is the owner's decision.
+
 ## How GitHub is reached
 
 All GitHub traffic goes through Anthropic's GitHub proxy, which swaps in the owner's
