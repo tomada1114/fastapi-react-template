@@ -83,6 +83,7 @@ def test_required_contexts_match_settled_defaults() -> None:
         "Validate PR title",
         "Analyze (python)",
         "Analyze (actions)",
+        "Analyze (javascript-typescript)",
         "Dependency Review",
     }
     assert not [c for c in contexts if c.startswith("Test (shard")]

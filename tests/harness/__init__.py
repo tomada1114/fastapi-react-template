@@ -33,7 +33,9 @@ repository and fails on a fixture built under ``tmp_path``:
   ``continue-on-error``, and ``|| true`` rules for a composite action under
   ``.github/actions/``;
 - (h) ``test_dependabot_cooldown.py``: the Dependabot ``uv`` update's
-  ``cooldown.default-days`` equals ``[tool.uv] exclude-newer``'s day count;
+  ``cooldown.default-days`` equals ``[tool.uv] exclude-newer``'s day count,
+  and the ``npm`` update's equals both the ``uv`` one and
+  ``pnpm-workspace.yaml``'s ``minimumReleaseAge`` in minutes;
 - (i) ``test_quick_reference.py``: AGENTS.md's Quick Reference names every
   justfile recipe and every module recipe (as ``just <module> <recipe>``) but
   ``default``, and its ``just verify`` line lists ``verify``'s dependencies in

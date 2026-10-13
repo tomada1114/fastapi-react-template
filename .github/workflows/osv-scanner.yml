@@ -3,9 +3,9 @@ name: OSV-Scanner
 on:
   push:
     branches: [main]
-    paths: [uv.lock, .github/workflows/osv-scanner.yml]
+    paths: [uv.lock, pnpm-lock.yaml, .github/workflows/osv-scanner.yml]
   pull_request:
-    paths: [uv.lock, .github/workflows/osv-scanner.yml]
+    paths: [uv.lock, pnpm-lock.yaml, .github/workflows/osv-scanner.yml]
   schedule:
     - cron: "37 3 * * 1"
   workflow_dispatch:
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   scan:
-    name: Scan uv.lock
+    name: Scan lockfiles
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,8 +33,10 @@ jobs:
 
       # This sub-action runs a Docker image pinned by tag, not digest — a
       # residual gap shared with Google's reusable workflow.
-      # Exits non-zero when any locked package has a known vulnerability.
+      # Exits non-zero when any package either lockfile pins has a known
+      # vulnerability.
       - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
         with:
           scan-args: |-
             --lockfile=uv.lock
+            --lockfile=pnpm-lock.yaml

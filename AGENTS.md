@@ -267,7 +267,7 @@ Each layer catches what the one before it cannot; `changing-gates` owns them.
 |---|---|---|
 | Git hooks (pre-commit, `.pre-commit-config.yaml`) | Every `git commit` by any author — a human, Claude Code, Codex CLI, any tool; `check-staged` also on merge commits | No staged secret (`check-staged`), no commit on `main` (`no-commit-to-branch`), ruff, ruff-format, mypy, typos, zizmor, the skills mirror |
 | `just verify` | Before a pull request or a completion claim | A current `uv.lock`, the skills mirror, the harness self-checks (`check-harness`), ruff, mypy, the skill script tests, the test suite and its 80% branch-coverage floor |
-| CI (`.github/workflows/`) | Every pull request and push to `main`, unless noted | The `just verify` checks, typos, zizmor, and CodeQL; the PR title and Dependency Review (pull requests only); OSV-Scanner (when `uv.lock` changes, and weekly); gitleaks over the whole history (weekly) |
+| CI (`.github/workflows/`) | Every pull request and push to `main`, unless noted | The `just verify` checks, typos, zizmor, and CodeQL; the PR title and Dependency Review (pull requests only); OSV-Scanner (when `uv.lock` or `pnpm-lock.yaml` changes, and weekly); gitleaks over the whole history (weekly) |
 | GitHub ruleset (`.github/rulesets/main.json`) | Every change to `main` | Every change arrives by a branch and a pull request, with the required checks green; no force-push, no deletion |
 
 - How `just install` installs the hooks, and which commits run none:

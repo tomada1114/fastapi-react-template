@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [python, actions]
+        language: [python, actions, javascript-typescript]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,10 +44,12 @@ jobs:
           # List the trees explicitly so the skill scripts under the hidden
           # .agents/ directory are analyzed alongside backend/ and scripts/. The
           # .claude/skills mirror is left out on purpose to avoid duplicate
-          # alerts. Add any new top-level code directory here.
+          # alerts. Add any new top-level code directory here. The job installs
+          # nothing, so frontend/ is scanned without a node_modules tree.
           config: |
             paths:
               - backend
+              - frontend
               - scripts
               - tests
               - .agents/skills
