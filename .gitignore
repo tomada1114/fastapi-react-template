@@ -25,6 +25,11 @@ coverage.xml
 # uv
 # uv.lock is tracked — do not ignore it
 
+# Node.js (pnpm workspace): dependencies, and the frontend's build and coverage
+node_modules/
+frontend/dist/
+frontend/coverage/
+
 # IDE
 .vscode/
 .idea/

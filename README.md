@@ -153,7 +153,10 @@ The `building-api-routes` skill covers the API's routes and their tests.
 ## Development
 
 See [CONTRIBUTING.md](https://github.com/your-username/fastapi-react-template/blob/main/CONTRIBUTING.md)
-for full setup instructions.
+for full setup instructions. Prerequisites: Python 3.14+ with
+[uv](https://docs.astral.sh/uv/), [Node.js 24](https://nodejs.org/)
+(`.node-version`), [pnpm](https://pnpm.io/) 11 through `corepack enable`, and
+optionally [Just](https://just.systems/).
 
 ```bash
 just install   # dependencies + git hooks, then checks the hooks are in place
@@ -168,7 +171,9 @@ dependencies and the hooks `.pre-commit-config.yaml`'s
 fails if any of them is missing. `ALLOW_MISSING_GIT_HOOKS=1 just install` still tries
 to install them but only warns when that fails (`CI=true` does the same).
 Outside a Git repository — a "Use this template" copy before `git init` — it
-skips the hooks. Without Just, run `uv sync --all-groups --locked` and then
+skips the hooks. A failed `pnpm install` still lets the hooks install, then
+fails the run. Without Just, run `uv sync --all-groups --locked`,
+`pnpm install --frozen-lockfile`, and then
 `uv run --locked pre-commit install --install-hooks`.
 
 ## License

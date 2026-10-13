@@ -4,6 +4,9 @@ The recipe body is read from the justfile and run with bash in a ``tmp_path``
 repository, so CI needs no ``just``. A fake ``uv`` on ``PATH`` stands in for
 ``uv sync`` and ``pre-commit install``: it writes a pre-commit-generated hook
 for each type named in ``FAKE_INSTALL_HOOKS`` and exits ``FAKE_INSTALL_EXIT``.
+A fake ``pnpm`` stands in for ``pnpm install --frozen-lockfile`` and exits
+``FAKE_PNPM_EXIT``. Both append their argv to ``FAKE_RECORD``, which shows the
+order they ran in.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 FAKE_UV = """\
 #!/usr/bin/env bash
 set -eu
+printf 'uv %s\\n' "$*" >> "$FAKE_RECORD"
 [ "$1" = "sync" ] && exit 0
 hooks=$(git rev-parse --path-format=absolute --git-path hooks)
 mkdir -p "$hooks"
@@ -38,6 +42,28 @@ for hook in ${FAKE_INSTALL_HOOKS:-}; do
 done
 exit "${FAKE_INSTALL_EXIT:-0}"
 """
+
+FAKE_PNPM = """\
+#!/usr/bin/env bash
+printf 'pnpm %s\\n' "$*" >> "$FAKE_RECORD"
+exit "${FAKE_PNPM_EXIT:-0}"
+"""
+# What the recipe and the fakes run, linked into a PATH of their own when a
+# test needs one without any pnpm (the host's included).
+TOOLS = (
+    "bash",
+    "sh",
+    "env",
+    "git",
+    "sed",
+    "grep",
+    "tr",
+    "xargs",
+    "echo",
+    "dirname",
+    "mkdir",
+    "chmod",
+)
 
 
 def _install_body() -> str:
@@ -76,21 +102,40 @@ def run_install(tmp_path: Path) -> RunInstall:
     uv = bindir / "uv"
     uv.write_text(FAKE_UV, encoding="utf-8")
     uv.chmod(0o755)
+    pnpm_dir = tmp_path / "pnpm-bin"
+    pnpm_dir.mkdir()
+    pnpm = pnpm_dir / "pnpm"
+    pnpm.write_text(FAKE_PNPM, encoding="utf-8")
+    pnpm.chmod(0o755)
     script = tmp_path / "install.sh"
     script.write_text(_install_body(), encoding="utf-8")
+    record = tmp_path / "calls.txt"
 
     def run(
-        cwd: Path, *, hooks: str, install_exit: int = 0, **env: str
+        cwd: Path,
+        *,
+        hooks: str,
+        install_exit: int = 0,
+        pnpm_exit: int = 0,
+        with_pnpm: bool = True,
+        **env: str,
     ) -> subprocess.CompletedProcess[str]:
         environ = {
             k: v
             for k, v in os.environ.items()
             if k not in {"CI", "ALLOW_MISSING_GIT_HOOKS"} and not k.startswith("GIT_")
         }
+        path = (
+            f"{bindir}{os.pathsep}{pnpm_dir}{os.pathsep}{environ['PATH']}"
+            if with_pnpm
+            else f"{bindir}{os.pathsep}{_tool_dir(tmp_path)}"
+        )
         environ |= {
-            "PATH": f"{bindir}{os.pathsep}{environ['PATH']}",
+            "PATH": path,
             "FAKE_INSTALL_HOOKS": hooks,
             "FAKE_INSTALL_EXIT": str(install_exit),
+            "FAKE_PNPM_EXIT": str(pnpm_exit),
+            "FAKE_RECORD": str(record),
             **env,
         }
         return subprocess.run(  # noqa: S603 -- fixed argv, no shell
@@ -103,6 +148,23 @@ def run_install(tmp_path: Path) -> RunInstall:
         )
 
     return run
+
+
+def _tool_dir(tmp_path: Path) -> Path:
+    """Link the recipe's tools into one directory, so PATH holds no pnpm."""
+    tools = tmp_path / "tools"
+    tools.mkdir(exist_ok=True)
+    for name in TOOLS:
+        found = shutil.which(name)
+        assert found is not None, f"{name} is not on PATH"
+        link = tools / name
+        if not link.exists():
+            link.symlink_to(found)
+    return tools
+
+
+def _calls(tmp_path: Path) -> list[str]:
+    return (tmp_path / "calls.txt").read_text(encoding="utf-8").splitlines()
 
 
 def test_install_all_hooks_present_exits_zero(
@@ -270,3 +332,69 @@ def test_install_outside_git_repository_skips_hooks(
 
     assert result.returncode == 0
     assert "not a Git repository" in result.stdout
+
+
+# --- the frontend's dependencies (pnpm) ---
+
+
+def test_install_runs_frozen_pnpm_install_after_uv_sync_before_hooks(
+    repo: Path, run_install: RunInstall, tmp_path: Path
+) -> None:
+    result = run_install(repo, hooks="pre-commit pre-merge-commit")
+
+    assert result.returncode == 0, result.stderr
+    assert _calls(tmp_path) == [
+        "uv sync --all-groups --locked",
+        "pnpm install --frozen-lockfile",
+        "uv run --locked pre-commit install --install-hooks",
+    ]
+
+
+def test_install_failed_pnpm_still_installs_hooks_and_exits_nonzero(
+    repo: Path, run_install: RunInstall
+) -> None:
+    result = run_install(repo, hooks="pre-commit pre-merge-commit", pnpm_exit=7)
+
+    assert result.returncode == 7
+    assert "Git hooks verified: pre-commit pre-merge-commit." in result.stdout
+    assert (repo / ".git" / "hooks" / "pre-commit").is_file()
+    assert "pnpm install --frozen-lockfile failed (exit 7)" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        pytest.param({"CI": "true"}, id="ci-true"),
+        pytest.param({"ALLOW_MISSING_GIT_HOOKS": "1"}, id="allow-missing"),
+    ],
+)
+def test_install_failed_pnpm_when_hooks_exempt_still_exits_nonzero(
+    repo: Path, run_install: RunInstall, env: dict[str, str]
+) -> None:
+    result = run_install(repo, hooks="", pnpm_exit=7, **env)
+
+    assert result.returncode == 7
+    assert "Warning: git hooks missing" in result.stderr
+
+
+def test_install_failed_pnpm_outside_git_repository_exits_nonzero(
+    tmp_path: Path, run_install: RunInstall
+) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+
+    result = run_install(plain, hooks="", pnpm_exit=7)
+
+    assert result.returncode == 7
+    assert "not a Git repository" in result.stdout
+    assert "pnpm install --frozen-lockfile failed (exit 7)" in result.stderr
+
+
+def test_install_without_pnpm_installs_hooks_and_exits_127_naming_pnpm(
+    repo: Path, run_install: RunInstall
+) -> None:
+    result = run_install(repo, hooks="pre-commit pre-merge-commit", with_pnpm=False)
+
+    assert result.returncode == 127
+    assert "Git hooks verified: pre-commit pre-merge-commit." in result.stdout
+    assert "pnpm" in result.stderr

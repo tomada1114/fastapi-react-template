@@ -8,12 +8,16 @@ by area. The sample domain is a to-do list — replace it with your own.
 | Area | Holds |
 |---|---|
 | `backend/` | The FastAPI app, a uv workspace member: its `pyproject.toml`, `src/my_app/`, `tests/`, a `justfile` module (`just backend <recipe>`), and its own `AGENTS.md` |
-| The root | The workspace (`pyproject.toml`, `uv.lock`) and the repository's tooling: the `justfile` with the aggregate gates, `scripts/`, the harness and script tests under `tests/`, `.agents/skills/`, `.github/` |
+| `frontend/` | The React app (Vite, TypeScript), a pnpm workspace member: its `package.json`, `src/`, `tests/`, Biome, `tsc`, and Vitest config, a `justfile` module (`just frontend <recipe>`), and its own `AGENTS.md` |
+| The root | The workspaces (`pyproject.toml`, `uv.lock`; `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.node-version`) and the repository's tooling: the `justfile` with the aggregate gates, `scripts/`, the harness and script tests under `tests/`, `.agents/skills/`, `.github/` |
 
 Where to work:
 
 - Working under `backend/`: read `backend/AGENTS.md` first. It holds the
   backend's architecture and its narrowest checks; this file still applies.
+- Working under `frontend/`: read `frontend/AGENTS.md` first. It holds the
+  frontend's toolchain, its coverage floor, and its narrowest checks; this file
+  still applies.
 - Anywhere else: this file is the whole guide.
 
 Every task here:
@@ -55,21 +59,26 @@ Grouped by who runs them; the `justfile` is the source of truth, this its index.
 ### Checks and tasks an agent runs
 
 ```bash
-just install         # Install dependencies and git hooks when .git/ is present
+just install         # Install dependencies (uv, then pnpm) and git hooks when .git/ is present
 just setup           # Alias for just install (first-time setup)
-just fmt             # Format code (ruff check --fix + ruff format)
-just lint            # Lint (ruff check) + type check (mypy): just backend lint, then the root
-just test            # Run tests in parallel: just backend test, then the root suite
+just fmt             # Format code: just frontend fmt, then the Python tree (ruff check --fix + ruff format)
+just lint            # Lint + type check: just backend lint, just frontend lint, then the root (ruff, mypy)
+just test            # Run tests: just backend test, just frontend test, then the root suite
 just backend lint    # Lint and type-check the backend (ruff, ruff format --check, mypy strict)
 just backend fmt     # Format the backend
 just backend test    # Run the backend tests in parallel with branch coverage (80% floor)
 just backend test-postgres # Run the shared contract and migrations on a disposable PostgreSQL database
 just backend db-upgrade # Migrate MY_APP_DATABASE_URL's database (default: backend/var/dev.db) to the newest revision
 just backend db-revision MESSAGE # db-upgrade, then autogenerate a revision from a change to adapters/sql/tables.py
+just frontend install # Install the locked JavaScript dependencies (pnpm install --frozen-lockfile)
+just frontend lint   # Lint the frontend (biome ci) and type-check it (tsc --noEmit, strict flags)
+just frontend fmt    # Format the frontend (biome check --write)
+just frontend test   # Run the frontend tests (Vitest) with an 80% floor on lines, functions, statements, branches
+just frontend build  # Build the frontend for production into frontend/dist (vite build)
 just check           # Mutating dev check: fmt → lint → test
 just lock            # Update uv.lock after dependency changes
 just lock-check      # Fail when uv.lock is out of date, without changing it
-just verify          # Non-mutating gate: lock-check → agents-check → check-harness → lint → test-skills → test
+just verify          # Non-mutating gate: lock-check → agents-check → check-harness → lint → test-skills → test → frontend::build
 just check-harness   # Harness drift (skills, Skills table, recipes, this index, ruleset, labels, workflows) + the Product section check
 just test-skills     # Run the unittest suites bundled under .agents/skills/*/scripts/tests
 just worktree-prepare # Recreate the locked environments (uv, then pnpm once pnpm-lock.yaml exists) in an existing linked worktree
@@ -86,10 +95,11 @@ just clean           # Remove build artifacts and caches
 ```bash
 just dev             # Run just backend dev; runs until stopped
 just backend dev     # Run db-upgrade, then serve the API on http://127.0.0.1:8000 with auto-reload; runs until stopped
+just frontend dev    # Serve the frontend with Vite's dev server on http://localhost:5173; runs until stopped
 ```
 
-`just dev` and `just backend dev` are the developer's server: never start, stop,
-or restart one, or bind its port. To see what only a running server shows,
+`just dev`, `just backend dev`, and `just frontend dev` are the developer's
+servers: never start, stop, or restart one, or bind its port. To see what only a running server shows,
 prefer a `TestClient` test, else your own `uv run --locked uvicorn
 my_app.api.app:create_app --factory --port <free port>`, stopped before your
 turn ends (`running-the-app`).
@@ -101,8 +111,9 @@ just labels          # Create/update GitHub labels from .github/labels.yml (ask 
 just ruleset         # Apply .github/rulesets/main.json to GitHub (admin-only human step; never an agent)
 ```
 
-Without Just, run the `uv run` commands the `justfile` gives each recipe, and a
-`backend::` dependency's lines from `backend/justfile` in `backend/`.
+Without Just, run the `uv run` and `pnpm` commands the `justfile` gives each
+recipe, and a `backend::` or `frontend::` dependency's lines from that area's
+`justfile` in its directory.
 `just check` runs `fmt` first, so it never proves the *committed* tree green;
 `just verify` mutates nothing and is the gate for a PR or a completion claim.
 
@@ -115,6 +126,7 @@ being run at all.
 | What you changed | The narrowest check that can fail |
 |---|---|
 | Anything under `backend/` | `backend/AGENTS.md`'s "Validating a change" table |
+| Anything under `frontend/` | `just frontend lint && just frontend test` (`frontend/AGENTS.md`'s table has narrower ones) |
 | One root test (`tests/`) | `uv run --locked pytest tests/test_<module>.py::test_<name>` |
 | A root Python file's lint or types (`scripts/`, `tests/`, skill scripts) | `uv run --locked ruff check <file>`, then `uv run --locked mypy` |
 | A script under `scripts/` | `uv run --locked pytest tests/test_<script>.py` |
