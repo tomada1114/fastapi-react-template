@@ -17,6 +17,38 @@ included. It excludes `^\.claude/skills/`, the byte-identical mirror of
 nothing to `pyproject.toml` or `uv.lock`. CI's `Lint & Type Check` runs it with
 `uv run --locked pre-commit run shellcheck --all-files`.
 
+## `biome` and `tsc`, the frontend hooks
+
+Two local `language: system` hooks run the frontend's own tools on a commit that stages
+a file under `frontend/`: `biome` runs `biome check` on the staged TypeScript,
+JavaScript, JSON, and CSS files, and `tsc` runs `tsc --noEmit` over the whole project
+when a `.ts` or `.tsx` file is staged, as `mypy` does for Python.
+`tests/test_frontend_hooks.py` runs both definitions through pre-commit against a fake
+`pnpm`, pinning their file selection, working directory, and arguments.
+
+- **Both run from `frontend/`** (`bash -c 'cd frontend && exec pnpm exec <tool> …' --`).
+  pre-commit runs a hook from the repository root, and Biome looks for its
+  configuration from the working directory upwards, never down, so a run from the root
+  would miss `frontend/biome.json`; `tsc` likewise finds `frontend/tsconfig.json`. The
+  `biome` entry strips the `frontend/` prefix from each root-relative path
+  (`"${@#frontend/}"`, quoted, so a path with a space stays one argument). Neither
+  `pnpm --dir frontend exec`, whose child working directory pnpm does not document, nor
+  Biome's `--config-path`, which would leave root-relative paths to reconcile with
+  `vcs.root`, replaces the `cd`.
+- **Filenames, not `biome check --staged`**: pre-commit has already set aside unstaged
+  edits, so the files on disk are the staged content, and `--staged` would also read
+  staged files outside `frontend/`. `--no-errors-on-unmatched` keeps a commit that
+  stages only files Biome's `files.includes` or `.gitignore` excludes passing;
+  `--files-ignore-unknown=true` keeps a file type Biome does not handle quiet.
+- **`biome` checks and never writes** (`--write` is absent): rewriting a partially
+  staged file under pre-commit's stash would fight the author's unstaged hunks. The
+  author runs `just frontend fmt` and re-stages.
+- **`pnpm exec` is the gatekeeper of the toolchain.** Without pnpm on `PATH` both hooks
+  fail with exit code 127; with a `node_modules` missing or out of step with
+  `pnpm-lock.yaml`, pnpm's `verifyDepsBeforeRun: error` fails them. The remedies are
+  Node.js 24 with `corepack enable` and `just install`, never `SKIP=` (smart-commit's
+  recovery table).
+
 ## `check-staged`, the secret gate
 
 `check-staged` (`scripts/check_staged.py`) refuses a commit that stages a secret-shaped

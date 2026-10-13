@@ -161,10 +161,10 @@ The hooks run for every author, so a hook that fires on intended work teaches it
 author to reach for `--no-verify`, which switches off the secret gate with it. Test a
 new or changed hook against an ordinary commit before trusting it to catch a bad one.
 Every hook names `stages: [pre-commit]` itself; only `check-staged` also runs at
-`pre-merge-commit`, and `tests/test_check_staged.py` holds that. What `check-staged`
-refuses, how merges and rebases interact with it, how `just install` verifies the
-hooks, and what replaced the old agent hooks:
-[references/pre-commit-layer.md](references/pre-commit-layer.md).
+`pre-merge-commit` (`tests/test_check_staged.py`). The frontend's `biome` and `tsc`
+hooks run `pnpm exec` from `frontend/`. Their shape, what `check-staged` refuses, how
+merges and rebases interact with it, how `just install` verifies the hooks, and what
+replaced the old agent hooks: [references/pre-commit-layer.md](references/pre-commit-layer.md).
 
 ## Tool configs in the two `pyproject.toml` files
 

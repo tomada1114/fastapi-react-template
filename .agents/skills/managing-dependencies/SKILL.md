@@ -13,10 +13,10 @@ description: >
 # Managing Dependencies
 
 **Owns:** whether a package may exist in this repository, which group it joins, how its
-version is declared and locked, and the `exclude-newer` window. **Does not own:**
-landing a Dependabot pull request, a `uv` one included (`merging-dependency-prs`);
-whether a dependency owes an ADR (`recording-architecture-decisions`); editing a
-security workflow (`changing-gates`).
+version is declared and locked, and the supply-chain window (`exclude-newer`, and
+pnpm's `minimumReleaseAge`). **Does not own:** landing a Dependabot pull request, a
+`uv` one included (`merging-dependency-prs`); whether a dependency owes an ADR
+(`recording-architecture-decisions`); editing a security workflow (`changing-gates`).
 
 ## A new package is a sign-off change
 
@@ -146,18 +146,51 @@ the window no longer moves it and every Dependabot proposal for it fails. The tr
 the review of every Dependabot `uv` PR — `merging-dependency-prs`' review checklist
 looks for an `exclude-newer-package` entry older than the window and plans its removal.
 
+### The pnpm window
+
+The JavaScript side has the same 7-day window: the root `pnpm-workspace.yaml`'s
+`minimumReleaseAge: 10080`, an integer count of minutes (not a duration string), with
+`minimumReleaseAgeStrict: true`, so `pnpm install` refuses any version younger than 7
+days, one already in `pnpm-lock.yaml` included. `.github/dependabot.yml`'s `npm` entry
+(pnpm's ecosystem; its one `directory: "/"` covers every workspace member through the
+root lockfile) runs monthly with `cooldown.default-days: 7`, grouped and labelled like
+the `uv` one; its `ignore` rules and their lift conditions are in its comments. One
+window holds for the repository: `tests/harness/test_dependabot_cooldown.py`
+(`just check-harness`) fails when the `npm` cooldown in minutes differs from
+`minimumReleaseAge`, when the `npm` and `uv` cooldowns differ, and when
+`minimumReleaseAge` is missing or not an integer. Change all four values together, or
+none.
+
+- **Dependabot documents pnpm v7 to v10**, and this repository runs pnpm 11, which works
+  in practice. If a Dependabot `npm` job fails because of the pnpm version, record it
+  (an issue with the job log, `triaging-issues`) and leave the pnpm version, the
+  lockfile, and the policy as they are; never work around it.
+- **A security update inside the window** skips the cooldown, not
+  `minimumReleaseAgeStrict`: the install refuses the version, in the Dependabot job or
+  the PR's CI. It waits out the window, or the owner decides a one-package
+  `minimumReleaseAgeExclude` entry, the pnpm counterpart of `exclude-newer-package`
+  above; never an implementer's call.
+
 ## What the scanners catch
 
-- **OSV-Scanner** (`.github/workflows/osv-scanner.yml`) scans `uv.lock` on every pull
-  request that touches it and weekly: a known advisory against a version already locked,
-  which the window cannot catch.
+- **OSV-Scanner** (`.github/workflows/osv-scanner.yml`) scans `uv.lock` and
+  `pnpm-lock.yaml` on every pull request or push to `main` that touches either, and
+  weekly: a known advisory against a version already locked, which the window cannot
+  catch.
 - **Dependency Review** (`.github/workflows/dependency-review.yml`) judges the packages a
-  pull request changes: a new advisory or a license outside its allow-list. Its
-  `fail-on-scopes: runtime` means only a runtime package fails it.
-- **The `exclude-newer` window** catches the opposite case: a version too new to have a
-  track record, advisory or not. None of the three substitutes for another.
+  pull request changes, Python or JavaScript: a new advisory or a license outside its
+  allow-list. GitHub's dependency graph reads `pnpm-lock.yaml`, so the frontend needs no
+  license script of its own. Its `fail-on-scopes: runtime` means only a runtime package
+  fails it, so `devDependencies` are meant to pass like the Python dev group; the action
+  documents that option for vulnerabilities only, so whether it also scopes the license
+  check of a pnpm entry is unchecked until a run on a frontend change shows it.
+- **Dependabot alerts** read the same dependency graph, `pnpm-lock.yaml` included, once
+  the owner turns them on (`starting-an-app`).
+- **The windows** (`exclude-newer`, `minimumReleaseAge`) catch the opposite case: a
+  version too new to have a track record, advisory or not. None of these substitutes
+  for another.
 
 A red scanner is a finding about a package this project installs. Update the package (a
-Dependabot `uv` PR, or a hand-run `uv lock --upgrade-package`) or add a one-package
-exception; never relax the scanner — that is weakening a gate (AGENTS.md's "Security
-and human approval").
+Dependabot `uv` or `npm` PR, or a hand-run `uv lock --upgrade-package`) or add a
+one-package exception; never relax the scanner — that is weakening a gate (AGENTS.md's
+"Security and human approval").

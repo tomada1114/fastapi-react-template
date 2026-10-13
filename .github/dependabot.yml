@@ -26,7 +26,7 @@ updates:
     # almost never disagree: uv judges each file's upload time, the cooldown the
     # release date, so a late-uploaded wheel or a boundary-day release can still
     # fail the Dependabot job. Security updates skip this cooldown but not
-    # exclude-newer.
+    # exclude-newer. The npm cooldown below equals it too.
     cooldown:
       default-days: 7
     # Minor and patch updates arrive as one PR; each major stays a PR of its own.
@@ -34,6 +34,42 @@ updates:
       python-minor-patch:
         update-types: ["minor", "patch"]
     # Explicit, so Dependabot adds no `python` or `uv` label that
+    # .github/labels.yml does not declare.
+    labels: ["dependencies"]
+    open-pull-requests-limit: 3
+
+  # pnpm is updated through the "npm" ecosystem. The one root entry covers every
+  # pnpm workspace member (frontend/, later e2e/) through the root
+  # pnpm-lock.yaml; no member gets an entry of its own.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    # Must equal `minimumReleaseAge` in pnpm-workspace.yaml (10080 minutes =
+    # 7 days) and so the uv cooldown above: one window for the repository. A
+    # shorter cooldown proposes versions `pnpm install` refuses; change them
+    # together, or neither. Security updates skip this cooldown, but
+    # `minimumReleaseAgeStrict: true` still refuses a version younger than
+    # 7 days, so such a PR fails its install and is handled by hand
+    # (managing-dependencies); a `minimumReleaseAgeExclude` entry is the
+    # owner's decision.
+    cooldown:
+      default-days: 7
+    # Minor and patch updates arrive as one PR; each major stays a PR of its own.
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # TypeScript stays on 6.0.x (`~6.0.3`): 7 crashes @hey-api/openapi-ts's
+      # generation. Lift this entry with a @hey-api/openapi-ts bump whose
+      # release notes claim TypeScript 7 support (#27).
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # @types/node follows the Node.js runtime's minor (.node-version and
+      # package.json's devEngines.runtime), not the newest typings.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    # Explicit, so Dependabot adds no `javascript` label that
     # .github/labels.yml does not declare.
     labels: ["dependencies"]
     open-pull-requests-limit: 3
