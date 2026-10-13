@@ -1,0 +1,31 @@
+# The React app's recipes, a just module of the root justfile: run them as
+# `just frontend <recipe>` from anywhere in the repository. Each runs in this
+# directory, where pnpm finds the workspace root (pnpm-workspace.yaml) by
+# walking up, and `pnpm exec` refuses a node_modules that no longer matches
+# pnpm-lock.yaml (verifyDepsBeforeRun).
+
+# Install the workspace's locked JavaScript dependencies
+install:
+    pnpm install --frozen-lockfile
+
+# Format and apply safe lint fixes to the frontend (Biome)
+fmt:
+    pnpm exec biome check --write .
+
+# Lint the frontend (biome ci) and type-check it (tsc under the strict flags)
+lint:
+    pnpm exec biome ci .
+    pnpm exec tsc --noEmit
+
+# Run the frontend tests with coverage (80% lines, functions, statements, branches)
+test:
+    pnpm exec vitest run --coverage
+
+# Build the frontend for production into frontend/dist
+build:
+    pnpm exec vite build
+
+# Never ends on its own; an agent never runs it (running-the-app).
+# Human-run: serve the frontend with Vite's dev server on http://localhost:5173
+dev:
+    pnpm exec vite
