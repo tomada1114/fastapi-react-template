@@ -6,7 +6,7 @@ import { toApiError } from "../../lib/problem-details";
 
 const TITLE_FIELD = "title";
 
-export function CreateTodoForm() {
+export function CreateTodoForm({ onAction }: { onAction?: () => void } = {}) {
   const [title, setTitle] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const submissionInFlight = useRef(false);
@@ -41,6 +41,7 @@ export function CreateTodoForm() {
         // The ref also guards a second submit before React renders pending state.
         if (submissionInFlight.current || mutation.isPending) return;
         submissionInFlight.current = true;
+        onAction?.();
         mutation.mutate({ body: { title } });
       }}
     >

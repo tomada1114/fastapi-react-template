@@ -157,14 +157,64 @@ describe("TodoItem", () => {
         await screen.findByRole("button", { name: `${action} buy milk` }),
       );
 
-      expect(await screen.findByRole("status")).toHaveTextContent(
-        "That to-do no longer exists. The list has been refreshed.",
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "That to-do no longer exists. The list has been refreshed.",
+        ),
       );
       await screen.findByText("No to-dos yet. Add one above.");
       expect(state.gets).toBe(2);
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     },
   );
+
+  it("announces every stale response and clears the notice for a new action", async () => {
+    const third = todo("third", "0199c1f0-0000-7000-8000-000000000003");
+    const state = serve([todo("buy milk"), todo("buy bread", secondId), third]);
+    server.use(
+      http.delete("/api/todos/:todoId", () => {
+        state.items = state.items.slice(1);
+        return HttpResponse.json<ProblemDetails>(problem(404), { status: 404 });
+      }),
+      http.post("/api/todos/:todoId/complete", () => {
+        const completed = { ...third, completed: true };
+        state.items = [completed];
+        return HttpResponse.json<TodoResponse>(completed);
+      }),
+    );
+    const { container } = renderWithQuery(<TodosScreen />);
+    await screen.findByRole("button", { name: "Delete buy milk" });
+    const message = "That to-do no longer exists. The list has been refreshed.";
+    const announcements: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes) {
+          if (node.textContent === message) announcements.push(message);
+        }
+    });
+    observer.observe(container, { childList: true, subtree: true });
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Delete buy milk" }));
+      await waitFor(() =>
+        expect(screen.queryByText("buy milk")).not.toBeInTheDocument(),
+      );
+      await waitFor(() => expect(announcements).toHaveLength(1));
+
+      fireEvent.click(screen.getByRole("button", { name: "Delete buy bread" }));
+
+      await waitFor(() =>
+        expect(screen.queryByText("buy bread")).not.toBeInTheDocument(),
+      );
+      await waitFor(() => expect(announcements).toHaveLength(2));
+      expect(screen.getByRole("status")).toHaveTextContent(message);
+      fireEvent.click(screen.getByRole("button", { name: "Complete third" }));
+      await screen.findByText("Completed");
+      expect(screen.queryByText(message)).not.toBeInTheDocument();
+      expect(state.gets).toBe(4);
+    } finally {
+      observer.disconnect();
+    }
+  });
 
   it.each(
     actions.flatMap((action) =>

@@ -38,7 +38,7 @@ describe("TodosScreen", () => {
           .getAllByRole("listitem")
           .map((item) => within(item).getByText(/^buy /).textContent),
       ).toEqual(["buy milk", "buy bread"]);
-      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
       expect(screen.getByRole("heading", { name: "To-dos" })).toHaveAttribute(
         "tabindex",
         "-1",

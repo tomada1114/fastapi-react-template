@@ -6,11 +6,13 @@ export function TodoList({
   headingId,
   onDeleted,
   onStale,
+  onAction,
 }: {
   todos: ReadonlyArray<TodoResponse>;
   headingId: string;
   onDeleted: () => void;
   onStale: () => void;
+  onAction: () => void;
 }) {
   return (
     <>
@@ -19,7 +21,13 @@ export function TodoList({
       )}
       <ul aria-labelledby={headingId} className="divide-y divide-gray-200">
         {todos.map((todo) => (
-          <TodoItem key={todo.id} todo={todo} onDeleted={onDeleted} onStale={onStale} />
+          <TodoItem
+            key={todo.id}
+            todo={todo}
+            onDeleted={onDeleted}
+            onStale={onStale}
+            onAction={onAction}
+          />
         ))}
       </ul>
     </>

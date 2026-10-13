@@ -11,7 +11,11 @@ export const TODO_PAGE_SIZE = 20;
 export function TodosScreen() {
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
-  const [staleMessage, setStaleMessage] = useState(false);
+  const [staleNotice, setStaleNotice] = useState({ version: 0, visible: false });
+  const clearNotice = () =>
+    setStaleNotice((notice) =>
+      notice.visible ? { ...notice, visible: false } : notice,
+    );
   const query = useInfiniteQuery({
     ...listTodosInfiniteOptions({ query: { limit: TODO_PAGE_SIZE } }),
     initialPageParam: {},
@@ -20,7 +24,7 @@ export function TodosScreen() {
 
   return (
     <section aria-labelledby={headingId} className="max-w-2xl space-y-6">
-      <CreateTodoForm />
+      <CreateTodoForm onAction={clearNotice} />
       <div className="space-y-3">
         <h2
           ref={heading}
@@ -30,14 +34,22 @@ export function TodosScreen() {
         >
           To-dos
         </h2>
-        {staleMessage && (
-          <p role="status">That to-do no longer exists. The list has been refreshed.</p>
-        )}
-        {query.isPending ? (
-          <p role="status" className="text-gray-600">
-            Loading to-dos…
-          </p>
-        ) : query.isError && !query.data ? (
+        <p
+          role="status"
+          aria-atomic="true"
+          className={
+            query.isPending || staleNotice.visible ? "text-gray-600" : "sr-only"
+          }
+        >
+          {query.isPending
+            ? "Loading to-dos…"
+            : staleNotice.visible && (
+                <span key={staleNotice.version}>
+                  That to-do no longer exists. The list has been refreshed.
+                </span>
+              )}
+        </p>
+        {query.isPending ? null : query.isError && !query.data ? (
           <>
             <ErrorMessage error={toApiError(query.error)} />
             <button
@@ -55,7 +67,13 @@ export function TodosScreen() {
               todos={query.data?.pages.flatMap((page) => page.items) ?? []}
               headingId={headingId}
               onDeleted={() => heading.current?.focus()}
-              onStale={() => setStaleMessage(true)}
+              onAction={clearNotice}
+              onStale={() =>
+                setStaleNotice((notice) => ({
+                  version: notice.version + 1,
+                  visible: true,
+                }))
+              }
             />
             {query.hasNextPage && (
               <button

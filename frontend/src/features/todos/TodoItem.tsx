@@ -11,10 +11,12 @@ export function TodoItem({
   todo,
   onDeleted,
   onStale,
+  onAction,
 }: {
   todo: TodoResponse;
   onDeleted: () => void;
   onStale: () => void;
+  onAction: () => void;
 }) {
   const queryClient = useQueryClient();
   const onError = (error: unknown) => {
@@ -63,6 +65,7 @@ export function TodoItem({
             aria-label={`Complete ${todo.title}`}
             disabled={pending}
             onClick={() => {
+              onAction();
               remove.reset();
               complete.mutate({ path: { todo_id: todo.id } });
             }}
@@ -76,6 +79,7 @@ export function TodoItem({
           aria-label={`Delete ${todo.title}`}
           disabled={pending}
           onClick={() => {
+            onAction();
             complete.reset();
             remove.mutate({ path: { todo_id: todo.id } });
           }}
