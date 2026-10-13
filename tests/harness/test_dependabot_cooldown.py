@@ -1,11 +1,15 @@
-"""(h) The Dependabot ``uv`` cooldown equals the ``exclude-newer`` window.
+"""(h) The Dependabot cooldowns equal the supply-chain window.
 
-``.github/dependabot.yml``'s ``uv`` update sets ``cooldown.default-days`` and
-``pyproject.toml``'s ``[tool.uv] exclude-newer`` is a relative window
-(``"14 days"`` or ``"P14D"``). uv's Dependabot guide recommends the two be
-equal: a shorter cooldown proposes versions ``uv lock`` refuses, a longer one
-leaves the lock behind the window. With no ``uv`` update there is nothing to
-pair; with one, a window this check cannot read as a day count fails closed.
+One window holds for the repository (7 days). ``pyproject.toml``'s
+``[tool.uv] exclude-newer`` is a relative window (``"7 days"`` or ``"P7D"``),
+and ``pnpm-workspace.yaml``'s ``minimumReleaseAge`` an integer count of
+minutes (``10080``). ``.github/dependabot.yml``'s ``uv`` update sets
+``cooldown.default-days`` equal to the first, as uv's Dependabot guide
+recommends, and its ``npm`` update (pnpm's ecosystem) sets it equal to the
+second and to the ``uv`` cooldown: a shorter cooldown proposes versions
+``uv lock`` or ``pnpm install`` refuses, a longer one leaves the lock behind
+the window. With no ``uv`` or ``npm`` update there is nothing to pair for it;
+with one, a window this check cannot read fails closed.
 """
 
 from __future__ import annotations
@@ -27,32 +31,32 @@ if TYPE_CHECKING:
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPENDABOT = ".github/dependabot.yml"
 PYPROJECT = "pyproject.toml"
+PNPM_WORKSPACE = "pnpm-workspace.yaml"
+MINUTES_PER_DAY = 1440
 
 _DAYS = re.compile(r"^\s*(?P<days>\d+)\s*days?\s*$|^P(?P<iso>\d+)D$")
 
 
-def _uv_cooldown_days(root: Path) -> str | None:
+def _cooldown_days(root: Path, ecosystem: str) -> list[str]:
+    """Return the ``cooldown.default-days`` of every update for ``ecosystem``."""
     path = root / DEPENDABOT
     if not path.is_file():
-        return None
+        return []
     top = as_mapping(load_yaml(path), str(path))
+    days: list[str] = []
     for index, item in enumerate(
         as_sequence(top.get("updates", []), f"{path}: updates")
     ):
         update = as_mapping(item, f"{path}: updates[{index}]")
-        if scalar(update.get("package-ecosystem", "")) == "uv":
+        if scalar(update.get("package-ecosystem", "")) == ecosystem:
             cooldown = as_mapping(
                 update.get("cooldown", {}), f"{path}: updates[{index}].cooldown"
             )
-            return scalar(cooldown.get("default-days", ""))
-    return None
+            days.append(scalar(cooldown.get("default-days", "")))
+    return days
 
 
-def cooldown_findings(root: Path) -> list[str]:
-    """Return a finding when the uv cooldown and the exclude-newer window differ."""
-    cooldown = _uv_cooldown_days(root)
-    if cooldown is None:
-        return []
+def _uv_findings(root: Path, cooldowns: list[str]) -> list[str]:
     window = (
         tomllib.loads((root / PYPROJECT).read_text(encoding="utf-8"))
         .get("tool", {})
@@ -68,17 +72,81 @@ def cooldown_findings(root: Path) -> list[str]:
             )
         ]
     days = match["days"] or match["iso"]
-    if not cooldown.isdigit() or int(cooldown) != int(days):
-        return [
-            (
-                f"{DEPENDABOT}: the uv cooldown.default-days is {cooldown!r}, but "
-                f"{PYPROJECT}'s exclude-newer is {days} days; change both together"
+    return [
+        (
+            f"{DEPENDABOT}: the uv cooldown.default-days is {cooldown!r}, but "
+            f"{PYPROJECT}'s exclude-newer is {days} days; change both together"
+        )
+        for cooldown in cooldowns
+        if not cooldown.isdigit() or int(cooldown) != int(days)
+    ]
+
+
+def _minimum_release_age(root: Path) -> int | str:
+    """Return pnpm's window in minutes, or a finding when it cannot be read."""
+    path = root / PNPM_WORKSPACE
+    if not path.is_file():
+        return (
+            f"{PNPM_WORKSPACE} is missing: {DEPENDABOT}'s npm cooldown must equal "
+            "its minimumReleaseAge"
+        )
+    top = as_mapping(load_yaml(path), str(path))
+    if "minimumReleaseAge" not in top:
+        return (
+            f"{PNPM_WORKSPACE}: no minimumReleaseAge ({DEPENDABOT}'s npm cooldown "
+            "must equal it)"
+        )
+    value = top["minimumReleaseAge"]
+    # A YAML `true` loads as a bool, which Python also counts as an int.
+    if not isinstance(value, int) or isinstance(value, bool):
+        return (
+            f"{PNPM_WORKSPACE}: minimumReleaseAge is {value!r}, not an integer count "
+            f"of minutes ({DEPENDABOT}'s npm cooldown must equal it)"
+        )
+    return value
+
+
+def _npm_findings(root: Path, cooldowns: list[str], uv: list[str]) -> list[str]:
+    window = _minimum_release_age(root)
+    if isinstance(window, str):
+        return [window]
+    findings: list[str] = []
+    for cooldown in cooldowns:
+        if not cooldown.isdigit():
+            findings.append(
+                f"{DEPENDABOT}: the npm cooldown.default-days is {cooldown!r}, not a "
+                f"day count ({PNPM_WORKSPACE}'s minimumReleaseAge is {window})"
             )
-        ]
-    return []
+            continue
+        minutes = int(cooldown) * MINUTES_PER_DAY
+        if minutes != window:
+            findings.append(
+                f"{DEPENDABOT}: the npm cooldown.default-days is {cooldown!r} "
+                f"({minutes} minutes), but {PNPM_WORKSPACE}'s minimumReleaseAge is "
+                f"{window}; change both together"
+            )
+        findings.extend(
+            (
+                f"{DEPENDABOT}: the npm cooldown.default-days is {cooldown!r}, but "
+                f"the uv one is {other!r}; one window holds for the repository"
+            )
+            for other in uv
+            if not other.isdigit() or int(other) != int(cooldown)
+        )
+    return findings
 
 
-def test_uv_cooldown_on_repository_equals_exclude_newer() -> None:
+def cooldown_findings(root: Path) -> list[str]:
+    """Return a finding for each Dependabot cooldown that differs from its window."""
+    uv = _cooldown_days(root, "uv")
+    npm = _cooldown_days(root, "npm")
+    return [
+        *(_uv_findings(root, uv) if uv else []),
+        *(_npm_findings(root, npm, uv) if npm else []),
+    ]
+
+
+def test_cooldowns_on_repository_equal_their_windows() -> None:
     assert cooldown_findings(REPO_ROOT) == []
 
 
@@ -153,5 +221,147 @@ def test_cooldown_findings_absolute_window_fails_closed(make_root: MakeRoot) -> 
         (
             f"{PYPROJECT}: [tool.uv] exclude-newer is '2026-07-21T00:00:00Z', not a day "
             f"count ({DEPENDABOT}'s uv cooldown must equal it)"
+        )
+    ]
+
+
+# --- the npm cooldown and pnpm's minimumReleaseAge ---
+
+
+def _dependabot(*, npm: str, uv: str | None = None) -> str:
+    """A dependabot.yml with an npm update, and a uv one when ``uv`` is given."""
+    text = "version: 2\nupdates:\n"
+    if uv is not None:
+        text += (
+            f'  - package-ecosystem: "uv"\n    cooldown:\n      default-days: {uv}\n'
+        )
+    return text + (
+        f'  - package-ecosystem: "npm"\n    cooldown:\n      default-days: {npm}\n'
+    )
+
+
+def _npm_root(
+    make_root: MakeRoot, *, npm: str, workspace: str | None, uv: str | None = None
+) -> Path:
+    files = {DEPENDABOT: _dependabot(npm=npm, uv=uv)}
+    if uv is not None:
+        files[PYPROJECT] = f'[tool.uv]\nexclude-newer = "{uv} days"\n'
+    if workspace is not None:
+        files[PNPM_WORKSPACE] = workspace
+    return make_root(files)
+
+
+@pytest.mark.parametrize(
+    ("days", "minutes"),
+    [pytest.param(7, 10080, id="7-days"), pytest.param(14, 20160, id="14-days")],
+)
+def test_cooldown_findings_npm_equal_window_passes(
+    make_root: MakeRoot, days: int, minutes: int
+) -> None:
+    root = _npm_root(
+        make_root,
+        npm=str(days),
+        uv=str(days),
+        workspace=f"packages:\n  - frontend\nminimumReleaseAge: {minutes}\n",
+    )
+
+    assert cooldown_findings(root) == []
+
+
+def test_cooldown_findings_without_npm_update_passes(make_root: MakeRoot) -> None:
+    # No pnpm-workspace.yaml either: an app that deleted the frontend.
+    root = make_root(
+        {
+            DEPENDABOT: DEPENDABOT_TEXT.format(days=7),
+            PYPROJECT: '[tool.uv]\nexclude-newer = "7 days"\n',
+        }
+    )
+
+    assert cooldown_findings(root) == []
+
+
+def test_cooldown_findings_npm_shorter_than_window_fails(make_root: MakeRoot) -> None:
+    root = _npm_root(make_root, npm="3", workspace="minimumReleaseAge: 10080\n")
+
+    assert cooldown_findings(root) == [
+        (
+            f"{DEPENDABOT}: the npm cooldown.default-days is '3' (4320 minutes), but "
+            f"{PNPM_WORKSPACE}'s minimumReleaseAge is 10080; change both together"
+        )
+    ]
+
+
+def test_cooldown_findings_npm_without_workspace_file_fails(
+    make_root: MakeRoot,
+) -> None:
+    root = _npm_root(make_root, npm="7", workspace=None)
+
+    assert cooldown_findings(root) == [
+        (
+            f"{PNPM_WORKSPACE} is missing: {DEPENDABOT}'s npm cooldown must equal "
+            "its minimumReleaseAge"
+        )
+    ]
+
+
+def test_cooldown_findings_npm_without_minimum_release_age_fails(
+    make_root: MakeRoot,
+) -> None:
+    root = _npm_root(make_root, npm="7", workspace="packages:\n  - frontend\n")
+
+    assert cooldown_findings(root) == [
+        (
+            f"{PNPM_WORKSPACE}: no minimumReleaseAge ({DEPENDABOT}'s npm cooldown "
+            "must equal it)"
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [
+        pytest.param('"10080"', "'10080'", id="quoted-integer"),
+        pytest.param('"20160"', "'20160'", id="quoted-other-integer"),
+        pytest.param("7d", "'7d'", id="duration-string"),
+        pytest.param("10080.0", "10080.0", id="float"),
+        pytest.param("true", "True", id="boolean"),
+    ],
+)
+def test_cooldown_findings_npm_non_integer_window_fails_closed(
+    make_root: MakeRoot, value: str, shown: str
+) -> None:
+    root = _npm_root(make_root, npm="7", workspace=f"minimumReleaseAge: {value}\n")
+
+    assert cooldown_findings(root) == [
+        (
+            f"{PNPM_WORKSPACE}: minimumReleaseAge is {shown}, not an integer count "
+            f"of minutes ({DEPENDABOT}'s npm cooldown must equal it)"
+        )
+    ]
+
+
+def test_cooldown_findings_npm_cooldown_not_a_day_count_fails(
+    make_root: MakeRoot,
+) -> None:
+    root = _npm_root(make_root, npm="'a week'", workspace="minimumReleaseAge: 10080\n")
+
+    assert cooldown_findings(root) == [
+        (
+            f"{DEPENDABOT}: the npm cooldown.default-days is 'a week', not a day "
+            f"count ({PNPM_WORKSPACE}'s minimumReleaseAge is 10080)"
+        )
+    ]
+
+
+def test_cooldown_findings_npm_differs_from_uv_fails(make_root: MakeRoot) -> None:
+    # Each cooldown matches its own window, but the two windows differ.
+    root = _npm_root(
+        make_root, npm="14", uv="7", workspace="minimumReleaseAge: 20160\n"
+    )
+
+    assert cooldown_findings(root) == [
+        (
+            f"{DEPENDABOT}: the npm cooldown.default-days is '14', but the uv one is "
+            "'7'; one window holds for the repository"
         )
     ]
