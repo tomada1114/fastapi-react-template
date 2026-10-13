@@ -76,7 +76,13 @@ later would silently use the developer's environment instead.
 ## Running a server of your own
 
 Read `X-Request-ID` from the response (`curl -i`) and find that same ID in
-application logs; Problem Details carries it as `request_id`, including 500s.
+application logs and sanitized server diagnostics; Problem Details carries it as
+`request_id`, including 500s. The HTTP diagnostic boundary retains frames, exception
+classification and identity while excluding original messages, chains, notes and
+exception-group members from application and Uvicorn output. A failure after headers
+have started terminates the body without sending another response. The real-process
+regression in `backend/tests/api/test_server_logging.py` captures all stdout/stderr in
+both application formats and verifies owned-process cleanup on success and failure.
 Set `MY_APP_LOG_LEVEL=` and `MY_APP_LOG_FORMAT=` explicitly in an isolated
 server's environment to retain the sample defaults rather than a developer's
 dotenv logging settings. Pass `--no-access-log` to uvicorn to keep one access line.
