@@ -36,3 +36,27 @@ await writeFile(
       `initialPageParam: {},\n        getNextPageParam: () => undefined,\n        ${query}`,
     ),
 );
+
+// A 204 has no representation: the SDK's generated void contract must not
+// receive null (automatic stream parsing) or {} (explicit JSON parsing).
+// Keep format-specific parsing for other zero-length successful responses.
+const runtimePath = join(outputPath, "client/client.gen.ts");
+const runtime = await readFile(runtimePath, "utf8");
+const emptyResponse =
+  "if (response.status === 204 || response.headers.get('Content-Length') === '0') {";
+if (runtime.split(emptyResponse).length !== 2) {
+  throw new Error("Unexpected empty-response output; review the generator correction");
+}
+await writeFile(
+  runtimePath,
+  runtime.replace(
+    emptyResponse,
+    `if (response.status === 204) {
+          return opts.responseStyle === 'data'
+            ? undefined
+            : { data: undefined, ...result };
+        }
+
+        if (response.headers.get('Content-Length') === '0') {`,
+  ),
+);

@@ -1,11 +1,13 @@
-import { QueryClient } from "@tanstack/react-query";
+import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import {
+  deleteTodoMutation,
   listTodosInfiniteOptions,
   listTodosOptions,
 } from "../src/api/generated/@tanstack/react-query.gen";
 import { createClient, createConfig } from "../src/api/generated/client";
 import { client } from "../src/api/generated/client.gen";
+import { deleteTodo } from "../src/api/generated/sdk.gen";
 
 describe("generated API contract", () => {
   it("keeps relative requests and stable list operation keys", () => {
@@ -24,6 +26,71 @@ describe("generated API contract", () => {
       "https://other.example",
     );
   });
+
+  it.each(["auto", "json", "text"] as const)(
+    "returns undefined for a 204 parsed as %s",
+    async (parseAs) => {
+      const testClient = createClient(
+        createConfig({
+          baseUrl: "http://localhost",
+          fetch: async () => new Response(null, { status: 204 }),
+        }),
+      );
+
+      const result = await deleteTodo({
+        client: testClient,
+        path: { todo_id: "0199c1f0-0000-7000-8000-000000000001" },
+        parseAs,
+        throwOnError: true,
+      });
+
+      expect(result.response.status).toBe(204);
+      expect(result.data).toBeUndefined();
+    },
+  );
+
+  it("passes undefined to a successful delete mutation callback", async () => {
+    const testClient = createClient(
+      createConfig({
+        baseUrl: "http://localhost",
+        fetch: async () => new Response(null, { status: 204 }),
+      }),
+    );
+    const queryClient = new QueryClient();
+    let successData: unknown = "not called";
+    const mutation = new MutationObserver(queryClient, {
+      ...deleteTodoMutation({ client: testClient }),
+      onSuccess: (data) => {
+        successData = data;
+      },
+    });
+
+    await mutation.mutate({
+      path: { todo_id: "0199c1f0-0000-7000-8000-000000000001" },
+    });
+
+    expect(successData).toBeUndefined();
+    queryClient.clear();
+  });
+
+  it.each([
+    { parseAs: "json", expected: {} },
+    { parseAs: "text", expected: "" },
+  ] as const)(
+    "keeps other empty responses parsed as $parseAs",
+    async ({ parseAs, expected }) => {
+      const testClient = createClient(
+        createConfig({
+          baseUrl: "http://localhost",
+          fetch: async () => new Response(null, { headers: { "Content-Length": "0" } }),
+        }),
+      );
+
+      const result = await testClient.get({ url: "/empty", parseAs });
+
+      expect(result.data).toEqual(expected);
+    },
+  );
 
   it.each([null, {}, "next-page"])(
     "requests a page with the supported parameter %j",
