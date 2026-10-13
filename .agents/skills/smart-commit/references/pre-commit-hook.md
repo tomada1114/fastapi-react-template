@@ -8,9 +8,9 @@ only what each refusal means and how to clear it without switching the hook off.
 ## How the hooks run
 
 - pre-commit sets aside unstaged edits to tracked files while the hooks run, so a hook
-  that reads files sees what is staged. An untracked file is not set aside: `mypy` and
-  `mypy-backend`, which check whole trees rather than the staged files, can still fail
-  on one.
+  that reads files sees what is staged. An untracked file is not set aside: `mypy`,
+  `mypy-backend`, and `tsc`, which check whole projects rather than the staged files,
+  can still fail on one.
 - Some hooks **rewrite** files: `trailing-whitespace`, `end-of-file-fixer`,
   `ruff --fix`, and `ruff-format`. When they change anything the commit fails, and
   their rewrites are left in the working tree, unstaged. Inspect them with `git diff`,
@@ -19,7 +19,12 @@ only what each refusal means and how to clear it without switching the hook off.
   since more than one can fail at once.
 - `agents-check` runs only when a path under `.agents/skills/` or `.claude/skills/` is
   staged; `mypy` only when a Python file is, and `mypy-backend` only when one under
-  `backend/` is.
+  `backend/` is; `biome` only when a TypeScript, JavaScript, JSON, or CSS file under
+  `frontend/` is, and `tsc` only when a `.ts` or `.tsx` file there is.
+- `biome` and `tsc` run `pnpm exec` from `frontend/`. Without pnpm on `PATH` both fail
+  with exit code 127: install Node.js 24 and run `corepack enable`. `pnpm exec` also
+  refuses a `node_modules` that is missing or no longer matches `pnpm-lock.yaml`
+  (`verifyDepsBeforeRun`), as after pulling a lockfile change: run `just install`.
 
 ## When the hooks run
 
@@ -40,6 +45,8 @@ only what each refusal means and how to clear it without switching the hook off.
 | `ruff` | A lint violation `--fix` could not fix, or one it did fix (the file changed). | Fix the code by hand where it reports; re-stage. Never a bare `noqa` and never a relaxed rule — a `noqa` carries a written reason (`writing-python`). |
 | `ruff-format` | It reformatted the file. With a partially staged file whose unstaged hunk overlaps a reformatted line, pre-commit prints "Stashed changes conflicted with hook auto-fixes... Rolling back fixes..." and discards the fixes, keeping your unstaged edits. | Re-stage the file. On an overlap: stage the whole file, or run `uv run --locked ruff format <file>` first and stage the hunks again. |
 | `mypy`, `mypy-backend` | A whole tree failed to type-check, not only the staged files: the root's `scripts`, `tests`, and skill scripts (`mypy`), or `backend/src` and `backend/tests` (`mypy-backend`, run from `backend/`); the error can sit in a file this commit does not touch, or in an untracked one. | Fix the type where it is. When the error lives in a change that belongs to a later group, set it aside (`git stash push --keep-index --include-untracked`), commit, and `git stash pop`. Never a `# type: ignore` without its code and a reason. |
+| `biome` | Biome reports a staged frontend file: unformatted code, or a lint rule (the output names the file, relative to `frontend/`). It only checks; it never rewrites. pnpm's dependency error instead: `node_modules` is missing or no longer matches `pnpm-lock.yaml`. | Formatting: `just frontend fmt`, then re-stage the file; it formats the working copy, so for a partially staged file stage the hunks again with `git add -p`. A lint rule: fix the code where it reports. Never a `biome-ignore` comment without a written reason. The dependency error: `just install`. |
+| `tsc` | The whole frontend project failed to type-check under `frontend/tsconfig.json`, not only the staged files; the error can sit in a file this commit does not touch, or in an untracked one. pnpm's dependency error instead: as for `biome`. | Fix the type where it is, setting aside a later group's change as for `mypy`. Never `@ts-ignore`, `@ts-expect-error`, or `@ts-nocheck` in a hand-written file: `frontend/AGENTS.md` counts each as a weakened gate. The dependency error: `just install`. |
 | `typos` | A misspelling in a staged file. | Fix the word. Add a genuine technical term to `typos.toml`'s `default.extend-words`, never a real misspelling. |
 | `zizmor` | A workflow under `.github/workflows/` breaks a security rule. | Fix the workflow (`changing-gates`' "CI workflows and required checks"). |
 | `check-yaml`, `check-toml`, `check-json` | The file does not parse. | Fix the syntax. |
