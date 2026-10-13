@@ -136,6 +136,10 @@ frontend/
   values with `toApiError` and display errors through `ErrorMessage`; a domain
   `invalid_todo` 422 maps to the title field. Keep the server as the validator:
   submit typed titles unchanged, without `required`, `maxLength`, or a form library.
+- Vite's development server proxies `/api` and `/healthz` to the loopback API.
+  `MY_APP_API_PORT` selects that target port (default 8000); the API must be bound
+  to the same port. `VITE_PORT` selects Vite's port (default 5173), with strict
+  binding. These are process variables, not backend `Settings` or dotenv keys.
 
 ## Tests and the coverage floor
 
