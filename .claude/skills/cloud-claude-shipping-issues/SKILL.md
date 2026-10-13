@@ -75,10 +75,7 @@ only pauses are the [stop conditions](#stop-conditions).
 
 ### 1. Check the host
 
-```bash
-test "$CLAUDE_CODE_REMOTE" = true && echo "host: cloud" || echo "host: local"
-```
-
+Run `test "$CLAUDE_CODE_REMOTE" = true && echo "host: cloud" || echo "host: local"`.
 `host: local` → stop here: this is not a cloud session; use `shipping-issues`. Then
 read [cloud-host.md](references/cloud-host.md) once, and the repository
 ([its call](references/rest-calls.md#the-repository)): `full_name`,
@@ -88,7 +85,8 @@ tree holds work this run did not make: stop and ask. Otherwise
 `git fetch origin <default> && git merge --no-edit origin/<default>`; a non-empty
 `git diff --stat origin/<default>` afterwards is the same stop, unless it is an open PR
 from this branch: a run resumed on a fresh VM, which continues that PR
-([how](references/cloud-host.md#run-state-lives-on-the-vm)). Record `run-start`.
+([how](references/cloud-host.md#run-state-lives-on-the-vm)). Check that
+`pnpm --dir frontend exec node --version` prints v24.x, then record `run-start`.
 
 ### 2. Rank
 
@@ -137,10 +135,9 @@ stops the run. Record `review` per round.
 ### 6. Read CI
 
 Read the check runs and the combined status for the current head
-([the call](references/rest-calls.md#the-ci-verdict)). `PASS` → step 7. `FAIL` →
-repair, at most 3 times. `PENDING` past 1800 s, or `EMPTY` 600 s after the push
-(no checks at all), → stop and ask
-([the table](references/review-ci-merge.md#ci)). Record `ci`.
+([the call](references/rest-calls.md#the-ci-verdict)). `PASS` → step 7. `FAIL` → repair,
+at most 3 times. `PENDING` past 1800 s, or `EMPTY` 600 s after the push (no checks at
+all), → stop and ask ([the table](references/review-ci-merge.md#ci)). Record `ci`.
 
 ### 7. Merge
 
@@ -160,10 +157,9 @@ with a back-reference comment; record `merged`.
 
 `git merge origin/<default>` into the session's branch and check its diff is empty —
 never a reset and force-push
-([branch upkeep](references/review-ci-merge.md#branch-upkeep-after-the-merge)). Fetch
-the backlog again and remove `blocked: dependency` from each issue whose last open
-dependency was this one
-([the calls](references/rest-calls.md#issues-the-merge-unblocked)).
+([branch upkeep](references/review-ci-merge.md#branch-upkeep-after-the-merge)). Fetch the
+backlog again and remove `blocked: dependency` from each issue whose last open dependency
+was this one ([the calls](references/rest-calls.md#issues-the-merge-unblocked)).
 
 ### 9. File the follow-ups
 
@@ -187,9 +183,8 @@ the reason, and so is anything depending on it.
 ### 11. Report
 
 No prescribed format, but never omit
-[these facts](references/review-ci-merge.md#what-the-report-must-not-omit) — above all
-an issue left open behind a merged PR, a criterion shipped `not-met`, and a PR left
-held.
+[these facts](references/review-ci-merge.md#what-the-report-must-not-omit) — above all an
+issue left open behind a merged PR, a criterion shipped `not-met`, and a PR left held.
 
 ## Stop conditions
 
@@ -197,6 +192,11 @@ Stop the run and report when:
 
 - a REST call answers 403 for GraphQL or repository scope, or a push or every call
   fails the same way after a retry ([cloud-host.md](references/cloud-host.md));
+- `pnpm --dir frontend exec node --version` is not v24.x, or
+  `pnpm install --frozen-lockfile` (in `just install` or the baseline) fails: report the
+  command and its output, and never install packages or a Node.js but by the route
+  [cloud-host.md](references/cloud-host.md#what-the-session-starts-with) records — no npm,
+  version manager, registry mirror, vendored copy, or `runtimeOnFail` `ignore`/`warn`;
 - the digest selects nothing, or the named issue is not ready;
 - a PR is held: `NO_REVIEW`, a review `ERROR`, a finding that needs the owner, one
   accepted past round 3, CI pending past 1800 s, `NO_CHECKS`, a fourth CI `FAIL`, or a
