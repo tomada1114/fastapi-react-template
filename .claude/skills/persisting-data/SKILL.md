@@ -77,7 +77,8 @@ a transaction. A driver error with a domain meaning is translated there (an
 `make_engine(url)` returns an `AsyncEngine` that opens nothing until first used, with
 SQLite's busy timeout raised so a burst of concurrent writes queues for the write lock
 instead of failing with "database is locked". `build_container` makes one per
-container, hands it to every SQL repository, and registers
+container, hands it to every SQL repository, and registers its task-independent
+disposer in `ResourceClosers` with
 `resources.push_async_callback(engine.dispose)` — the shape
 `designing-core-logic`'s `references/adding-a-port.md` gives a resource-holding adapter.
 
@@ -85,6 +86,10 @@ container, hands it to every SQL repository, and registers
   garbage collection can warn `Event loop is closed`
   (https://docs.sqlalchemy.org/en/21/orm/extensions/asyncio.html, checked 2026-10-09),
   and `filterwarnings = ["error"]` turns that into an intermittent test failure.
+- Container owns a single cancellation-safe cleanup task on that loop. It completes
+  registered callbacks in LIFO order before propagating caller cancellation, including
+  factory-owned lifespan shutdown. Concurrent closers share it; retries do not recover
+  a callback interrupted after ExitStack removed it (`designing-core-logic`).
 - Pooled connections belong to one event loop. Each `TestClient` context runs the app
   on a loop of its own, so a SQL API test builds its app with `create_app(settings)`,
   whose lifespan disposes the engine on that loop; never pass it a SQL container
