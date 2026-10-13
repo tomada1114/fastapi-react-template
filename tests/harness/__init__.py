@@ -38,6 +38,10 @@ repository and fails on a fixture built under ``tmp_path``:
   justfile recipe and every module recipe (as ``just <module> <recipe>``) but
   ``default``, and its ``just verify`` line lists ``verify``'s dependencies in
   order;
+- (j) ``test_ci_aggregate.py``: every job in ``ci.yml`` is in the ``ci-result``
+  aggregate's ``needs:`` (``CI result``, the one CI context the ruleset
+  requires) or exempt with its reason, and that ``needs:`` names only jobs
+  ``ci.yml`` defines;
 - (g) the Product section check is ``tests/test_product_section.py``
   (tomada1114/uv-template#95),
   not duplicated here.

@@ -113,6 +113,42 @@ jobs:
         working-directory: backend
         run: uv run --locked pytest -n auto --cov --cov-report=term-missing:skip-covered --cov-fail-under=80
 
+  # `just frontend lint`, `test`, and `build` run as recipes, so CI cannot drift
+  # from them. pnpm/action-setup reads the pnpm version from package.json's
+  # packageManager, and runs before setup-node, whose pnpm cache needs pnpm on
+  # PATH; setup-node installs the Node.js .node-version names, the one
+  # devEngines.runtime admits. --frozen-lockfile fails when a package.json and
+  # pnpm-lock.yaml disagree.
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install the locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint and type-check the frontend
+        run: uvx --from rust-just==1.47.1 just frontend lint
+
+      - name: Run the frontend tests and enforce coverage
+        run: uvx --from rust-just==1.47.1 just frontend test
+
+      - name: Build the frontend
+        run: uvx --from rust-just==1.47.1 just frontend build
+
   postgres:
     name: PostgreSQL
     runs-on: ubuntu-latest
@@ -187,6 +223,36 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUST_LOG: zizmor=info
         run: uv run --locked pre-commit run zizmor --all-files --verbose
+
+  # The one CI context .github/rulesets/main.json requires. It needs every
+  # gating job above and fails unless each succeeded, so a new gating job joins
+  # `needs:` and the failing step's `if:`, never the ruleset; a job that does
+  # not gate is exempted, with its reason, in tests/harness/test_ci_aggregate.py.
+  # `!cancelled()` runs it when a needed job failed or was skipped, both of
+  # which fail it; a run a newer push cancelled leaves the newer run to report.
+  ci-result:
+    name: CI result
+    if: ${{ !cancelled() }}
+    needs: [lint, coverage, frontend, postgres, spell-check, zizmor]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Report each needed job's result
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: echo "$NEEDS"
+
+      # One `needs.<job>.result != 'success'` term per needed job, never
+      # `needs.*` or contains(): tests/harness/_needs.py reads only this shape.
+      - name: Fail unless every needed job succeeded
+        if: >-
+          ${{ needs.lint.result != 'success' || needs.coverage.result != 'success'
+          || needs.frontend.result != 'success' || needs.postgres.result != 'success'
+          || needs.spell-check.result != 'success' || needs.zizmor.result != 'success' }}
+        run: |
+          echo "::error::a job CI result needs did not succeed; its result is above"
+          exit 1
 
   # <!-- template-only -->
   # Bootstraps a scratch clone of the commit under test as a sample app, so the
