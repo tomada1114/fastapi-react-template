@@ -12,8 +12,11 @@ version = "0.1.0"
 description = "A short description of the project."
 requires-python = ">=3.14"
 dependencies = [
+    "aiosqlite>=0.22",
+    "alembic>=1.20",
     "fastapi>=0.141.1",
     "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.1",
     "uvicorn>=0.53.0",
 ]
 # No `readme` or `license-files`: both live at the repository root, which a
@@ -29,15 +32,15 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
-[project.optional-dependencies]
-# The OpenRouter LLM adapter (src/my_app/adapters/openrouter.py). Without it the
-# app runs with the LLM closed; see the integrating-llm skill.
-ai = ["httpx>=0.28"]
-
 [project.urls]
 Homepage = "https://github.com/your-username/fastapi-react-template"
 Repository = "https://github.com/your-username/fastapi-react-template"
 Issues = "https://github.com/your-username/fastapi-react-template/issues"
+
+[project.optional-dependencies]
+postgres = [
+    "asyncpg>=0.31",
+]
 
 # --------------------------------------------------------------------------- #
 #  Build
@@ -67,13 +70,18 @@ src = ["src", "tests"]
 "uvicorn".msg = "uvicorn serves the app from the command line (just dev); no module imports it"
 "sqlite3".msg = "the core is I/O-free; use sqlite3 only in my_app.adapters"
 "httpx".msg = "the core is I/O-free; use httpx only in an adapter or a test"
+"sqlalchemy".msg = "the core is I/O-free; use sqlalchemy only in my_app.adapters and backend/migrations"
+"alembic".msg = "the core is I/O-free; use alembic only in my_app.adapters and backend/migrations"
+"aiosqlite".msg = "the core is I/O-free; use aiosqlite only in my_app.adapters and backend/migrations"
 
 # Replaces, never merges with, the root's per-file-ignores: the root's entries
 # name root paths (scripts/, tests/, .agents/skills/), none of which is here.
 [tool.ruff.lint.per-file-ignores]
 # The outer layers exist to use the frameworks and drivers the core may not.
 "src/my_app/api/**" = ["TID251"]     # FastAPI is the HTTP entry point
-"src/my_app/adapters/**" = ["TID251"] # adapters wrap sqlite3 and other I/O
+"src/my_app/adapters/**" = ["TID251"] # adapters wrap SQLAlchemy and other I/O
+# Alembic's env.py and revisions exist to drive Alembic and SQLAlchemy.
+"migrations/**" = ["TID251"]
 "tests/**" = [
     "TID251",  # tests drive the API (TestClient/httpx)
     "S101",    # assert is fine in tests
@@ -90,7 +98,8 @@ src = ["src", "tests"]
 [tool.mypy]
 # Run from this directory (`uv run --locked --directory backend mypy`); the
 # root pyproject.toml checks scripts/, the root tests/, and skill scripts.
-files = ["src", "tests"]
+# migrations/ holds Alembic's env.py and the revisions it generates.
+files = ["src", "tests", "migrations"]
 python_version = "3.14"
 strict = true
 warn_return_any = true
@@ -116,7 +125,9 @@ addopts = [
     "--import-mode=importlib",
     "--strict-markers",
     "--strict-config",
+    "-m", "not postgres",
 ]
+markers = ["postgres: requires a disposable PostgreSQL database and the postgres extra"]
 # Any warning fails the run, so a deprecation surfaces here before the upgrade
 # that removes the deprecated path. Silence one only by a narrow entry with a
 # reason comment and a follow-up issue (changing-gates).

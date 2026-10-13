@@ -49,21 +49,37 @@ Stop at the first tier that shows what the change does.
 ## Set every `MY_APP_*` setting explicitly
 
 The developer's shell may export `MY_APP_*` variables — `MY_APP_DATABASE_URL` pointing
-at their real data, for one. Every run clears the whole prefix and sets exactly the
-settings it depends on:
+at their real data, for one. `Settings` also reads module-relative `backend/.env`.
+An unset variable can be filled from that file, so clear inherited prefixed variables
+and then set every current setting explicitly: database URL, CORS origins, log level, and log format. An
+empty value wins over the file and selects the default. Add each future setting here.
 
 ```bash
-env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port"
+env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= MY_APP_LOG_LEVEL= MY_APP_LOG_FORMAT= uv run --locked uvicorn my_app.api.app:create_app --factory --no-access-log --port "$port"
 ```
 
-Leave `MY_APP_DATABASE_URL` out for the in-memory store, or point it at a file in a
-directory from `mktemp -d`, outside the checkout (`db="sqlite:///$(mktemp -d)/todos.db"`);
-a relative `sqlite:///todos.db` would create the file in the working directory. Set it in
-the same shell command that starts the server: an agent's shell does not keep an
-exported variable from one call to the next, so a server started later would silently
-use the developer's environment instead.
+Set `MY_APP_DATABASE_URL=` for the in-memory store, or point it at a file in a
+directory from `mktemp -d`, outside the checkout
+(`db="sqlite+aiosqlite:///$(mktemp -d)/todos.db"`); a relative path would create the
+file in the working directory. Never point it at `backend/var/dev.db`, the developer's
+database. The app never creates its schema, so migrate the scratch file first, in the
+same shell command (**BACKGROUND:** `persisting-data`):
+
+```bash
+env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL="$db" MY_APP_CORS_ORIGINS= MY_APP_LOG_LEVEL= MY_APP_LOG_FORMAT= uv run --locked alembic -c backend/alembic.ini upgrade head
+```
+
+Set the variable in the same shell command that starts the server: an agent's shell
+does not keep an exported variable from one call to the next, so a server started
+later would silently use the developer's environment instead.
 
 ## Running a server of your own
+
+Read `X-Request-ID` from the response (`curl -i`) and find that same ID in
+application logs; Problem Details carries it as `request_id`, including 500s.
+Set `MY_APP_LOG_LEVEL=` and `MY_APP_LOG_FORMAT=` explicitly in an isolated
+server's environment to retain the sample defaults rather than a developer's
+dotenv logging settings. Pass `--no-access-log` to uvicorn to keep one access line.
 
 Run the server's whole life as one foreground shell command — pick a port, check it,
 start, wait, request, stop, check again. The `trap` stops the server even when the
@@ -86,12 +102,12 @@ port=$(uv run --locked python -c 'import socket; s = socket.socket(); s.bind(("1
 log=$(mktemp)
 uv run --locked python -c "$probe" "$port"; rc=$?
 if [ "$rc" = 1 ]; then
-  env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') uv run --locked uvicorn my_app.api.app:create_app --factory --port "$port" >"$log" 2>&1 &
+  env $(env | sed -n 's/^\(MY_APP_[^=]*\)=.*/-u \1/p') MY_APP_DATABASE_URL= MY_APP_CORS_ORIGINS= MY_APP_LOG_LEVEL= MY_APP_LOG_FORMAT= uv run --locked uvicorn my_app.api.app:create_app --factory --no-access-log --port "$port" >"$log" 2>&1 &
   pid=$!
   trap 'kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null' EXIT
   if uv run --locked python -c "$ready" "$log" "$port" && kill -0 "$pid" 2>/dev/null; then
     curl -sS -i "http://127.0.0.1:$port/healthz"; echo
-    curl -sS -i -X POST "http://127.0.0.1:$port/todos" -H 'content-type: application/json' -d '{"title": "buy milk"}'; echo
+    curl -sS -i -X POST "http://127.0.0.1:$port/api/todos" -H 'content-type: application/json' -d '{"title": "buy milk"}'; echo
   else
     echo "the server did not start; nothing was sent"
   fi
@@ -122,32 +138,34 @@ fi
 - **A host that runs long commands in the background** follows the same steps; the stop
   and the final check still happen before the turn ends.
 
-The output of that script under bash and zsh, observed 2026-10-08 (the port and
-timestamps vary):
+The output collected before request-id logging was added, under bash and zsh,
+observed 2026-10-09 (the port, the
+timestamps, and the generated id vary):
 
 ```console
 HTTP/1.1 200 OK
-date: Fri, 09 Oct 2026 02:33:43 GMT
+date: Fri, 09 Oct 2026 18:06:37 GMT
 server: uvicorn
 content-length: 15
 content-type: application/json
 
 {"status":"ok"}
 HTTP/1.1 201 Created
-date: Fri, 09 Oct 2026 02:33:43 GMT
+date: Fri, 09 Oct 2026 18:06:37 GMT
 server: uvicorn
-content-length: 88
+content-length: 125
 content-type: application/json
 
-{"id":1,"title":"buy milk","completed":false,"created_at":"2026-10-09T02:33:44.128732Z"}
-nothing listening on 64300
-INFO:     Uvicorn running on http://127.0.0.1:64300 (Press CTRL+C to quit)
-INFO:     Finished server process [72803]
+{"id":"01a121d8-7aea-7490-9f79-a15feba20afd","title":"buy milk","completed":false,"created_at":"2026-10-09T18:06:37.802851Z"}
+nothing listening on 60945
+INFO:     Uvicorn running on http://127.0.0.1:60945 (Press CTRL+C to quit)
+INFO:     Finished server process [98971]
 ```
 
-The server command is the one `just dev` runs, minus `--reload`, plus `--port`. The
-in-memory store starts empty on every start; create what a request needs with a
-`POST` first.
+The server command is the one `just backend dev` serves with, minus `--reload`, plus
+`--port`; unlike `just dev`, it migrates nothing and, with `MY_APP_DATABASE_URL`
+explicitly empty, keeps to-dos in memory even when `backend/.env` sets a URL. That
+store starts empty on every start; create what a request needs with a `POST` first.
 
 ## The evidence a pull request carries
 

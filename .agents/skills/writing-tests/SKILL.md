@@ -45,6 +45,34 @@ asserts against (`designing-errors`); a script's tests (`writing-repo-scripts`).
     repository contract suite, the in-memory fake, and containers built through the
     composition root rather than wired by hand).
 
+## Async tests
+
+The repository path is async (`designing-core-logic`), so a test of a service, a port, an
+adapter, or a `Container` is an `async def` that awaits it. AnyIO's pytest plugin runs
+it; it ships with AnyIO, which Starlette already depends on, so no test dependency is
+added for it.
+
+- Mark every async test module with `pytestmark = pytest.mark.anyio` below its imports
+  (or one test with `@pytest.mark.anyio`). The marker does nothing to the module's plain
+  `def` tests. An unmarked `async def` test fails, never silently passes: pytest 8.4 and
+  later fail an async test no plugin runs.
+- `anyio_backend` in `backend/tests/conftest.py` is session-scoped and returns
+  `"asyncio"`, so every marked test runs once, on asyncio, even if `trio` is ever
+  installed. Do not redefine it in a module.
+- Run concurrent work in a task group, `async with anyio.create_task_group() as tg:`
+  with `tg.start_soon(...)` per task, as the contract suite's concurrent-adds test does;
+  never worker threads and never `asyncio.sleep` to wait for something.
+- A cleanup callback a test registers on an `AsyncExitStack` is an `async def` passed
+  with its arguments, `resources.push_async_callback(record, closed, "name")`; never a
+  coroutine object, which `aclose()` then tries to call and fails with
+  `TypeError: 'coroutine' object is not callable`.
+- `TestClient` tests stay plain `def`: the client is synchronous and runs the app on its
+  own loop (`building-api-routes`).
+- An async fixture yields what it opens and releases it after the `yield`, on the
+  test's loop. A plain `def` test gets an async fixture only when the fixture takes
+  `anyio_backend` (as `make_container` does) or the test is in an `anyio`-marked
+  module and itself `async def`.
+
 ## Expected values come from outside the code
 
 An expected value is a literal, a worked example, or the spec — never recomputed the way
@@ -110,8 +138,8 @@ checked.
 - Mock only at a boundary: I/O, network, clock, a subprocess, an external service —
   never the unit under test and never an internal collaborator.
 - Prefer a fake (a real in-memory implementation) to a mock for a repository or a store.
-  `InMemoryTodoRepository` is the core's fake and `fixed_clock` fixes time; both are
-  real code paths, so the code under test runs as it does in production.
+  `InMemoryTodoRepository` is the core's fake, `fixed_clock` fixes time, and `new_id`
+  fixes ids; all are real code paths, so the code under test runs as in production.
 - Assert on outcomes and captured arguments, not on how many times something was called
   — except when the call itself is the contract: retry or rate-limit behavior, a step
   that must be skipped, proving that no network call happened.

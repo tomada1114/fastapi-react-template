@@ -10,7 +10,7 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/healthz")
-def healthz() -> HealthResponse:
+async def healthz() -> HealthResponse:
     """Report that the process is serving requests.
 
     It touches no repository on purpose: a slow or missing database must not

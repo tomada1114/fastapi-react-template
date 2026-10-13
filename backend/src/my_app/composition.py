@@ -6,21 +6,21 @@ so swapping a repository is a change to this module only.
 
 from __future__ import annotations
 
-from contextlib import ExitStack
+import uuid
+from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Self
 
-from my_app.adapters.closed_llm import ClosedLlm
 from my_app.adapters.memory import InMemoryTodoRepository
-from my_app.adapters.sqlite import SqliteTodoRepository
-from my_app.core.errors import LlmConfigurationError
+from my_app.adapters.sql.engine import make_engine
+from my_app.adapters.sql.repository import SqlTodoRepository
 from my_app.core.services import TodoService
 
 if TYPE_CHECKING:
     from types import TracebackType
 
-    from my_app.core.ports import Clock, LlmPort, TodoRepository
+    from my_app.core.ports import Clock, IdFactory, TodoRepository
     from my_app.settings import Settings
 
 
@@ -29,24 +29,26 @@ class Container:
     """The services an entry point may call, built once per process."""
 
     todos: TodoService
-    _resources: ExitStack = field(default_factory=ExitStack, repr=False, compare=False)
+    _resources: AsyncExitStack = field(
+        default_factory=AsyncExitStack, repr=False, compare=False
+    )
 
-    def close(self) -> None:
+    async def aclose(self) -> None:
         """Release every resource the composition root registered, at most once."""
-        self._resources.close()
+        await self._resources.aclose()
 
-    def __enter__(self) -> Self:
+    async def __aenter__(self) -> Self:
         """Keep ownership until the surrounding context exits."""
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> bool:
         """Forward exception details and suppression to registered resources."""
-        return bool(self._resources.__exit__(exc_type, exc_value, traceback))
+        return bool(await self._resources.__aexit__(exc_type, exc_value, traceback))
 
 
 def utc_now() -> datetime:
@@ -54,67 +56,46 @@ def utc_now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def build_container(settings: Settings, clock: Clock = utc_now) -> Container:
+def build_container(
+    settings: Settings, clock: Clock = utc_now, new_id: IdFactory = uuid.uuid7
+) -> Container:
     """Choose the adapters ``settings`` asks for and wire them into services.
+
+    A plain function, not a coroutine: nothing here awaits, and a bad setting
+    must still fail in ``create_app``, before any request is served. Being
+    synchronous, it cannot await the cleanup of a partly built stack, so a build
+    that raises leaves registered callbacks un-run. An adapter builder therefore
+    registers cleanup with ``resources.push_async_callback(...)`` only for an
+    object that opens nothing when constructed (an engine that connects on
+    first use, say), so an error later in the build leaves nothing open.
 
     Args:
         settings: Selects the repository through ``database_url``.
         clock: Stamps new to-dos; tests pass a fixed one.
+        new_id: Gives new to-dos their ids; ``uuid.uuid7``, whose ids ascend
+            in creation order, unless a test passes a predictable factory.
 
     Returns:
         The services and their owned resources, ready for an entry point to
-        call. Close the container, or use it as a context manager, when done.
+        call. Await ``aclose()``, or use it with ``async with``, when done.
     """
-    with ExitStack() as resources:
-        repository = _build_repository(settings, resources)
-        todos = TodoService(repository, clock)
-        return Container(todos=todos, _resources=resources.pop_all())
+    resources = AsyncExitStack()
+    repository = _build_repository(settings, resources)
+    todos = TodoService(repository, clock, new_id)
+    return Container(todos=todos, _resources=resources)
 
 
-def _build_repository(settings: Settings, _resources: ExitStack) -> TodoRepository:
-    """Return the SQLite repository when a path is configured, else memory.
+def _build_repository(settings: Settings, resources: AsyncExitStack) -> TodoRepository:
+    """Return the SQL repository when a database URL is configured, else memory.
 
-    Neither current adapter holds a resource between calls. A resource-holding
-    adapter registers its cleanup on ``_resources`` before returning.
+    The SQL repository's engine is the one resource the container owns: it
+    connects on first use, so registering ``engine.dispose`` here leaves
+    nothing open if the build fails later, under the rule ``build_container``
+    states. The database must already be migrated; nothing here creates a
+    table.
     """
-    if (path := settings.sqlite_path) is not None:
-        return SqliteTodoRepository(path)
-    return InMemoryTodoRepository()
-
-
-def build_llm(settings: Settings) -> LlmPort:
-    """Return the ``LlmPort`` the settings ask for: closed unless a key is set.
-
-    Not wired into ``Container``: no service consumes an LLM yet. A service
-    that does takes ``llm: LlmPort`` in its constructor, and
-    ``build_container`` passes it ``build_llm(settings)``.
-
-    Args:
-        settings: Opens the LLM through ``openrouter_api_key``, and picks the
-            default model through ``llm_model``.
-
-    Returns:
-        ``ClosedLlm`` when no key is set, so neither the OpenRouter adapter nor
-        ``httpx`` is imported; otherwise ``OpenRouterLlm``.
-
-    Raises:
-        LlmConfigurationError: If a key is set but ``httpx`` is not installed,
-            because the ``ai`` extra was left out.
-    """
-    if settings.openrouter_api_key is None:
-        return ClosedLlm()
-    try:
-        from my_app.adapters.openrouter import (  # noqa: PLC0415 - httpx comes only with the optional `ai` extra
-            OpenRouterLlm,
-        )
-    except ModuleNotFoundError as error:
-        if error.name != "httpx":
-            raise
-        msg = (
-            "OPENROUTER_API_KEY is set but httpx is not installed: "
-            "install the 'ai' extra (uv sync --extra ai)"
-        )
-        raise LlmConfigurationError(msg) from error
-    return OpenRouterLlm(
-        settings.openrouter_api_key.get_secret_value(), model=settings.llm_model
-    )
+    if settings.database_url is None:
+        return InMemoryTodoRepository()
+    engine = make_engine(settings.database_url)
+    resources.push_async_callback(engine.dispose)
+    return SqlTodoRepository(engine)

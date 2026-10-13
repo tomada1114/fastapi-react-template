@@ -6,6 +6,11 @@ HTTP status), so the core never needs to know which one called it.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, ClassVar
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
 
 class AppError(Exception):
     """Base class for every error the application raises on purpose.
@@ -14,11 +19,15 @@ class AppError(Exception):
     reports to its user, from a bug, which should surface as a traceback.
     """
 
+    code: ClassVar[str] = "app_error"
+
 
 class TodoNotFoundError(AppError):
     """Raised when no to-do has the requested id."""
 
-    def __init__(self, todo_id: int) -> None:
+    code: ClassVar[str] = "todo_not_found"
+
+    def __init__(self, todo_id: UUID) -> None:
         """Keep the missing id so callers can report it without parsing text.
 
         The id is the exception's only argument, so pickling (as process
@@ -31,38 +40,30 @@ class TodoNotFoundError(AppError):
         self.todo_id = todo_id
 
     def __str__(self) -> str:
-        """Return the message entry points show their users."""
+        """Return the message entry points show their users.
+
+        A ``UUID`` formats as its canonical hyphenated form, whatever spelling
+        the caller parsed it from.
+        """
         return f"To-do {self.todo_id} not found"
 
 
 class InvalidTodoError(AppError):
     """Raised when input would create a to-do that breaks a domain rule."""
 
-
-# The LLM family. Each is message-only: the message is the one argument, so
-# pickling rebuilds an equal error. Every message is client-safe: it never
-# carries the API key, a prompt, a model's output, or the provider's own error
-# text, which can echo the prompt.
+    code: ClassVar[str] = "invalid_todo"
 
 
-class LlmError(AppError):
-    """Base for every failure an ``LlmPort`` reports."""
+class InvalidCursorError(AppError):
+    """Raised when a page cursor is not one the store issued.
 
-
-class LlmConfigurationError(LlmError):
-    """The LLM is not usable as configured.
-
-    No key, the ``ai`` extra missing, or a key or account the provider rejected.
+    The message never echoes the cursor: it is client input of any length.
     """
 
-
-class LlmRateLimitError(LlmError):
-    """The provider is rate-limiting requests and the retry bound or deadline ran out."""
+    code: ClassVar[str] = "invalid_cursor"
 
 
-class LlmTimeoutError(LlmError):
-    """The call did not finish within its timeout, or the provider timed out."""
+class InvalidPageLimitError(AppError):
+    """Raised when a page would hold fewer than one item or more than the maximum."""
 
-
-class LlmProviderError(LlmError):
-    """The provider failed or answered with something that is not a usable completion."""
+    code: ClassVar[str] = "invalid_page_limit"

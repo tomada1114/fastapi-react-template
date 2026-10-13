@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] || exit 0; cd \"$CLAUDE_PROJECT_DIR\" || exit 1; if command -v just >/dev/null 2>&1; then just install; else uvx --from rust-just just install; fi"
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] || exit 0; cd \"$CLAUDE_PROJECT_DIR\" || exit 1; v=$(just --version 2>/dev/null | cut -d \" \" -f 2); if [ -n \"$v\" ] && [ \"$(printf \"%s\\n\" 1.42.3 \"$v\" | sort -V | head -n 1)\" = 1.42.3 ]; then just install; else uvx --from 'rust-just>=1.42.3' just install; fi"
           }
         ]
       }

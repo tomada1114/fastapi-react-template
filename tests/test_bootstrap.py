@@ -329,7 +329,7 @@ def test_bootstrap_writes_the_year_and_author_into_the_license(sample_app):
 
 def test_bootstrap_keeps_the_relative_exclude_newer_window(sample_app):
     pyproject = (sample_app / "pyproject.toml").read_text(encoding="utf-8")
-    assert tomllib.loads(pyproject)["tool"]["uv"]["exclude-newer"] == "14 days"
+    assert tomllib.loads(pyproject)["tool"]["uv"]["exclude-newer"] == "7 days"
 
 
 # --- REQ-002: no email address ---------------------------------------------

@@ -1,115 +1,171 @@
-"""Runtime configuration read from ``MY_APP_``-prefixed environment variables.
-
-The one exception is ``OPENROUTER_API_KEY``, read unprefixed (see ``Settings``).
-"""
+"""Runtime configuration from ``MY_APP_`` environment variables and backend/.env."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AnyHttpUrl, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_PREFIX = "MY_APP_"
-SQLITE_URL_PREFIX = "sqlite:///"
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+SQLITE_URL_PREFIX = "sqlite+aiosqlite:///"
+POSTGRESQL_URL_PREFIX = "postgresql+asyncpg://"
+# The blocking driver's form, refused with a pointer to the async one.
+SYNC_SQLITE_URL_PREFIX = "sqlite:///"
 SQLITE_MEMORY_PATH = ":memory:"
-# The model a call that names none is sent to; the integrating-llm skill cites
-# where it was found in OpenRouter's catalogue.
-DEFAULT_LLM_MODEL = "deepseek/deepseek-v4.1-flash"
-OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
+CORS_ORIGIN_PATTERN = re.compile(r"^https?://[^/\s?#]+$")
 
 
 class Settings(BaseSettings):
     """Configuration shared by every entry point.
 
     Pydantic belongs here because this is a deserialization boundary: strings
-    from the environment become typed, validated values before the
+    from the environment or optional backend/.env become typed values before the
     composition root sees them.
 
     Attributes:
-        database_url: ``sqlite:///<path>`` selects the SQLite repository at
-            that file; unset (or set to an empty string) keeps to-dos in
+        database_url: A SQLAlchemy URL for an async driver —
+            ``sqlite+aiosqlite:///<path>`` for a SQLite file or
+            ``postgresql+asyncpg://...`` for a PostgreSQL server — selects the
+            SQL repository; unset (or set to an empty string) keeps to-dos in
             memory for the life of the process. Read from
-            ``MY_APP_DATABASE_URL``.
-        openrouter_api_key: The OpenRouter API key; unset (or blank) keeps the
-            LLM closed. Read from ``OPENROUTER_API_KEY``, unprefixed, the name
-            OpenRouter's own documentation and the sibling templates use;
-            ``MY_APP_OPENROUTER_API_KEY`` is not read. A ``SecretStr`` keeps it
-            out of ``repr`` and logs.
-        llm_model: The OpenRouter model id a call that names none is sent to;
-            unset (or blank) means ``DEFAULT_LLM_MODEL``. Not validated
-            further: OpenRouter's catalogue is the authority. Read from
-            ``MY_APP_LLM_MODEL``.
+            ``MY_APP_DATABASE_URL``. The database must already be migrated
+            (``just backend db-upgrade``): the app never creates its schema.
+        cors_origins: Exact HTTP(S) origins allowed to call the API, from
+            comma-separated ``MY_APP_CORS_ORIGINS``; empty disables CORS.
+        log_level: DEBUG, INFO, WARNING or ERROR, case-insensitive; blank uses INFO.
+        log_format: text or JSON lines; blank uses text.
     """
 
-    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX)
+    model_config = SettingsConfigDict(
+        env_prefix=ENV_PREFIX,
+        env_file=ENV_FILE,
+        env_file_encoding="utf-8",
+        dotenv_filtering="match_prefix",
+    )
 
     database_url: str | None = None
-    # pydantic-settings does not apply env_prefix to an aliased field, which is
-    # what keeps the key unprefixed; the field name stays usable in code.
-    openrouter_api_key: SecretStr | None = Field(
-        default=None,
-        validation_alias=AliasChoices(OPENROUTER_API_KEY_ENV, "openrouter_api_key"),
-    )
-    llm_model: str = DEFAULT_LLM_MODEL
+    cors_origins: Annotated[list[str], NoDecode] = []
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["text", "json"] = "text"
 
-    @field_validator("openrouter_api_key", mode="before")
+    @field_validator("log_level", mode="before")
     @classmethod
-    def _blank_key_is_unset(cls, value: object) -> object:
-        """Strip the key, and treat an empty one as unset.
+    def _parse_log_level(cls, value: str) -> str:
+        """Keep levels case-insensitive and blank values at the default."""
+        return value.upper() if value else "INFO"
 
-        ``OPENROUTER_API_KEY=`` in a shell or an env file means "no key", and
-        it must keep the LLM closed rather than send an empty bearer token.
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def _parse_log_format(cls, value: str) -> str:
+        """Treat an empty environment value as the text default."""
+        return value or "text"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+        """Accept exact browser origins, with blanks meaning CORS is disabled.
+
+        Raises:
+            ValueError: If an item has no HTTP scheme or includes a path.
         """
-        if isinstance(value, SecretStr):
-            value = value.get_secret_value()
-        if isinstance(value, str):
-            return value.strip() or None
-        return value
-
-    @field_validator("llm_model")
-    @classmethod
-    def _blank_model_is_the_default(cls, value: str) -> str:
-        """Strip the model id, and fall back to the default when it is blank."""
-        return value.strip() or DEFAULT_LLM_MODEL
+        items = value.split(",") if isinstance(value, str) else value
+        origins: list[str] = []
+        for item in items:
+            origin = item.strip()
+            if not origin:
+                continue
+            normalized = _normalize_browser_origin(origin)
+            if normalized is None:
+                msg = f"invalid CORS origin {origin!r}: use http(s)://host[:port] without a path"
+                raise ValueError(msg)
+            if normalized not in origins:
+                origins.append(normalized)
+        return origins
 
     @field_validator("database_url")
     @classmethod
-    def _require_sqlite_file_url(cls, value: str | None) -> str | None:
-        """Reject any URL the SQLite repository could not use as a file.
+    def _require_async_database_url(cls, value: str | None) -> str | None:
+        """Reject any URL the SQL repository could not open.
 
-        Failing here, at startup, beats failing on the first request. An empty
-        value counts as unset: ``MY_APP_DATABASE_URL=`` in a shell or an env
-        file usually means "no database", not a malformed one.
+        String rules only, so this module imports no database library. Failing
+        here, at startup, beats failing on the first request. An empty value
+        counts as unset: ``MY_APP_DATABASE_URL=`` in a shell or an env file
+        usually means "no database", not a malformed one.
 
         Raises:
-            ValueError: If the URL is not ``sqlite:///<file path>``.
+            ValueError: If the URL names no supported async driver, or a
+                SQLite target that is not a file.
         """
         if not value:
             return None
-        path = value.removeprefix(SQLITE_URL_PREFIX)
-        if path == value or not path:
-            msg = f"must look like '{SQLITE_URL_PREFIX}<path>', got {value!r}"
-            raise ValueError(msg)
-        if path == SQLITE_MEMORY_PATH:
+        if value.startswith(SQLITE_URL_PREFIX):
+            _check_sqlite_path(value, value.removeprefix(SQLITE_URL_PREFIX))
+        elif value.startswith(POSTGRESQL_URL_PREFIX):
+            if value == POSTGRESQL_URL_PREFIX:
+                msg = (
+                    f"must name a server after '{POSTGRESQL_URL_PREFIX}', got {value!r}"
+                )
+                raise ValueError(msg)
+        elif value.startswith(SYNC_SQLITE_URL_PREFIX):
             msg = (
-                f"{value!r} is not supported: the repository opens a new "
-                "connection per call, so an in-memory SQLite database would be "
-                "empty every time. Unset the variable to use the in-memory store."
+                f"{value!r} names the blocking sqlite driver; use "
+                f"'{SQLITE_URL_PREFIX}<path>' instead"
             )
             raise ValueError(msg)
-        if path.endswith("/"):
-            msg = f"must name a file, not a directory, got {value!r}"
+        else:
+            msg = (
+                f"must start with '{SQLITE_URL_PREFIX}' or "
+                f"'{POSTGRESQL_URL_PREFIX}', got {value!r}"
+            )
             raise ValueError(msg)
         return value
 
-    @property
-    def sqlite_path(self) -> Path | None:
-        """The SQLite file ``database_url`` names, or None for the in-memory store.
 
-        ``sqlite:///app.db`` is relative to the working directory and
-        ``sqlite:////var/lib/app.db`` is absolute, as in SQLAlchemy's URLs.
-        """
-        if self.database_url is None:
-            return None
-        return Path(self.database_url.removeprefix(SQLITE_URL_PREFIX))
+def _check_sqlite_path(url: str, path: str) -> None:
+    """Refuse a SQLite target that is not a file the pool can share.
+
+    Raises:
+        ValueError: If ``path`` is empty, the in-memory database, or a
+            directory.
+    """
+    if not path:
+        msg = f"must name a file after '{SQLITE_URL_PREFIX}', got {url!r}"
+        raise ValueError(msg)
+    if path == SQLITE_MEMORY_PATH:
+        msg = (
+            f"{url!r} is not supported: each pooled connection would open its "
+            "own empty database. Unset the variable to use the in-memory store."
+        )
+        raise ValueError(msg)
+    if path.endswith("/"):
+        msg = f"must name a file, not a directory, got {url!r}"
+        raise ValueError(msg)
+
+
+def _normalize_browser_origin(origin: str) -> str | None:
+    """Reject origin strings a browser cannot send in its Origin header."""
+    if CORS_ORIGIN_PATTERN.fullmatch(origin) is None or "*" in origin or "\\" in origin:
+        return None
+    try:
+        parsed = urlsplit(origin)
+        # Access validates both the port range and its numeric spelling.
+        _ = parsed.port
+    except ValueError:
+        return None
+    if not parsed.hostname or (
+        parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.netloc.endswith(":")
+    ):
+        return None
+    try:
+        return str(AnyHttpUrl(origin)).removesuffix("/")
+    except ValueError:
+        return None

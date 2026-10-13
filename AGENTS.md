@@ -63,6 +63,9 @@ just test            # Run tests in parallel: just backend test, then the root s
 just backend lint    # Lint and type-check the backend (ruff, ruff format --check, mypy strict)
 just backend fmt     # Format the backend
 just backend test    # Run the backend tests in parallel with branch coverage (80% floor)
+just backend test-postgres # Run the shared contract and migrations on a disposable PostgreSQL database
+just backend db-upgrade # Migrate MY_APP_DATABASE_URL's database (default: backend/var/dev.db) to the newest revision
+just backend db-revision MESSAGE # db-upgrade, then autogenerate a revision from a change to adapters/sql/tables.py
 just check           # Mutating dev check: fmt → lint → test
 just lock            # Update uv.lock after dependency changes
 just lock-check      # Fail when uv.lock is out of date, without changing it
@@ -82,7 +85,7 @@ just clean           # Remove build artifacts and caches
 
 ```bash
 just dev             # Run just backend dev; runs until stopped
-just backend dev     # Serve the API on http://127.0.0.1:8000 with auto-reload; runs until stopped
+just backend dev     # Run db-upgrade, then serve the API on http://127.0.0.1:8000 with auto-reload; runs until stopped
 ```
 
 `just dev` and `just backend dev` are the developer's server: never start, stop,
@@ -139,9 +142,9 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `create-pr` | opening or updating a pull request by hand |
 | `designing-core-logic` | adding a use case, domain rule, port, adapter, or `MY_APP_*` setting, or wiring the composition root |
 | `designing-errors` | adding a failure mode, or choosing the HTTP status a domain error becomes |
-| `integrating-llm` | calling a model through LlmPort, wiring an LLM-backed route, testing with FakeLlm, changing the OpenRouter adapter or its retries and deadline, setting OPENROUTER_API_KEY or MY_APP_LLM_MODEL, or removing the LLM layer |
 | `managing-dependencies` | adding, bumping, or removing a package, or changing the `exclude-newer` window, its Dependabot cooldown, or a one-package exception |
 | `merging-dependency-prs` | landing open Dependabot pull requests (GitHub Actions and `uv` bumps) |
+| `persisting-data` | changing a table in `backend/src/my_app/adapters/sql/`, writing or reviewing an Alembic revision under `backend/migrations/`, running `just backend db-upgrade` or `db-revision`, a SQL repository's statements, or the `AsyncEngine`'s lifecycle |
 | `placing-tests` | adding a test file or a fixture, running one test, or a coverage run below the floor |
 | `recording-architecture-decisions` | a change owes an ADR, or an ADR under `docs/architecture/` is proposed, accepted, or superseded |
 | `running-the-app` | running a server of your own to observe a change, and stopping that server afterwards |

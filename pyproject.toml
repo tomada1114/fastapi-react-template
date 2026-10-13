@@ -29,10 +29,10 @@ dev = [
 # relative `exclude-newer` ... values in lockfiles", changelogs/0.11.x.md), so an
 # older uv could rewrite the lock and fail `uv lock --check`.
 required-version = ">=0.11.8"
-# `uv lock` and `uv sync` ignore any release younger than 14 days. It must equal
+# `uv lock` and `uv sync` ignore any release younger than 7 days. It must equal
 # the `uv` entry's `cooldown.default-days` in .github/dependabot.yml, so
 # Dependabot almost never proposes a version this window refuses to lock.
-exclude-newer = "14 days"
+exclude-newer = "7 days"
 
 [tool.uv.workspace]
 members = ["backend"]
@@ -116,7 +116,7 @@ select = [
     # --- Ruff-specific ---
     "RUF",  # ruff-specific rules
     # --- Layer boundaries ---
-    "TID251", # banned-api: keeps the core framework-free (see banned-api below)
+    "TID251", # backend/ extends this selection with its banned-api table
 ]
 ignore = [
     "E501",   # line too long — handled by formatter
@@ -152,7 +152,6 @@ runtime-evaluated-decorators = [
 # its banned-api layer boundary.
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
-    "TID251",  # tests drive the API (TestClient/httpx)
     "S101",    # assert is fine in tests
     "ARG001",  # unused arguments (fixtures)
     "PLR2004", # magic numbers in tests

@@ -2,48 +2,51 @@
 
 from __future__ import annotations
 
-import threading
+from bisect import bisect_right
 from typing import TYPE_CHECKING
 
+from my_app.adapters.cursor import decode_after, page_of
 from my_app.core.errors import TodoNotFoundError
-from my_app.core.models import Todo
 
 if TYPE_CHECKING:
-    from my_app.core.models import TodoDraft
+    from uuid import UUID
+
+    from my_app.core.models import Page, Todo
 
 
 class InMemoryTodoRepository:
     """Keep to-dos in a dict for the life of the process.
 
-    FastAPI runs synchronous endpoints in a thread pool, so every access takes
-    a lock: two concurrent creates must never receive the same id.
+    Every method runs on the event loop and never awaits, so a read-modify-write
+    of the dict cannot be interleaved with another task's: a duplicate-id check
+    and the insert it guards happen as one step, and no lock is needed. An
+    ``await`` added between reading and writing ``_todos`` would break that.
     """
 
     def __init__(self) -> None:
-        """Start empty, with ids counting up from 1."""
-        self._todos: dict[int, Todo] = {}
-        self._last_id = 0
-        self._lock = threading.Lock()
+        """Start empty."""
+        self._todos: dict[UUID, Todo] = {}
 
-    def add(self, draft: TodoDraft) -> Todo:
-        """Store a draft under the next id.
+    async def add(self, todo: Todo) -> Todo:
+        """Store a new to-do under its own id.
 
         Args:
-            draft: The validated to-do to store.
+            todo: The to-do to store.
 
         Returns:
-            The stored to-do. The counter never goes back, so a deleted id is
-            never reused.
-        """
-        with self._lock:
-            self._last_id += 1
-            todo = Todo(
-                id=self._last_id, title=draft.title, created_at=draft.created_at
-            )
-            self._todos[todo.id] = todo
-            return todo
+            ``todo``, now stored.
 
-    def get(self, todo_id: int) -> Todo:
+        Raises:
+            ValueError: If a to-do with this id is already stored; it is left
+                unchanged.
+        """
+        if todo.id in self._todos:
+            msg = f"A to-do with id {todo.id} is already stored"
+            raise ValueError(msg)
+        self._todos[todo.id] = todo
+        return todo
+
+    async def get(self, todo_id: UUID) -> Todo:
         """Fetch one to-do.
 
         Args:
@@ -55,19 +58,27 @@ class InMemoryTodoRepository:
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        with self._lock:
-            return self._require(todo_id)
+        return self._require(todo_id)
 
-    def list_all(self) -> list[Todo]:
-        """Fetch every to-do.
+    async def list_page(self, cursor: str | None, limit: int) -> Page[Todo]:
+        """Fetch one page of to-dos in ascending id order.
+
+        Args:
+            cursor: ``None`` for the first page, else a ``next_cursor``.
+            limit: The most to-dos the page holds.
 
         Returns:
-            The to-dos in ascending id order.
-        """
-        with self._lock:
-            return [self._todos[todo_id] for todo_id in sorted(self._todos)]
+            The page, with a cursor when more to-dos follow it.
 
-    def update(self, todo: Todo) -> Todo:
+        Raises:
+            InvalidCursorError: If ``cursor`` is not one this store issued.
+        """
+        ids = sorted(self._todos)
+        start = 0 if cursor is None else bisect_right(ids, decode_after(cursor))
+        fetched = [self._todos[todo_id] for todo_id in ids[start : start + limit + 1]]
+        return page_of(fetched, limit)
+
+    async def update(self, todo: Todo) -> Todo:
         """Replace the stored to-do that has ``todo.id``.
 
         Args:
@@ -79,12 +90,11 @@ class InMemoryTodoRepository:
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        with self._lock:
-            self._require(todo.id)
-            self._todos[todo.id] = todo
-            return todo
+        self._require(todo.id)
+        self._todos[todo.id] = todo
+        return todo
 
-    def delete(self, todo_id: int) -> None:
+    async def delete(self, todo_id: UUID) -> None:
         """Remove one to-do.
 
         Args:
@@ -93,12 +103,11 @@ class InMemoryTodoRepository:
         Raises:
             TodoNotFoundError: If no to-do has this id.
         """
-        with self._lock:
-            self._require(todo_id)
-            del self._todos[todo_id]
+        self._require(todo_id)
+        del self._todos[todo_id]
 
-    def _require(self, todo_id: int) -> Todo:
-        """Return the stored to-do or raise; the caller must hold the lock."""
+    def _require(self, todo_id: UUID) -> Todo:
+        """Return the stored to-do or raise ``TodoNotFoundError``."""
         try:
             return self._todos[todo_id]
         except KeyError:

@@ -19,67 +19,130 @@ A short description of what this application does.
 
 ```bash
 uv sync --locked
-just dev   # HTTP API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C to stop)
-# without Just: uv run --locked uvicorn my_app.api.app:create_app --factory --reload
+just dev   # migrate backend/var/dev.db, then serve the API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C to stop)
+# without Just, from backend/:
+#   mkdir -p var
+#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked alembic upgrade head
+#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked uvicorn my_app.api.app:create_app --factory --reload --no-access-log
 ```
 
 With the server running, from another terminal:
 
 ```bash
 curl http://127.0.0.1:8000/healthz   # {"status":"ok"}
-curl -X POST http://127.0.0.1:8000/todos \
+curl -X POST http://127.0.0.1:8000/api/todos \
   -H 'Content-Type: application/json' -d '{"title": "buy milk"}'
-curl http://127.0.0.1:8000/todos
+curl http://127.0.0.1:8000/api/todos
 ```
 
 The interactive API docs are at <http://127.0.0.1:8000/docs>.
 
 | HTTP | Result |
 |---|---|
-| `POST /todos` `{"title": "..."}` | 201 with the new to-do |
-| `GET /todos` | every to-do, oldest first (`[]` when empty) |
-| `POST /todos/{id}/complete` | the completed to-do |
-| `DELETE /todos/{id}` | 204 |
+| `POST /api/todos` `{"title": "..."}` | 201 with the new to-do, `{"id": "<uuid>", "title": "...", "completed": false, "created_at": "..."}` |
+| `GET /api/todos?cursor=<cursor>&limit=<n>` | one page, oldest first: `{"items": [<to-do>, ...], "next_cursor": "<cursor>" \| null}` |
+| `POST /api/todos/{id}/complete` | the completed to-do |
+| `DELETE /api/todos/{id}` | 204 |
 
-An unknown id is a 404 from the API; a title that is empty or longer than 200
-characters after trimming is a 422. A route you build on the optional LLM
-layer answers 503 while no key is set, 429 when the provider keeps
-rate-limiting, 504 when the call times out, and 502 for any other provider
-failure. Either way the body is `{"detail": "<reason>"}` — only a request that
-does not parse at all gets FastAPI's list-shaped `detail`.
+A to-do's `id` is a UUID (version 7) the application generates, so ids sort in
+creation order. `GET /api/todos` returns at most `limit` to-dos (default 50, at most
+100) and pages by cursor: pass a page's `next_cursor` back as `cursor` to fetch
+the next page; `next_cursor` is `null` on the last one. `GET /api/todos` with no
+parameters is the first page, `{"items": [], "next_cursor": null}` when empty.
+
+Every error uses RFC 9457 `application/problem+json`: `type: "about:blank"`,
+`title` (the status phrase), numeric `status`, client-safe `detail`, and a stable
+`code`. Clients branch on `code` and ignore unknown extensions.
+
+An unknown to-do is 404 `todo_not_found`. An invalid title, cursor, or page limit
+is 422 `invalid_todo`, `invalid_cursor`, or `invalid_page_limit`. An unmapped
+domain error falls back to 400 with its own code (`AppError` uses `app_error`).
+A request that does not parse is 422 `request_invalid`, detail `Request validation
+failed`, and `errors: [{"loc": [...], "message": "...", "type": "..."}]`;
+raw input and server context are omitted. Domain errors have no `errors`.
+
+Unknown routes are 404 `not_found`; unsupported methods are 405
+`method_not_allowed` with the `Allow` header. Other HTTP exceptions use
+`http_error` and keep protocol headers; body type, length, and encoding describe
+the new representation. Unregistered codes use title `Unknown Status`,
+and statuses forbidding a body remain empty.
+Rejected CORS preflights are 400 `http_error` Problem Details and retain the
+CORS policy headers; allowed preflights remain 200 with body `OK`.
+Unexpected exceptions return 500 `internal_error` with detail `An unexpected
+error occurred`, while the traceback is logged on `my_app.api.errors`.
 
 ## Configuration
 
-Settings are read from environment variables prefixed with `MY_APP_`; the
-one exception is `OPENROUTER_API_KEY`, which keeps the name OpenRouter uses.
+Settings read environment variables prefixed with `MY_APP_`, then optional UTF-8
+`backend/.env`. The file's path is resolved from the module, so changing the
+working directory does not change which file is read. A missing file is fine.
+
+To start with a local copy (gitignored):
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+The sample lists every setting with an empty value and its default. Environment
+values take precedence over the file, including an explicit empty value: blanks
+mean unset/default. Quoted file values are supported. Unknown `MY_APP_` keys in
+the file fail at startup (Pydantic names the normalized field); unrelated,
+unprefixed keys are ignored.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `MY_APP_DATABASE_URL` | unset | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite:///<path>` stores them in a SQLite file at `<path>`, created on first use; `sqlite:///:memory:` and a path ending in `/` are rejected at startup. |
-| `OPENROUTER_API_KEY` | unset | Unset (or blank) keeps the optional LLM layer closed: an LLM-backed route answers 503, and neither `httpx` nor the OpenRouter adapter is imported. Set, it opens the OpenRouter adapter, which needs the `ai` extra. |
-| `MY_APP_LLM_MODEL` | `deepseek/deepseek-v4.1-flash` | The OpenRouter model a call that names none is sent to; blank means the default. |
+| `MY_APP_LOG_LEVEL` | `INFO` | Case-insensitive `DEBUG`, `INFO`, `WARNING`, or `ERROR`; blank keeps the default. |
+| `MY_APP_LOG_FORMAT` | `text` | `text` or one JSON object per line with timestamp, level, logger, message, request ID, access fields, and exception type/traceback when present; blank keeps text. |
+| `MY_APP_CORS_ORIGINS` | empty (CORS disabled) | Comma-separated HTTP(S) origins, e.g. `http://localhost:5173,https://app.example.com`. Spaces and empty items are removed, hosts use lowercase/punycode, default ports are removed, and duplicates kept once. Paths, queries, fragments, user info, invalid ports, trailing slashes, wildcards, and origins without an HTTP(S) scheme are rejected at startup. JSON requests from listed origins are allowed without credentials. |
+| `MY_APP_DATABASE_URL` | unset (`just dev`: `sqlite+aiosqlite:///./var/dev.db`) | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite+aiosqlite:///<path>` stores them in a SQLite file at `<path>`, relative to the working directory (an absolute path adds a fourth slash: `sqlite+aiosqlite:////var/lib/todos.db`). `postgresql+asyncpg://<user>:<password>@<host>/<database>` names a PostgreSQL database; include the optional `postgres` extra in workspace commands (`uv run --locked --directory backend --extra postgres ...`) or install the built app with that extra. Anything else is rejected at startup, naming the fix: a URL without the async driver (`sqlite:` or `postgresql:` alone), an in-memory SQLite database (`:memory:`), and a path ending in `/`. |
+
+The database recipes automatically select the `postgres` extra for PostgreSQL
+URLs and keep the default environment for SQLite.
+
+Every HTTP response carries `X-Request-ID`. Send 1–128 ASCII letters, digits,
+dots, underscores or hyphens to retain your own ID; other values receive a UUIDv7.
+Problem Details includes the same `request_id`, including 500 and CORS failures.
+Application logs carry that ID; the access record contains method, path, status,
+and duration, without query strings or request bodies. Paths escape control
+characters and Unicode to preserve one physical access line. `just backend dev` disables
+uvicorn's duplicate access log.
+
+The database must be migrated before the API uses it: the app never creates or
+alters a table. `just backend db-upgrade` migrates the database
+the environment or `backend/.env` selects to the newest revision, and `just dev`
+runs it first (see AGENTS.md's Quick Reference for `db-revision`, which writes
+a new one).
+The database recipes resolve the URL once using `Settings` and give that same
+URL to both migration and server. If the result is unset or empty, they use
+`sqlite+aiosqlite:///./var/dev.db`, including when `.env` is a copy of the sample.
+A direct API factory or uvicorn run with no resolved URL uses the in-memory store.
 
 > [!NOTE]
-> Without `MY_APP_DATABASE_URL` the server forgets every to-do when it stops,
-> and `just dev` restarts it on every source change. The in-memory default
-> suits tests and a quick look; point the variable at a SQLite file for
-> anything you want to keep.
+> `just dev` keeps to-dos in `backend/var/dev.db` (gitignored) unless
+> `MY_APP_DATABASE_URL` in the environment or `backend/.env` selects another file,
+> so they survive the restart on every source change. A direct server run with
+> `MY_APP_DATABASE_URL=` overrides the file and forgets its to-dos when it stops.
 
-The LLM layer is optional: `uv sync --extra ai` (or `pip install 'my-app[ai]'`)
-installs `httpx` for the OpenRouter adapter. The `integrating-llm` skill
-(`.agents/skills/integrating-llm/SKILL.md`) covers calling it, testing with
-the fake, and removing it.
+> [!WARNING]
+> A database file the app's earlier stdlib-`sqlite3` store wrote is not
+> migrated: its table predates the migrations, so `just backend db-upgrade`
+> fails on it. Delete the file, or point `MY_APP_DATABASE_URL` at a new one.
+> A database nobody migrated answers every to-do request with a 500.
 
 ## Architecture
 
 ```
 backend/src/my_app/
 ├── core/            # Domain model, ports (typing.Protocol), services, errors — no frameworks
-├── adapters/        # In-memory and SQLite repositories; fake, closed, and OpenRouter LLM adapters
+├── adapters/        # In-memory and SQL repositories (SQLAlchemy asyncio Core; SQLite or PostgreSQL)
 ├── api/             # FastAPI app factory, routers, request/response models
-├── settings.py      # MY_APP_* environment variables, plus OPENROUTER_API_KEY
+├── settings.py      # MY_APP_* environment variables and backend/.env
 └── composition.py   # The one place adapters are wired into services
 ```
+
+The schema lives in `backend/src/my_app/adapters/sql/tables.py` and its history in
+Alembic revisions under `backend/migrations/`; the `persisting-data` skill covers
+changing it.
 
 The API is thin: it gets its services from `composition.build_container`
 and only translates between HTTP and the core. The core imports neither the
@@ -95,7 +158,7 @@ for full setup instructions.
 ```bash
 just install   # dependencies + git hooks, then checks the hooks are in place
 just check
-just dev       # API with auto-reload on http://127.0.0.1:8000
+just dev       # migrate backend/var/dev.db, then the API with auto-reload on http://127.0.0.1:8000
 ```
 
 The git hooks are not optional: they carry the secret gate that refuses a

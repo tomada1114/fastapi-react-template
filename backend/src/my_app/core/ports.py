@@ -2,6 +2,10 @@
 
 They are ``Protocol`` classes so an adapter satisfies one by shape alone: it
 never imports or subclasses anything from the core to plug in.
+
+The repository port is shaped so any store can implement it, a SQL database or
+a key-value store alike: the application generates ids, each method is one
+access pattern, and a listing pages by an opaque cursor, never by offset.
 """
 
 from __future__ import annotations
@@ -9,11 +13,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from datetime import datetime
+    from uuid import UUID
 
-    from my_app.core.llm import LlmCompletion, LlmMessage
-    from my_app.core.models import Todo, TodoDraft
+    from my_app.core.models import Page, Todo
 
 
 class Clock(Protocol):
@@ -30,31 +33,54 @@ class Clock(Protocol):
         """
 
 
+class IdFactory(Protocol):
+    """A source of new ids; any zero-argument callable returning a ``UUID`` fits.
+
+    Injected rather than called as ``uuid.uuid7`` so tests get ids they can
+    predict. Production passes ``uuid.uuid7``, whose ids ascend in creation
+    order within a process (and to the millisecond across processes), so a
+    listing in id order is a listing in creation order.
+    """
+
+    def __call__(self) -> UUID:
+        """Return an id no stored to-do has.
+
+        Returns:
+            A new ``UUID``, greater than every id this factory returned before.
+        """
+
+
 @runtime_checkable
 class TodoRepository(Protocol):
-    """Stores to-dos and assigns their ids.
+    """Stores to-dos under the ids the application gave them.
 
-    Every implementation must pass the shared contract suite in
+    Every method is a coroutine, so an adapter can await its driver without
+    blocking the event loop the API serves requests on. Every implementation
+    must pass the shared contract suite in
     ``tests/adapters/test_repository_contract.py``. Runtime-checkable so that
     suite can also assert an adapter has every method, not only mypy.
     """
 
-    def add(self, draft: TodoDraft) -> Todo:
-        """Store a draft under a new id.
+    async def add(self, todo: Todo) -> Todo:
+        """Store a new to-do under its own id.
 
         Args:
-            draft: The validated to-do to store.
+            todo: The to-do to store; the application generated its id.
 
         Returns:
-            The stored to-do. Ids increase and are never reused, even after a
-            delete, so a stale id can never name a different to-do.
+            ``todo``, now stored.
+
+        Raises:
+            ValueError: If a to-do with this id is already stored, which is a
+                bug in the id factory, not bad input. The stored to-do is left
+                unchanged: ``add`` never overwrites.
         """
 
-    def get(self, todo_id: int) -> Todo:
+    async def get(self, todo_id: UUID) -> Todo:
         """Fetch one to-do.
 
         Args:
-            todo_id: Any integer; one never assigned is simply not found.
+            todo_id: Any id; one never stored is simply not found.
 
         Returns:
             The stored to-do.
@@ -63,14 +89,27 @@ class TodoRepository(Protocol):
             TodoNotFoundError: If no to-do has this id.
         """
 
-    def list_all(self) -> list[Todo]:
-        """Fetch every to-do.
+    async def list_page(self, cursor: str | None, limit: int) -> Page[Todo]:
+        """Fetch one page of to-dos in ascending id order, which is creation order.
+
+        Args:
+            cursor: ``None`` for the first page, else the ``next_cursor`` of
+                the page before. A cursor stays valid after the to-do it
+                points at is deleted: the page starts after that id anyway.
+            limit: The most to-dos the page holds; at least 1. The service
+                enforces the upper bound, so an adapter accepts any positive
+                limit.
 
         Returns:
-            The to-dos in ascending id order, which is creation order.
+            The page. Its ``next_cursor`` is ``None`` exactly when no stored
+            to-do follows the page's last one.
+
+        Raises:
+            InvalidCursorError: If ``cursor`` is not one this repository
+                issued.
         """
 
-    def update(self, todo: Todo) -> Todo:
+    async def update(self, todo: Todo) -> Todo:
         """Replace the stored to-do that has ``todo.id``.
 
         Args:
@@ -83,62 +122,12 @@ class TodoRepository(Protocol):
             TodoNotFoundError: If no to-do has this id.
         """
 
-    def delete(self, todo_id: int) -> None:
+    async def delete(self, todo_id: UUID) -> None:
         """Remove one to-do.
 
         Args:
-            todo_id: Any integer; one never assigned is simply not found.
+            todo_id: Any id; one never stored is simply not found.
 
         Raises:
             TodoNotFoundError: If no to-do has this id.
-        """
-
-
-@runtime_checkable
-class LlmPort(Protocol):
-    """Asks a language model for one chat completion.
-
-    Every implementation that can complete must pass the shared contract suite
-    in ``tests/adapters/test_llm_contract.py``. An implementation is safe to
-    call from several threads, since FastAPI runs synchronous routes in a pool.
-    """
-
-    def complete(
-        self,
-        messages: Sequence[LlmMessage],
-        *,
-        model: str | None = None,
-        max_tokens: int,
-        timeout: float,
-    ) -> LlmCompletion:
-        """Send ``messages`` and return the model's answer.
-
-        The arguments are checked with ``core.llm.check_completion_request``
-        before any request is made.
-
-        Args:
-            messages: The conversation, oldest message first.
-            model: The model to ask; None means the model this adapter was
-                built with.
-            max_tokens: The most tokens the answer may use.
-            timeout: The call's budget in seconds, retries and the waits
-                between them included. It is enforced between steps, not as
-                a hard cutoff: an adapter bounds each network phase by the
-                budget left and checks the deadline between phases, so a
-                pathologically slow server can still exceed it. A caller that
-                needs a hard cutoff runs the call under its own cancellation.
-
-        Returns:
-            The answer, the model that gave it, and the tokens it used.
-
-        Raises:
-            ValueError: If an argument breaks its rule; that is a bug in the
-                caller, not a domain error.
-            LlmConfigurationError: If the LLM is not configured, or the
-                provider rejected the key or the account.
-            LlmRateLimitError: If the provider kept rate-limiting until the
-                retry bound or the deadline ran out; try again later.
-            LlmTimeoutError: If the call did not finish within ``timeout``.
-            LlmProviderError: If the provider failed, could not be reached, or
-                answered with something that is not a completion.
         """

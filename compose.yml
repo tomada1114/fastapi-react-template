@@ -1,0 +1,14 @@
+# Optional disposable test database; never needed by just install or just verify.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: my_app_test
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d my_app_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

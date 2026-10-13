@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 _REF_LIST = r"(#\d+(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)#\d+)*)"
 DEP_PATTERNS = [
     (
-        r"(?:depends?\s+on|blocked\s+by|after|requires?)\s*:?\s*" + _REF_LIST,
+        # No bare "after": "through #40, after #19" (#25) is chronology, not
+        # an edge. Japanese の後 / 完了後 stay: they attach to the number.
+        r"(?:depends?\s+on|blocked\s+by|requires?)\s*:?\s*" + _REF_LIST,
         "depends_on",
     ),
     (r"(?:blocks|blocking)\s*:?\s*" + _REF_LIST, "blocks"),
@@ -30,6 +32,49 @@ DEP_PATTERNS = [
     (r"(?:前提|依存|ブロッカー|先行)\s*:?\s*#(\d+)", "depends_on"),
     (r"#(\d+)\s*(?:をブロック|の前提)", "blocks"),
 ]
+
+# A `Depends on: #N` line (file_followup.py writes one per blocker under
+# `## Dependencies`), optionally a list item. With the contract's `blocked-by=`
+# it is a structured source: when either is present, it alone sets depends_on.
+DEPENDS_ON_LINE_RE = re.compile(
+    r"^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)?"
+    r"depends[ \t]+on[ \t]*:[ \t]*" + _REF_LIST,
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | None:
+    """depends_on from the structured sources, or None when the body has none.
+
+    The sources are the ship contract's `blocked-by=` field (`none` counts as
+    stated) and `Depends on: #N` lines. Prose phrasings are not read here, and
+    neither is a `Depends on:` line inside a code block or span or an HTML
+    comment: a quoted example or a template's hidden placeholder states nothing.
+    """
+    code = _code_spans(body)
+    spans = list(code)
+    pos = body.find("<!--")
+    while pos != -1:
+        if any(start <= pos < end for start, end in code):
+            pos = body.find("<!--", pos + 4)
+            continue
+        close = body.find("-->", pos + 4)
+        end = len(body) if close == -1 else close + 3
+        spans.append((pos, end))
+        pos = body.find("<!--", end)
+    lines = [
+        m
+        for m in DEPENDS_ON_LINE_RE.finditer(body)
+        if not any(start <= m.start(1) < end for start, end in spans)
+    ]
+    has_field = contract is not None and "blocked-by" in contract["fields"]
+    if not lines and not has_field:
+        return None
+    stated = set(contract["depends_on"]) if contract and has_field else set()
+    for m in lines:
+        stated.update(int(n) for n in re.findall(r"\d+", m.group(1)))
+    return stated
+
 
 # owner/repo as preflight.sh's repo_slug block accepts it, and the URL schemes
 # it reads one from; parse_repo_slug() below is that block's twin.
@@ -81,7 +126,38 @@ _BACKTICK_RUN_RE = re.compile(r"`+")
 # after up to three spaces, with `<!--`. It runs to the line holding `-->`.
 _HTML_COMMENT_OPEN_RE = re.compile(r"^ {0,3}<!--")
 # A list item's first line: a bullet or an ordered marker, then a space or tab.
-_LIST_ITEM_RE = re.compile(r"^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)")
+_LIST_ITEM_RE = re.compile(
+    r"^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]{1,4}(?=\S|$)|[ \t]|$)"
+)
+_BLOCKQUOTE_RE = re.compile(r"^ {0,3}>[ \t]?")
+_ATX_HEADING_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|$)")
+_THEMATIC_BREAK_RE = re.compile(
+    r"^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$"
+)
+
+
+def _continues_paragraph(line: str) -> bool:
+    """Whether a line may lazily continue an open container paragraph.
+
+    Fences, quotes, headings, thematic breaks and comment blocks interrupt
+    paragraphs. A non-empty bullet or a list starting at 1 can also do so;
+    other ordered markers and indented text can be paragraph continuations.
+    """
+    if not line.strip() or any(
+        pattern.match(line)
+        for pattern in (
+            _FENCE_OPEN_RE,
+            _BLOCKQUOTE_RE,
+            _ATX_HEADING_RE,
+            _THEMATIC_BREAK_RE,
+            _HTML_COMMENT_OPEN_RE,
+        )
+    ):
+        return False
+    marker = _LIST_ITEM_RE.match(line)
+    if marker is None or not line[marker.end() :].strip():
+        return True
+    return re.match(r"^ {0,3}(?:[-+*]|0*1[.)])(?:[ \t]|$)", line) is None
 
 
 def _indent_width(line: str) -> int:
@@ -110,21 +186,21 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
     An indented code block starts on a line indented four or more columns (a
     tab counts to the next multiple of 4) that does not continue a paragraph:
     an indented line straight after paragraph text is a lazy continuation of
-    it. It runs across blank lines until a non-blank line indented less. Once
-    a list item has been seen, indented lines are read as its continuation
-    rather than code until a blank line is followed by an unindented,
-    non-list line. Code nested inside list items, other HTML blocks, and
-    backslash-escaped backticks are not modelled.
+    it. It runs across blank lines until a non-blank line indented less.
+    Blockquote markers and list-content indentation are removed for block
+    recognition, while returned offsets still refer to the original text.
+    Other HTML blocks and backslash-escaped backticks are not modelled.
     """
     spans: list[tuple[int, int]] = []
     paragraphs: list[tuple[int, int]] = []
     pos = 0
-    fence: tuple[str, int, int] | None = None  # (char, length, start)
+    # char, length, start, container depth
+    fence: tuple[str, int, int, int] | None = None
     in_comment = False
     para_start: int | None = None
     indented: tuple[int, int] | None = None  # (start, end of last non-blank line)
-    in_list = False
-    after_blank = True
+    # Ordered prefixes: quote markers and list-content widths may alternate.
+    containers: list[tuple[str, int]] = []
 
     def end_paragraph(at: int) -> None:
         nonlocal para_start
@@ -133,25 +209,61 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             para_start = None
 
     for line in body.splitlines(keepends=True):
-        stripped = line.rstrip("\r\n")
+        stripped = line.rstrip("\r\n").expandtabs(4)
+        matched = 0
+        for kind, width in containers:
+            if kind == "quote":
+                quote = _BLOCKQUOTE_RE.match(stripped)
+                if quote is None:
+                    break
+                stripped = stripped[quote.end() :]
+            else:
+                if stripped.strip() and _indent_width(stripped) < width:
+                    break
+                stripped = stripped[width:]
+            matched += 1
+        lazy = (
+            matched < len(containers)
+            and para_start is not None
+            and fence is None
+            and not in_comment
+            and _continues_paragraph(stripped)
+        )
+        if matched < len(containers) and not lazy:
+            containers = containers[:matched]
+            end_paragraph(pos)
+            if fence is not None:
+                spans.append((fence[2], pos))
+                fence = None
+        if fence is None and not in_comment and not lazy:
+            while True:
+                quote = _BLOCKQUOTE_RE.match(stripped)
+                marker = _LIST_ITEM_RE.match(stripped)
+                if quote is not None:
+                    containers.append(("quote", 0))
+                    stripped = stripped[quote.end() :]
+                elif marker is not None:
+                    # An empty item has one implicit content-padding column.
+                    width = marker.end()
+                    if not stripped[marker.end() :].strip():
+                        width = len(stripped.rstrip()) + 1
+                    containers.append(("list", width))
+                    stripped = stripped[marker.end() :]
+                else:
+                    break
+                end_paragraph(pos)
         blank = not stripped.strip()
         indent = _indent_width(stripped)
         if indented is not None:
             if blank or indent >= 4:
                 if not blank:
                     indented = (indented[0], pos + len(line))
-                after_blank = blank
                 pos += len(line)
                 continue
             spans.append(indented)
             indented = None
-        if fence is None and not in_comment and not blank:
-            if _LIST_ITEM_RE.match(stripped):
-                in_list = True
-            elif after_blank and indent == 0:
-                in_list = False
         if fence is not None:
-            char, length, start = fence
+            char, length, start, _ = fence
             close = re.fullmatch(
                 rf" {{0,3}}({re.escape(char)}{{{length},}})\s*", stripped
             )
@@ -162,17 +274,21 @@ def _code_spans(body: str) -> list[tuple[int, int]]:
             in_comment = "-->" not in stripped
         elif m := _FENCE_OPEN_RE.match(stripped):
             end_paragraph(pos)
-            fence = (m.group(1)[0], len(m.group(1)), pos)
+            fence = (
+                m.group(1)[0],
+                len(m.group(1)),
+                pos,
+                len(containers),
+            )
         elif _HTML_COMMENT_OPEN_RE.match(stripped):
             end_paragraph(pos)
             in_comment = "-->" not in stripped[stripped.index("<!--") + 4 :]
         elif blank:
             end_paragraph(pos)
-        elif indent >= 4 and para_start is None and not in_list:
+        elif indent >= 4 and para_start is None:
             indented = (pos, pos + len(line))
         elif para_start is None:
             para_start = pos
-        after_blank = blank
         pos += len(line)
     if fence is not None:
         spans.append((fence[2], len(body)))
@@ -285,11 +401,11 @@ def repository_from_url(url: str) -> tuple[str, str] | None:
     return parsed.netloc.lower(), match.group(1).lower()
 
 
-def closing_text(text: str) -> str:
-    """Mask examples without joining words across an ignored Markdown region."""
+def closing_text(text: str, *, boundary: str = " ") -> str:
+    """Mask examples with a boundary suited to the caller's keyword grammar."""
     for start, end in sorted(_code_spans(text), reverse=True):
-        text = text[:start] + " " * (end - start) + text[end:]
-    return re.sub(r"<!--(?:.*?-->|.*\Z)", " ", text, flags=re.DOTALL)
+        text = text[:start] + boundary * (end - start) + text[end:]
+    return re.sub(r"<!--(?:.*?-->|.*\Z)", boundary, text, flags=re.DOTALL)
 
 
 def pr_issue_references(pr: RawPr, repository: tuple[str, str] | None) -> set[int]:
@@ -856,13 +972,14 @@ def squeeze(text: str | None, limit: int) -> str:
 
 def extract_deps(body: str, title: str, self_number: int) -> dict[str, list[int]]:
     haystack = f"{title}\n{body or ''}"
+    prose = "\n".join(closing_text(part, boundary="|") for part in (title, body or ""))
     deps: dict[str, set[int]] = {
         "depends_on": set(),
         "blocks": set(),
         "mentions": set(),
     }
     for pattern, kind in DEP_PATTERNS:
-        for m in re.finditer(pattern, haystack, re.IGNORECASE):
+        for m in re.finditer(pattern, prose, re.IGNORECASE):
             for ref in re.findall(r"\d+", m.group(1)):
                 n = int(ref)
                 if n != self_number:
@@ -1054,18 +1171,25 @@ def build_records(
         deps = extract_deps(body, it.get("title", ""), num)
         contract = parse_ship_contract(body)
         contracts[num] = contract
-        if contract:
-            # An explicit contract edge is a stated fact; the regex scrape is an
-            # inference from prose. Union rather than override — an author who
-            # writes both a `blocked-by=` field and "depends on #12" in the body
-            # means the same thing, and dropping either would lose an edge the
-            # other caught.
-            for kind in ("depends_on", "blocks"):
-                merged = set(deps[kind]) | set(contract[kind])
-                deps[kind] = sorted(n for n in merged if n != num)
-            # Anything now a declared edge stops counting as a bare mention.
+        stated = stated_depends_on(body, contract)
+        if contract or stated is not None:
+            prose_depends = set(deps["depends_on"])
+            # A stated edge (`blocked-by=`, `Depends on: #N`) is a fact; the
+            # regex scrape is an inference from prose. When a body states its
+            # dependencies, they alone count: prose such as "after #19" in a
+            # scope note made #25 look blocked by the issue it blocks.
+            if stated is not None:
+                deps["depends_on"] = sorted(n for n in stated if n != num)
+            # `blocks` has no structured line form: union the contract's
+            # edges with the scrape, as before.
+            if contract:
+                merged = set(deps["blocks"]) | set(contract["blocks"])
+                deps["blocks"] = sorted(n for n in merged if n != num)
+            # A dropped prose edge is still a reference; a declared edge is not
+            # a bare mention.
             declared = set(deps["depends_on"]) | set(deps["blocks"])
-            deps["mentions"] = [n for n in deps["mentions"] if n not in declared]
+            mentions = set(deps["mentions"]) | (prose_depends - {num})
+            deps["mentions"] = sorted(mentions - declared)
         all_deps[num] = deps
     open_numbers = set(all_deps)
 

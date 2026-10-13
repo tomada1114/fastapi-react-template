@@ -11,7 +11,9 @@ default:
 # The hooks are the only guard that runs for every author, so a missing one
 # fails the install. ALLOW_MISSING_GIT_HOOKS=1 is the deliberate opt-out and
 # CI=true (CI commits nothing) skips the failure: both still attempt the
-# install, and turn a failed install or a missing hook into a warning.
+# install, and turn a failed install or a missing hook into a warning. A linked
+# worktree never installs: it only verifies the hooks it shares with the primary
+# checkout.
 # Install dependencies and the git hooks, then verify the hooks are in place
 install:
     #!/usr/bin/env bash
@@ -28,7 +30,18 @@ install:
     ci=$(printf '%s' "${CI:-}" | tr '[:upper:]' '[:lower:]')
     [ "$ci" = "true" ] && is_exempt=1
     [ "${ALLOW_MISSING_GIT_HOOKS:-}" = "1" ] && is_exempt=1
-    uv run --locked pre-commit install --install-hooks || [ "$is_exempt" -eq 1 ]
+    # A linked worktree shares the primary checkout's .git/hooks/: installing
+    # there would point every checkout's hooks at this worktree's .venv, so it
+    # only verifies them.
+    git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
+    common_dir=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+    primary=""
+    if [ "$git_dir" != "$common_dir" ]; then
+      primary=$(dirname "$common_dir")
+      echo "Linked worktree: not installing the shared git hooks; verifying them."
+    else
+      uv run --locked pre-commit install --install-hooks || [ "$is_exempt" -eq 1 ]
+    fi
     # The hook types come from .pre-commit-config.yaml's flow-style
     # default_install_hook_types list; without the key pre-commit installs
     # only the pre-commit hook.
@@ -52,9 +65,14 @@ install:
       echo "Git hooks verified: $hook_types."
     elif [ "$is_exempt" -eq 1 ]; then
       echo "Warning: git hooks missing (allowed by CI=true or ALLOW_MISSING_GIT_HOOKS=1):$missing" >&2
+      [ -z "$primary" ] || echo "Install them by running 'just install' in the primary checkout: $primary" >&2
     else
       echo "error: git hooks missing:$missing" >&2
-      echo "Run 'uv run --locked pre-commit install --install-hooks', or set ALLOW_MISSING_GIT_HOOKS=1 to install without them." >&2
+      if [ -n "$primary" ]; then
+        echo "Run 'just install' in the primary checkout ($primary), not in this linked worktree, or set ALLOW_MISSING_GIT_HOOKS=1 to install without them." >&2
+      else
+        echo "Run 'uv run --locked pre-commit install --install-hooks', or set ALLOW_MISSING_GIT_HOOKS=1 to install without them." >&2
+      fi
       exit 1
     fi
 

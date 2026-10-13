@@ -28,8 +28,8 @@ marks which steps are a human's. Its `references/bootstrap.md` documents
   (`scripts/check_staged.py`), so the way through is a feature branch and a
   PR — not a bypass flag.
 - The toolchain baseline checklist lives in `changing-gates` so every app keeps it.
-- Python dependencies arrive as monthly Dependabot `uv` PRs under a 14-day
-  cooldown equal to `[tool.uv] exclude-newer = "14 days"`; a human merges
+- Python dependencies arrive as monthly Dependabot `uv` PRs under a 7-day
+  cooldown equal to `[tool.uv] exclude-newer = "7 days"`; a human merges
   them with the `merging-dependency-prs` skill, and `managing-dependencies`
   holds the window and its one-package exception.
 - `just verify` (its steps are listed in AGENTS.md's Quick Reference) is the
@@ -67,58 +67,40 @@ rule and a test keep the core clean, and the CLI reaches the API only through
 `cli/serve.py`, so dropping the entry point you do not need is a list of
 deletions (README's Architecture section), not a refactor.
 
-The runtime dependencies are exactly what those entry points need — FastAPI,
-uvicorn, Typer, and pydantic-settings — and the SQLite adapter uses the
-stdlib `sqlite3` driver rather than an ORM. The one other package, `httpx`,
-sits in the optional `ai` extra for the LLM adapter below, so an app that
-never installs it carries nothing extra. Anything else is yours to add
-deliberately.
+The runtime dependencies are what the API and its storage need — FastAPI,
+uvicorn, and pydantic-settings for the API; SQLAlchemy, Alembic, and aiosqlite
+for the SQL store (below). Anything else is yours to add deliberately.
 
-### Why an optional LLM layer behind a port?
+### Why SQLAlchemy Core and Alembic, and never migrating at start-up?
 
-Many apps cut from this template will call a language model, and the same
-mistake the core avoids for HTTP frameworks applies here: a provider's SDK
-leaking into the business rules. So the LLM is one more port. `LlmPort` and
-its values (`core/llm.py`) are plain Python, and adapters implement it: a
-`FakeLlm` for tests, a `ClosedLlm` for an app with no key, and
-`OpenRouterLlm`. The fake and OpenRouter adapters pass one contract suite.
+An app cut from the template keeps state from its first feature, and the first
+schema change it makes needs a path for the data already stored. So the SQL
+adapter is SQLAlchemy's asyncio API in Core style — explicit `Table` metadata
+and statements inside `adapters/`, no ORM classes, no SQLModel — with Alembic
+revisions as the schema's only author (tomada1114/fastapi-react-template#3,
+D4). Core keeps rows inside the adapter, so the core's ports stay ones a
+key-value store could implement too; SQLModel would make one class both the API
+schema and the table, coupling the layers the core/adapter split separates.
+SQLite through `aiosqlite` is the local default, so a first run needs no
+Docker; PostgreSQL takes the same statements, with asyncpg in an optional
+`postgres` extra. The same repository contract and migration round trip run
+against PostgreSQL in CI so dialect differences surface before deployment.
+asyncpg supplies an async driver under Apache-2.0 without extra runtime packages;
+the standard library has no PostgreSQL driver, and psycopg's LGPL license does
+not fit the dependency gate (https://pypi.org/project/asyncpg/0.31.0/ and
+https://pypi.org/project/psycopg/, checked 2026-10-09). Migrations run only when asked
+(`just backend db-upgrade`, which `just dev` runs first): an app that migrates
+or calls `create_all` at start-up hides a missing revision and races when two
+processes start at once. The `persisting-data` skill holds the workflow.
 
-- **OpenRouter as the one provider.** One key reaches many vendors' models,
-  and the model is a setting (`MY_APP_LLM_MODEL`), so trying another model is
-  not a code change. A second provider is a second adapter.
-- **Raw `httpx` over the `openai` SDK.** `httpx` and everything it needs were
-  already locked for `TestClient`, so the layer adds no locked package. The
-  SDK would add several, for one POST, and bring its own retry and timeout
-  layer that would double the adapter's (the sibling nextjs-app-template's
-  issue tomada1114/nextjs-app-template#73 had to fight exactly that).
-- **An extra, not a group or a hard dependency.** An extra is package
-  metadata a wheel carries (`pip install 'my-app[ai]'`); a dependency group
-  never reaches a built package; a hard dependency would make every app carry
-  it.
-- **Closed by default.** Without `OPENROUTER_API_KEY`, `build_llm` returns
-  `ClosedLlm`, a route built on it answers 503, and neither `httpx` nor the
-  adapter is imported. The key alone opens it: a billed endpoint is never
-  open by accident. No sample route ships, so there is no billed endpoint to
-  protect until an app writes one. 503 rather than 500, because here a 500
-  means a bug and an unconfigured feature is not one.
-- **Bounded retries inside one deadline.** Two retries on 429, 502, 503, or
-  a connect error (never on a timeout, a connect timeout included), waiting
-  0.5 s then 1.0 s or the provider's `Retry-After` up to 8 s; a longer
-  `Retry-After` ends the call. `timeout` is one budget
-  for the call, retries included, so retries never multiply it; callers default
-  to 60 s. Each network phase is bounded by the budget left and the deadline is
-  checked between phases, body chunks, and attempts, so a pathologically slow
-  server can still exceed it; a hard cutoff is the caller's own cancellation.
-  The 60 s and the 8 s cap follow the sibling nextjs-app-template's
-  OpenRouter adapter (its issues tomada1114/nextjs-app-template#63, tomada1114/nextjs-app-template#71, and
-  tomada1114/nextjs-app-template#73).
-- **No live call in the suite.** It would bill, flake, and need a key in CI,
-  and a skipped test is a weakened gate. The OpenRouter adapter runs the
-  contract suite over `httpx.MockTransport`; the `integrating-llm` skill
-  documents the owner's manual live check.
+### Why no LLM layer?
 
-The decision is uv-template's issue tomada1114/uv-template#97. A project that keeps the layer
-records its own ADR; one that does not follows the skill's removal list.
+The template carries no LLM layer since 2026-10-09, an owner decision
+(tomada1114/fastapi-react-template#3, D6): the apps planned from it call models
+through a provider this template leaves out, so a provider-specific adapter would
+be code every app deletes. An app that calls a model adds its own port and
+adapter under `designing-core-logic`'s port rules and records the choice in an
+ADR.
 
 ### Why Just over Make?
 

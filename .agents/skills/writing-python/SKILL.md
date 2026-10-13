@@ -31,11 +31,6 @@ Two of them carry a policy on top:
 - mypy's `ignore-without-code` error code makes a `# type: ignore` name its error code.
   The reason written beside it, like the reason on a `noqa` or a per-file ignore, is
   AGENTS.md's policy ("Security and human approval"); no tool checks it.
-  `composition.py` shows the shape:
-
-  ```python
-  from my_app.adapters.openrouter import (  # noqa: PLC0415 - httpx comes only with the optional `ai` extra
-  ```
 
 - Ruff's bandit rules (`S`) stay on; a `noqa` for one argues that specific check.
 
@@ -66,7 +61,7 @@ if TYPE_CHECKING:
 ## Choosing a type for a value
 
 - **An internal value:** `@dataclass(frozen=True, slots=True)`. A change is a new value
-  built with `dataclasses.replace`, never an in-place edit (`Todo`, `TodoDraft`,
+  built with `dataclasses.replace`, never an in-place edit (`Todo`, `Page`,
   `composition.Container`).
 - **Pydantic `BaseModel`:** only at a serialization boundary — the wire format in
   `api/schemas.py` and the environment in `settings.py`. Never in `core/`.
@@ -84,15 +79,15 @@ if TYPE_CHECKING:
 ## Names and constants
 
 - A literal that carries meaning is an `UPPER_SNAKE_CASE` module constant in the module
-  that owns the meaning (`MAX_TITLE_LENGTH`, `OPENROUTER_API_KEY_ENV`, `ENV_PREFIX`);
+  that owns the meaning (`MAX_TITLE_LENGTH`, `SQLITE_URL_PREFIX`, `ENV_PREFIX`);
   another module imports it rather than repeating the value.
 - A boolean is named `is_`, `has_`, `can_`, or `should_` (`Todo.is_completed`). A wire
   format may spell it differently; the schema owns that mapping.
 - A private helper is `_name`, an internal module `_name.py`; `__name` only to avoid a
   clash in a subclass hierarchy.
 - **Never shadow a builtin.** A function whose natural name is a builtin gets a
-  descriptive name instead: the route that lists to-dos is `def list_todos(...)` under
-  `@router.get("")`, never `def list(...)`.
+  descriptive name instead: the route that lists to-dos is `async def list_todos(...)`
+  under `@router.get("")`, never `async def list(...)`.
 
 ## Functions, modules, and docstrings
 
@@ -119,16 +114,16 @@ if TYPE_CHECKING:
       raise TodoNotFoundError(todo_id) from None
   ```
 
-  `from None` drops a cause that adds nothing; `from error` keeps one that does, as
-  `composition.build_llm` does when it turns a missing `httpx` into
-  `LlmConfigurationError`.
-- **A context manager for every resource.** When an object's own `with` does not
-  release it, compose `contextlib.closing`: `SqliteTodoRepository._transaction` closes
-  the connection that `sqlite3.Connection`'s context manager only commits. A reusable
-  boundary is a `@contextmanager` function (`SqliteTodoRepository._transaction`).
+  `from None` drops a cause that adds nothing; `from error` keeps one that does.
+- **A context manager for every resource.** Acquire it with `with` or `async with`
+  so it is released on every path: `SqlTodoRepository` takes each connection with
+  `async with self._engine.begin() as connection:`, which commits, or rolls back on an
+  error, and returns the connection to the pool. When an object's own `with` does not
+  release it, compose `contextlib.closing`; a reusable boundary is a
+  `@contextmanager` or `@asynccontextmanager` function.
 - **`match`/`case`** for dispatch on type or shape (`_status_for` in `api/app.py`).
-- **The walrus operator** where it removes a repeated expression:
-  `if (path := settings.sqlite_path) is not None:` in `composition.py`.
+- **The walrus operator** where it removes a repeated expression, as in
+  `if (found := pattern.search(text)) is not None:`.
 - **Comprehensions** over `map()` and `filter()`; `*args`/`**kwargs` only when a call
   genuinely forwards them.
 - **Time is never read directly** in the core; it arrives through the injected `Clock`
@@ -139,18 +134,21 @@ if TYPE_CHECKING:
 - Catch the most specific exception that can happen, and handle it meaningfully or
   re-raise it; never swallow one, and never use one for ordinary control flow. Return
   `None` only when the caller expects absence.
-- No module under `backend/src/my_app/` logs yet; uvicorn's own log is the only one.
-  When one does, it uses a module-level `logging.getLogger(__name__)` and calls
+- Use a module-level `logging.getLogger(__name__)` and call
   `logger.exception(...)` inside the `except` block, which keeps the traceback — never
   `logger.error(str(error))`. **BACKGROUND:** `designing-errors` decides which errors
   are logged at all.
+- Application handlers attach the current request ID. Structured access fields use
+  `extra=` with `method`, `path`, `status`, and `duration_ms`; never log bodies,
+  query strings, secrets, or user text. Keep exception messages free of them too.
 
 ## Security
 
 - A path built from outside input is resolved with `Path.resolve()` and checked to stay
   under its allowed root before it is opened.
-- SQL uses `?` parameters only, with the statement a module constant spelled out in
-  full (`adapters/sqlite.py`'s `_SELECT_ONE` and siblings).
+- SQL takes values only through bound parameters, with the statement a module
+  constant built once (`adapters/sql/repository.py`'s `_SELECT_ONE` and siblings,
+  `persisting-data`); never a string assembled from input.
 - A subprocess takes a fixed argv list, never `shell=True`; its `# noqa: S603` names why
   the argv is safe (`backend/tests/test_composition.py`).
 

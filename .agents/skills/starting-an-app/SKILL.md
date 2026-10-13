@@ -107,8 +107,8 @@ row in `docs/architecture/README.md`, per **REQUIRED:**
 
 - **App shape**: whether the app keeps the API, and why.
 - **Persistence**: where and in what format the app keeps state — the in-memory
-  repository, the stdlib SQLite adapter, or another store — with how a schema change
-  reaches existing data. Write it as soon as the app keeps state of its own.
+  repository, the SQL adapter (SQLAlchemy with Alembic migrations, on SQLite or
+  PostgreSQL), or another store — with how a schema change reaches existing data. Write it as soon as the app keeps state of its own.
 
 Each new runtime dependency or external service the first features need is an ADR too,
 and a new dependency waits for the owner's sign-off.
@@ -120,8 +120,10 @@ request that removes it, so the tests and the 80% coverage floor still measure r
 code:
 
 - the domain in `backend/src/my_app/core/` (`models.py`, `ports.py`, `services.py`, and
-  the `TodoNotFoundError`/`InvalidTodoError` in `errors.py`), and the adapters in
-  `backend/src/my_app/adapters/` that implement its repository port;
+  the `TodoNotFoundError`, `InvalidTodoError`, `InvalidCursorError`, and
+  `InvalidPageLimitError` in `errors.py`), and the adapters in
+  `backend/src/my_app/adapters/` that implement its repository port, with the cursor
+  helper they share (`cursor.py`, which the app's own paged port can adapt);
 - the API's wrappers: `backend/src/my_app/api/routers/todos.py` and the to-do models
   in `api/schemas.py`;
 - their tests under `backend/tests/core/`, `backend/tests/adapters/`, and
