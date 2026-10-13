@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import AsyncExitStack
 from http import HTTPStatus
 from importlib import metadata, reload
 from inspect import iscoroutinefunction
@@ -20,7 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 import my_app
 from my_app.api import app as app_module
 from my_app.api.app import create_app
-from my_app.composition import Container
+from my_app.composition import Container, ResourceClosers
 from my_app.core.errors import (
     AppError,
     InvalidCursorError,
@@ -157,7 +156,7 @@ def test_create_app_shutdown_closes_factory_built_container(
     monkeypatch, make_container
 ):
     closed: list[str] = []
-    resources = AsyncExitStack()
+    resources = ResourceClosers()
     resources.push_async_callback(_record, closed, "built")
     container = Container(make_container().todos, _resources=resources)
     monkeypatch.setattr(app_module, "build_container", lambda _: container)
@@ -175,7 +174,7 @@ async def test_create_app_cancelled_shutdown_finishes_factory_owned_cleanup(
     make_container, monkeypatch
 ):
     closed = []
-    resources = AsyncExitStack()
+    resources = ResourceClosers()
 
     async def close():
         await anyio.lowlevel.checkpoint()
@@ -201,7 +200,7 @@ async def test_create_app_shutdown_leaves_supplied_container_caller_owned(
     make_container,
 ):
     closed: list[str] = []
-    resources = AsyncExitStack()
+    resources = ResourceClosers()
     resources.push_async_callback(_record, closed, "supplied")
     container = Container(make_container().todos, _resources=resources)
 

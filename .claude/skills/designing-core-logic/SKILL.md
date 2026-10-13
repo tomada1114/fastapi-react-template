@@ -179,7 +179,7 @@ def build_container(
     settings: Settings, clock: Clock = utc_now, new_id: IdFactory = uuid.uuid7
 ) -> Container:
     # ... docstring elided
-    resources = AsyncExitStack()
+    resources = ResourceClosers()
     repository = _build_repository(settings, resources)
     todos = TodoService(repository, clock, new_id)
     return Container(todos=todos, _resources=resources)
@@ -207,6 +207,6 @@ For a new outside dependency — another store, a remote service, a source of ra
 work through [references/adding-a-port.md](references/adding-a-port.md): the `Protocol`
 under "Ports any store can implement", one adapter per technology, its contract suite
 and in-memory fake, the wiring in `build_container`, and the cleanup of an adapter that
-holds a resource (`AsyncExitStack`, `Container.aclose()`).
+holds a resource (`ResourceClosers`, `Container.aclose()`).
 
 Run from the root: `uv run --locked --directory backend pytest tests/core/ tests/adapters/ tests/test_composition.py tests/test_settings.py`.

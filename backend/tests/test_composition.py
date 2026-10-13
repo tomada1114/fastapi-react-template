@@ -4,7 +4,8 @@ import asyncio
 import sys
 import tomllib
 import uuid
-from contextlib import AsyncExitStack, suppress
+from contextlib import AsyncExitStack
+from contextvars import ContextVar
 from datetime import UTC
 from pathlib import Path
 
@@ -172,7 +173,7 @@ def test_pyproject_httpx_is_not_a_runtime_dependency():
 
 async def test_container_aclose_releases_registered_resource_once(make_container):
     closed: list[str] = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
     resources.push_async_callback(_record, closed, "resource")
     container = Container(make_container().todos, _resources=resources)
 
@@ -187,7 +188,7 @@ async def test_container_context_cancelled_scope_finishes_callbacks_once(
 ):
     entered = []
     closed = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
 
     async def cleanup(name):
         entered.append(name)
@@ -215,7 +216,7 @@ async def test_container_aclose_cancelled_scope_finishes_before_cancellation(
 ):
     closed = []
     returned = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
 
     async def cleanup():
         await anyio.lowlevel.checkpoint()
@@ -251,7 +252,7 @@ async def test_container_suspended_cleanup_finishes_before_caller_outcome(
     done = anyio.Event()
     closed = []
     outcomes = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
 
     async def suspended():
         entered.set()
@@ -298,7 +299,7 @@ async def test_container_concurrent_close_callers_share_complete_lifo_cleanup(
     release = anyio.Event()
     closed = []
     snapshots = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
 
     async def suspended():
         entered.set()
@@ -324,61 +325,87 @@ async def test_container_concurrent_close_callers_share_complete_lifo_cleanup(
     assert snapshots == [["held", "remaining"], ["held", "remaining"]]
 
 
-async def test_container_concurrent_exits_keep_suppression_with_its_original_error(
-    make_container,
-):
+async def test_container_concurrent_exits_propagate_each_body_error(make_container):
     entered = anyio.Event()
     release = anyio.Event()
     outcomes = []
-    forwarded = []
+    closed = []
+    resources = composition.ResourceClosers()
 
-    class SuppressingResource:
-        async def __aenter__(self):
-            return self
+    async def close():
+        entered.set()
+        await release.wait()
+        closed.append("resource")
 
-        async def __aexit__(self, exc_type, exc_value, traceback):
-            forwarded.append(exc_type)
-            entered.set()
-            await release.wait()
-            return exc_type is ValueError
-
-    resources = AsyncExitStack()
-    await resources.enter_async_context(SuppressingResource())
+    resources.push_async_callback(close)
     container = Container(make_container().todos, _resources=resources)
 
-    async def first():
-        async with container:
-            message = "first error"
-            raise ValueError(message)
-        outcomes.append("first-suppressed")
-
-    def fail_second():
-        message = "second error"
-        raise TypeError(message)
-
-    async def second(task_status=anyio.TASK_STATUS_IGNORED):
+    async def fail(error, task_status=anyio.TASK_STATUS_IGNORED):
         task_status.started()
         try:
             async with container:
-                fail_second()
-        except TypeError:
-            outcomes.append("second-propagated")
-        else:
-            outcomes.append("second-suppressed")
+                raise error
+        except (ValueError, TypeError) as caught:
+            outcomes.append(caught)
 
+    first = ValueError("first error")
+    second = TypeError("second error")
     async with anyio.create_task_group() as tasks:
-        tasks.start_soon(first)
+        await tasks.start(fail, first)
         await entered.wait()
-        await tasks.start(second)
+        await tasks.start(fail, second)
         release.set()
 
-    assert forwarded == [ValueError]
-    assert sorted(outcomes) == ["first-suppressed", "second-propagated"]
+    assert closed == ["resource"]
+    assert set(outcomes) == {first, second}
+
+
+@pytest.mark.parametrize(
+    "affinity",
+    [
+        pytest.param("context", id="context-token"),
+        pytest.param("task", id="owning-task"),
+    ],
+)
+async def test_container_entered_manager_rejected_and_exits_in_caller_scope(
+    make_container, affinity
+):
+    marker = ContextVar("synthetic_resource", default="outside")
+    closed = []
+
+    class BoundResource:
+        async def __aenter__(self):
+            self.owner = asyncio.current_task()
+            self.token = marker.set("owned")
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            if affinity == "context":
+                marker.reset(self.token)
+            else:
+                assert asyncio.current_task() is self.owner
+            closed.append("resource")
+            return False
+
+    async with AsyncExitStack() as caller_resources:
+        await caller_resources.enter_async_context(BoundResource())
+
+        def transfer(resources):
+            # Exercise runtime validation from an untyped external caller.
+            return Container(make_container().todos, _resources=resources)
+
+        with pytest.raises(TypeError, match="task-independent disposal callbacks"):
+            transfer(caller_resources)
+        assert closed == []
+
+    assert closed == ["resource"]
+    if affinity == "context":
+        assert marker.get() == "outside"
 
 
 async def test_container_context_exit_releases_registered_resource(make_container):
     closed: list[str] = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
     resources.push_async_callback(_record, closed, "resource")
     container = Container(make_container().todos, _resources=resources)
 
@@ -391,7 +418,7 @@ async def test_container_context_exit_releases_registered_resource(make_containe
 
 async def test_container_context_failure_releases_registered_resource(make_container):
     closed: list[str] = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
     resources.push_async_callback(_record, closed, "resource")
     container = Container(make_container().todos, _resources=resources)
 
@@ -407,7 +434,7 @@ async def test_container_cleanup_failure_runs_remaining_callbacks_and_propagates
     make_container,
 ):
     closed: list[str] = []
-    resources = AsyncExitStack()
+    resources = composition.ResourceClosers()
     resources.push_async_callback(_record, closed, "remaining")
 
     async def fail_cleanup():
@@ -454,45 +481,54 @@ async def test_build_container_success_keeps_registered_resources_until_aclose(
     assert closed == ["owned"]
 
 
-async def test_container_context_failure_forwards_exception_details_to_resource(
+async def test_container_context_cleanup_failure_chains_original_body_error(
     make_container,
 ):
-    exits: list[tuple[object, object, object]] = []
+    resources = composition.ResourceClosers()
+    body_error = ValueError("operation failed")
+    cleanup_error = RuntimeError("cleanup failed")
 
-    class RecordingResource:
-        async def __aenter__(self):
-            return self
+    async def fail_cleanup():
+        raise cleanup_error
 
-        async def __aexit__(self, exc_type, exc_value, traceback):
-            exits.append((exc_type, exc_value, traceback))
-            return False
+    resources.push_async_callback(fail_cleanup)
+    container = Container(make_container().todos, _resources=resources)
 
-    resources = AsyncExitStack()
-    await resources.enter_async_context(RecordingResource())
+    with pytest.raises(RuntimeError, match="cleanup failed") as caught:
+        async with container:
+            raise body_error
+
+    assert caught.value is cleanup_error
+    assert cleanup_error.__context__ is body_error
+    await container.aclose()
+
+
+async def test_container_disposal_callbacks_cannot_suppress_body_error(make_container):
+    resources = composition.ResourceClosers()
+    closed = []
+
+    async def close():
+        closed.append("resource")
+        return True
+
+    resources.push_async_callback(close)
     container = Container(make_container().todos, _resources=resources)
     error = ValueError("operation failed")
 
-    with pytest.raises(ValueError, match="operation failed"):
+    with pytest.raises(ValueError, match="operation failed") as caught:
         async with container:
             raise error
 
-    assert exits == [(ValueError, error, error.__traceback__)]
+    assert caught.value is error
+    assert closed == ["resource"]
     await container.aclose()
-    assert len(exits) == 1
 
 
-async def test_container_context_failure_preserves_resource_suppression(
-    make_container,
-):
-    closed: list[str] = []
-    resources = AsyncExitStack()
-    resources.push_async_callback(_record, closed, "remaining")
-    resources.enter_context(suppress(ValueError))
+async def test_container_registration_after_ownership_transfer_rejected(make_container):
+    resources = composition.ResourceClosers()
     container = Container(make_container().todos, _resources=resources)
-    message = "intentionally suppressed"
 
-    async with container:
-        raise ValueError(message)
+    with pytest.raises(RuntimeError, match="before building the Container"):
+        resources.push_async_callback(_record, [], "late")
 
     await container.aclose()
-    assert closed == ["remaining"]

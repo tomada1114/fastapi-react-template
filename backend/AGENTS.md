@@ -49,6 +49,10 @@ backend/
   `core/ports.py`; `core/` imports nothing outside the stdlib and itself.
   Ruff's `TID251` banned-api rule and `tests/core/test_imports.py` fail the
   build otherwise (`designing-core-logic`).
+- The Container owns process-lifetime disposal callbacks through `ResourceClosers`.
+  They run on the resource's event loop in a separate Task/Context and never suppress
+  body errors. Scope-bound managers stay with their acquiring caller
+  (`designing-core-logic`).
 - Domain errors derive from `core.errors.AppError`; the API maps them in one
   place (`api/app.py`), per `designing-errors`.
 - The schema belongs to the migrations: the app never creates or alters a table,

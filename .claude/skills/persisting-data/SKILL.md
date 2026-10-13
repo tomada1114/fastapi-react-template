@@ -77,7 +77,8 @@ a transaction. A driver error with a domain meaning is translated there (an
 `make_engine(url)` returns an `AsyncEngine` that opens nothing until first used, with
 SQLite's busy timeout raised so a burst of concurrent writes queues for the write lock
 instead of failing with "database is locked". `build_container` makes one per
-container, hands it to every SQL repository, and registers
+container, hands it to every SQL repository, and registers its task-independent
+disposer in `ResourceClosers` with
 `resources.push_async_callback(engine.dispose)` — the shape
 `designing-core-logic`'s `references/adding-a-port.md` gives a resource-holding adapter.
 

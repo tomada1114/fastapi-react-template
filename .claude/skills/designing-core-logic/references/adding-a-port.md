@@ -27,23 +27,30 @@ engine, a client) between calls. `SKILL.md` holds the rules these steps apply.
 
 ## An adapter that holds a resource
 
-`build_container` owns an `AsyncExitStack` and passes it to adapter builders: register
-cleanup with `resources.push_async_callback(adapter.aclose)`, and never close an adapter
-in a service. It stays a plain `def` (a bad setting must fail in `create_app`), so a
-build that raises runs no callback: register only an object that opens nothing when
-constructed, as its docstring says. The stack moves to the frozen `Container`: its
-`aclose()` is idempotent, `async with container:` forwards exception details to
-registered context managers and keeps their suppression decision, and a failing callback
-propagates after the rest run. The API's lifespan awaits `aclose()` on a container its
+`build_container` owns a `ResourceClosers` registry and passes it to adapter builders:
+register cleanup with `resources.push_async_callback(adapter.aclose)`, and never close
+an adapter in a service. Register only process-lifetime resources whose disposer can
+run in a separate Task/Context on the resource's event loop. A context manager, task
+group, cancellation scope, or context-variable token stays in its acquiring caller's
+scope, which enters and exits it there; do not register its exit method as a disposer.
+The registry exposes no context-manager entry or exception-suppression API, and
+`Container` rejects a generic `AsyncExitStack` at construction. Registration is sealed
+when the Container takes ownership.
+
+The builder stays a plain `def` (a bad setting must fail in `create_app`), so a build
+that raises runs no callback: register only an object that opens nothing when
+constructed, as its docstring says. The registry moves to the frozen `Container`:
+`aclose()` is idempotent, `async with container:` releases resources without suppressing
+body exceptions, and a failing callback propagates after the rest run, preserving the
+body error as its context. The API's lifespan awaits `aclose()` on a container its
 factory built; a supplied `container=` stays caller-owned. Each `TestClient` context
 runs the app on its own loop, so never reuse a container holding a loop-bound resource
-across two of them. The SQL repository's engine is registered this way
-(`resources.push_async_callback(engine.dispose)`; **BACKGROUND:** `persisting-data`).
+across two of them. The SQL engine is registered with
+`resources.push_async_callback(engine.dispose)`; **BACKGROUND:** `persisting-data`.
 
 Cancellation does not release ownership early. Both exits await one Container-owned
 cleanup task on the resource's event loop, protected from scope and direct-task
 cancellation; concurrent closers share that drain. Callbacks finish once in LIFO order
 before caller cancellation propagates. A cleanup failure still runs the remaining
 callbacks and takes precedence over cancellation; a later close does not replay it.
-Suppression belongs only to the exit that supplied the original exception details;
-a concurrent exit cannot suppress a different error with that result.
+Concurrent context exits each propagate their own body exception.

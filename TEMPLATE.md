@@ -93,6 +93,24 @@ https://pypi.org/project/psycopg/, checked 2026-10-09). Migrations run only when
 or calls `create_all` at start-up hides a missing revision and races when two
 processes start at once. The `persisting-data` skill holds the workflow.
 
+### Why callback-only process-resource ownership?
+
+A Container outlives individual requests and owns lazy process resources such as the
+SQL engine. `ResourceClosers` therefore accepts disposal callbacks that can run on the
+resource's event loop in a separate Task/Context. This lets one cleanup task finish
+under both cancellation scopes and direct task cancellation, while concurrent callers
+wait for the same LIFO drain. Cancellation propagates after disposal; cleanup failures
+run the remaining callbacks and then propagate.
+
+An entered context manager can carry ownership of its caller's task, cancellation
+scope, or context-variable token. Transferring its exit to the cleanup task breaks that
+ownership. Those managers belong in the acquiring caller's scope instead. This is an
+intentional change from accepting a generic `AsyncExitStack`: the Container rejects
+that stack at construction, seals callback registration when it takes ownership, and
+never suppresses a body exception. Preserving arbitrary manager entry and suppression
+would leave the cancellation guarantee dependent on hidden adapter behavior. The
+owner chose the explicit ownership boundary in issue #95.
+
 ### Why no LLM layer?
 
 The template carries no LLM layer since 2026-10-09, an owner decision
