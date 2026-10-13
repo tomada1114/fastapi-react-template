@@ -115,6 +115,14 @@ frontend/
   `status` — is retried once. Mutations keep TanStack's default of no retry,
   and every other option stays TanStack's default. An API error type sets
   `status` for this policy to read.
+- **Never edit `src/api/generated/`.** Change the backend and run `just contract`;
+  import query and mutation options from `src/api/generated/@tanstack/react-query.gen`.
+  `just contract-check` generates into a temporary directory and rejects drift
+  without changing checkout files. Only the bundled `generated/client/` and
+  `generated/core/` runtime carries the owner-approved `@ts-nocheck` exception:
+  hey-api 0.99.0 fails `exactOptionalPropertyTypes` there. Generated types, SDK,
+  query options, and handwritten code keep every strict flag; the scope gate
+  in `just frontend lint` also verifies newly generated output during the contract check.
 - **Tailwind CSS 4 is the only styling layer**, through `@tailwindcss/vite`:
   utility classes in the markup, and `src/styles.css` (`@import "tailwindcss";`)
   imported by `main.tsx` alone. No CSS modules, CSS-in-JS, other stylesheets,
