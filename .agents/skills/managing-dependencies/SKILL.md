@@ -84,24 +84,24 @@ just verify
 
 ## The `exclude-newer` window
 
-`[tool.uv] exclude-newer = "14 days"`, in the root `pyproject.toml` (uv reads `[tool.uv]`
+`[tool.uv] exclude-newer = "7 days"`, in the root `pyproject.toml` (uv reads `[tool.uv]`
 from the workspace root only), makes `uv lock` and `uv sync` ignore any package
-version published less than 14 days ago, so a dependency cannot be resolved until it has
+version published less than 7 days ago, so a dependency cannot be resolved until it has
 survived in the wild for a while. The value is relative: `uv lock` records it in
-`uv.lock` as `exclude-newer-span = "P14D"` and resolves it against the current time, and
+`uv.lock` as `exclude-newer-span = "P7D"` and resolves it against the current time, and
 locked versions move only when the lock is re-resolved (`--upgrade`, a changed
 dependency), so `uv lock --check` stays stable from one day to the next.
 
 ### How updates arrive
 
 **Dependabot proposes, a human merges via `merging-dependency-prs`.** The `uv` entry in
-`.github/dependabot.yml` runs monthly with `cooldown.default-days: 14`: one grouped PR
+`.github/dependabot.yml` runs monthly with `cooldown.default-days: 7`: one grouped PR
 for minor and patch updates and one PR per major, labelled `dependencies`. Each always
 moves `uv.lock`, and moves the manifest that declares a package (`backend/pyproject.toml`
 or the root `pyproject.toml`) too when it raises that package's range. The cooldown
 equals `exclude-newer` on purpose — uv's Dependabot guide recommends it — so Dependabot
 almost never proposes a version the window refuses to lock. The edge remains: uv judges
-each artifact's upload time against now minus 14 × 24 hours, while the cooldown counts
+each artifact's upload time against now minus 7 × 24 hours, while the cooldown counts
 days since the release, so a wheel uploaded days after its release, or a release on the
 boundary day, can still disagree. That shows as a failed Dependabot job, not as a PR
 (`merging-dependency-prs`' failure mode F3). Change the two together or not at all;
@@ -119,8 +119,8 @@ old.
 - **A hand-run upgrade stays allowed** — before a release, or to take one package early
   within the window: `uv lock --upgrade` or `uv lock --upgrade-package <package>`, then
   `just check` and `just verify`, then the changed manifests and `uv.lock` in one commit
-  of their own. The same 14-day window bounds it.
-- **Security updates skip Dependabot's cooldown, not the window.** A fix younger than 14
+  of their own. The same 7-day window bounds it.
+- **Security updates skip Dependabot's cooldown, not the window.** A fix younger than 7
   days does not lock: Dependabot runs `uv lock` under the same window, so its job fails
   and no PR opens — the signal is the Dependabot job log (Insights → Dependency graph →
   Dependabot) and the alert, which stays open. Wait out the window, or take the
@@ -138,7 +138,7 @@ root's `[tool.uv]` may give that one package (and any package the fix needs) an
 absolute timestamp just after its release, such as
 `exclude-newer-package = { virtualenv = "2026-09-22T00:00:00Z" }`.
 The entry's comment names the advisory, why waiting is riskier, and the date after
-which the entry is dropped — the day the fix turns 14 days old and the window admits it.
+which the entry is dropped — the day the fix turns 7 days old and the window admits it.
 Never a blanket exception and never a shorter global window to let one package through.
 
 Drop the entry once its date passes: a stale entry freezes that package at its date, so

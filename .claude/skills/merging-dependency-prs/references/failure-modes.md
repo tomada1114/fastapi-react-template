@@ -48,9 +48,9 @@ the release notes ask for.
 younger than the configured window.
 
 **Cause:** `.github/dependabot.yml`'s `cooldown: default-days` — 7 for
-`github-actions`, 14 for `uv`, equal to `[tool.uv] exclude-newer`. Dependabot exempts
+`github-actions`, 7 for `uv`, equal to `[tool.uv] exclude-newer`. Dependabot exempts
 **security updates** from its own cooldown, but not from `exclude-newer`: a `uv`
-security update younger than 14 days does not lock. Dependabot runs `uv lock` under the
+security update younger than 7 days does not lock. Dependabot runs `uv lock` under the
 same window, so that failure normally stays inside its own job and no PR opens: look in
 the Dependabot job log (Insights → Dependency graph → Dependabot) and at the Dependabot
 alert, which stays open.

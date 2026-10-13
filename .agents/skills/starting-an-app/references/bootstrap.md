@@ -87,7 +87,7 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
    deletes `TEMPLATE.md`, `tests/test_bootstrap.py`, this page in both skill trees, and
    `scripts/bootstrap.py` (none of them with `--keep-bootstrap`). On top of the
    placeholders, `LICENSE` gets the run's year and the author. The root
-   `pyproject.toml`'s `exclude-newer` is a relative `"14 days"` and is left as it is.
+   `pyproject.toml`'s `exclude-newer` is a relative `"7 days"` and is left as it is.
    CI's `Template Bootstrap Smoke` job sits in a template-only block, so it goes too.
    If a write fails part-way, it exits 1 with an `error:` line naming the steps already
    done; see "A failed write" below.
