@@ -68,7 +68,7 @@ A `dependabot/uv/...` PR moves Python dependencies. Review it as closely as an A
 
   A change under `[options]` is "Stop and ask".
 - `[tool.uv] exclude-newer-package` holds no entry whose timestamp is older than the
-  14-day window. Such an entry is stale — its fix is already inside the window — and
+  7-day window. Such an entry is stale — its fix is already inside the window — and
   it freezes that package at its date, so Dependabot's proposals for it fail. Put its
   removal (comment included, then `uv lock`) in the plan as its own change; this review
   is the trigger that drops it (`managing-dependencies`).

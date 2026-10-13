@@ -29,10 +29,10 @@ dev = [
 # relative `exclude-newer` ... values in lockfiles", changelogs/0.11.x.md), so an
 # older uv could rewrite the lock and fail `uv lock --check`.
 required-version = ">=0.11.8"
-# `uv lock` and `uv sync` ignore any release younger than 14 days. It must equal
+# `uv lock` and `uv sync` ignore any release younger than 7 days. It must equal
 # the `uv` entry's `cooldown.default-days` in .github/dependabot.yml, so
 # Dependabot almost never proposes a version this window refuses to lock.
-exclude-newer = "14 days"
+exclude-newer = "7 days"
 
 [tool.uv.workspace]
 members = ["backend"]

@@ -20,7 +20,7 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    # Must equal `[tool.uv] exclude-newer` in pyproject.toml ("14 days"): a
+    # Must equal `[tool.uv] exclude-newer` in pyproject.toml ("7 days"): a
     # shorter cooldown proposes versions `uv lock` refuses, a longer one leaves
     # the lock behind the window. Change both together, or neither. Equal, they
     # almost never disagree: uv judges each file's upload time, the cooldown the
@@ -28,7 +28,7 @@ updates:
     # fail the Dependabot job. Security updates skip this cooldown but not
     # exclude-newer.
     cooldown:
-      default-days: 14
+      default-days: 7
     # Minor and patch updates arrive as one PR; each major stays a PR of its own.
     groups:
       python-minor-patch:
