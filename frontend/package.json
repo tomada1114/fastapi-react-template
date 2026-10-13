@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "api:generate": "node generate-api.ts",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
+    "@hey-api/openapi-ts": "0.99.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.42",
     "@testing-library/dom": "^10.4.2",

@@ -14,6 +14,7 @@ fmt:
 
 # Lint the frontend (biome ci) and type-check it (tsc under the strict flags)
 lint:
+    uv run --locked python ../scripts/check_generated_client.py --scope-only
     pnpm exec biome ci .
     pnpm exec tsc --noEmit
 

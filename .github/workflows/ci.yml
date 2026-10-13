@@ -104,6 +104,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --locked
 
+      - name: Install the recipe integration test runner
+        # Recipe integration tests execute Just, using the same pin as the
+        # recipe-running jobs. The Python-only runner otherwise lacks it.
+        run: |
+          uv tool install rust-just==1.47.1
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+
       # `just test`: the root suite, and backend::test (`just backend test`), the
       # app's suite with the coverage floor, run in backend/. Lines stay verbatim.
       - name: Run the root tests
@@ -235,6 +242,13 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Install the backend dependencies
         run: uv sync --group dev --locked --package my-app
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install the locked frontend dependencies
+        run: pnpm install --frozen-lockfile
       - name: Check the committed API contract
         run: uvx --from rust-just==1.47.1 just contract-check
 

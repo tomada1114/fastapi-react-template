@@ -58,3 +58,10 @@ strictDepBuilds: true
 # saying what the script does and why: `false` when the package works without
 # it, `true` only with the owner's sign-off, like a new package.
 allowBuilds: {}
+
+# Owner-approved (#27, 2026-10-13): the generator's parser pins vulnerable
+# js-yaml 4.2.0. This scoped override selects the 4.3.2 security fix, released
+# 2026-08-26 and admitted by the seven-day window, without changing policy.
+# Remove when the parser itself uses js-yaml >=4.3.2.
+overrides:
+  "@hey-api/json-schema-ref-parser@1.4.4>js-yaml": "4.3.2"
