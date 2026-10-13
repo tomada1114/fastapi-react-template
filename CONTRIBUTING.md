@@ -10,13 +10,20 @@ Install these tools:
 - [Python 3.14+](https://www.python.org/)
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.11.8 or later
   (`pyproject.toml`'s `required-version`; the relative `exclude-newer` and its lockfile form need it)
+- [Node.js 24](https://nodejs.org/) (`.node-version`). `pnpm install`
+  downloads the Node.js 24 release `pnpm-lock.yaml` pins when the `node` on
+  your `PATH` is another version, and runs the frontend's tools on it.
+- [pnpm](https://pnpm.io/) 11, through `corepack enable` (Node.js 24 ships
+  Corepack); any pnpm 11 fetches the version `package.json` pins. pnpm is the
+  only JavaScript package manager here: no `npm`, `yarn`, or `bun`.
 - [Just](https://just.systems/man/en/installation.html) 1.42.3 or later
-  (optional — you can run `uv run` commands directly). The root `justfile`
-  loads `backend/justfile` as a module (`just backend <recipe>`), and its
-  `lint`, `test`, and `dev` recipes depend on module recipes
-  (`lint: backend::lint`). Just accepts such a dependency from 1.42.0, and from
-  1.42.3 runs it in the module's directory (`backend/`) as it must; an older
-  Just fails to parse the `justfile` or runs the backend's commands from the
+  (optional — you can run the `uv run` and `pnpm` commands directly). The root
+  `justfile` loads `backend/justfile` and `frontend/justfile` as modules
+  (`just backend <recipe>`, `just frontend <recipe>`), and its `lint`, `test`,
+  and `dev` recipes depend on module recipes (`lint: backend::lint
+  frontend::lint`). Just accepts such a dependency from 1.42.0, and from 1.42.3
+  runs it in the module's directory (`backend/`, `frontend/`) as it must; an
+  older Just fails to parse the `justfile` or runs an area's commands from the
   repository root.
 
 Then install the dependencies and the git hooks (without Just, run the
@@ -45,6 +52,9 @@ just test
 # Run only the backend's tests, with its coverage floor (`just --list backend` lists the rest)
 just backend test
 
+# Run only the frontend's tests, with its coverage floor (`just --list frontend` lists the rest)
+just frontend test
+
 # Mutating development check (format → lint → test)
 just check
 
@@ -52,9 +62,10 @@ just check
 just verify
 ```
 
-**Without Just**, run the `uv run` commands the `justfile` gives each recipe
-(`just verify` runs the recipes its own line in the `justfile` names), and a
-`backend::` recipe's commands from `backend/justfile` inside `backend/`.
+**Without Just**, run the `uv run` and `pnpm` commands the `justfile` gives each
+recipe (`just verify` runs the recipes its own line in the `justfile` names),
+and a `backend::` or `frontend::` recipe's commands from that area's `justfile`
+inside its directory.
 
 ## Worktrees
 
