@@ -27,10 +27,7 @@
       "parameters": {
         "strict_required_status_checks_policy": false,
         "required_status_checks": [
-          { "context": "Lint & Type Check", "integration_id": 15368 },
-          { "context": "Coverage", "integration_id": 15368 },
-          { "context": "Spell Check", "integration_id": 15368 },
-          { "context": "Workflow Security Lint", "integration_id": 15368 },
+          { "context": "CI result", "integration_id": 15368 },
           { "context": "Validate PR title", "integration_id": 15368 },
           { "context": "Analyze (python)", "integration_id": 15368 },
           { "context": "Analyze (actions)", "integration_id": 15368 },
