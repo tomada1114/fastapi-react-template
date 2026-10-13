@@ -114,3 +114,30 @@ repos:
         types: [python]
         pass_filenames: false
         stages: [pre-commit]
+      # The frontend's own tools, run from frontend/ so Biome finds
+      # frontend/biome.json (it searches upwards, never down) and tsc finds
+      # frontend/tsconfig.json; the biome entry strips the `frontend/` prefix
+      # pre-commit's root-relative paths carry. `pnpm exec` fails while
+      # node_modules does not match pnpm-lock.yaml (verifyDepsBeforeRun).
+      # Biome checks and never writes: the author runs `just frontend fmt`
+      # and re-stages.
+      - id: biome
+        name: biome (frontend)
+        entry: >-
+          bash -c 'cd frontend && exec pnpm exec biome check
+          --no-errors-on-unmatched --files-ignore-unknown=true
+          "${@#frontend/}"' --
+        language: system
+        files: ^frontend/
+        types_or: [ts, tsx, javascript, jsx, json, css]
+        require_serial: true
+        stages: [pre-commit]
+      # Type-checks the whole project, like mypy, whichever files are staged.
+      - id: tsc
+        name: tsc --noEmit (frontend)
+        entry: bash -c 'cd frontend && exec pnpm exec tsc --noEmit' --
+        language: system
+        files: ^frontend/
+        types_or: [ts, tsx]
+        pass_filenames: false
+        stages: [pre-commit]
