@@ -39,3 +39,11 @@ factory built; a supplied `container=` stays caller-owned. Each `TestClient` con
 runs the app on its own loop, so never reuse a container holding a loop-bound resource
 across two of them. The SQL repository's engine is registered this way
 (`resources.push_async_callback(engine.dispose)`; **BACKGROUND:** `persisting-data`).
+
+Cancellation does not release ownership early. Both exits await one Container-owned
+cleanup task on the resource's event loop, protected from scope and direct-task
+cancellation; concurrent closers share that drain. Callbacks finish once in LIFO order
+before caller cancellation propagates. A cleanup failure still runs the remaining
+callbacks and takes precedence over cancellation; a later close does not replay it.
+Suppression belongs only to the exit that supplied the original exception details;
+a concurrent exit cannot suppress a different error with that result.

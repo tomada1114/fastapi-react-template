@@ -6,11 +6,15 @@ so swapping a repository is a change to this module only.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Self
+
+from anyio import CancelScope
+from anyio.lowlevel import checkpoint_if_cancelled
 
 from my_app.adapters.memory import InMemoryTodoRepository
 from my_app.adapters.sql.engine import make_engine
@@ -24,6 +28,13 @@ if TYPE_CHECKING:
     from my_app.settings import Settings
 
 
+@dataclass(slots=True)
+class _CleanupState:
+    """Mutable ownership bookkeeping inside the otherwise frozen container."""
+
+    task: asyncio.Task[bool | None] | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class Container:
     """The services an entry point may call, built once per process."""
@@ -32,10 +43,13 @@ class Container:
     _resources: AsyncExitStack = field(
         default_factory=AsyncExitStack, repr=False, compare=False
     )
+    _cleanup: _CleanupState = field(
+        default_factory=_CleanupState, init=False, repr=False, compare=False
+    )
 
     async def aclose(self) -> None:
         """Release every resource the composition root registered, at most once."""
-        await self._resources.aclose()
+        await self._close(None, None, None)
 
     async def __aenter__(self) -> Self:
         """Keep ownership until the surrounding context exits."""
@@ -48,7 +62,42 @@ class Container:
         traceback: TracebackType | None,
     ) -> bool:
         """Forward exception details and suppression to registered resources."""
-        return bool(await self._resources.__aexit__(exc_type, exc_value, traceback))
+        return await self._close(exc_type, exc_value, traceback)
+
+    async def _close(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool:
+        """Finish one drain on the owning loop, then propagate caller cancellation."""
+        task = self._cleanup.task
+        owns_exit = task is None
+        if task is not None and task.done():
+            # ExitStack is already drained, including after a cleanup failure.
+            await checkpoint_if_cancelled()
+            return False
+        if task is None:
+            task = asyncio.create_task(
+                self._resources.__aexit__(exc_type, exc_value, traceback),
+                name="container-cleanup",
+            )
+            self._cleanup.task = task
+        cancellation: asyncio.CancelledError | None = None
+        # AnyIO scopes cancel every checkpoint. asyncio.wait does not forward
+        # direct Task.cancel to the cleanup task or log its failure separately.
+        with CancelScope(shield=True):
+            while not task.done():
+                try:
+                    await asyncio.wait({task})
+                except asyncio.CancelledError as error:
+                    cancellation = error
+            suppressed = task.result()
+        if cancellation is not None:
+            raise cancellation
+        await checkpoint_if_cancelled()
+        # Suppression belongs to the exception details that started this drain.
+        return owns_exit and bool(suppressed)
 
 
 def utc_now() -> datetime:

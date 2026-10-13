@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import tomllib
 import uuid
@@ -7,6 +8,7 @@ from contextlib import AsyncExitStack, suppress
 from datetime import UTC
 from pathlib import Path
 
+import anyio
 import pytest
 from sqlalchemy import event
 
@@ -20,6 +22,27 @@ from my_app.settings import Settings
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture
+async def engine_disposals(monkeypatch):
+    """Observe owned engine disposal; repair resources only if a regression leaks."""
+    opened = []
+    disposed = []
+
+    def recording_make_engine(url):
+        engine = make_engine(url)
+        opened.append(engine)
+        event.listen(
+            engine.sync_engine, "engine_disposed", lambda _: disposed.append(engine)
+        )
+        return engine
+
+    monkeypatch.setattr(composition, "make_engine", recording_make_engine)
+    yield disposed
+    for engine in opened:
+        if engine not in disposed:
+            await engine.dispose()
 
 
 def test_build_container_postgres_url_without_asyncpg_names_the_extra(monkeypatch):
@@ -78,6 +101,23 @@ async def test_build_container_sql_settings_disposes_the_engine_on_aclose(
     await container.aclose()
 
     assert disposed == [migrated_sqlite_url]
+
+
+async def test_container_cancelled_context_disposes_open_sqlite_engine_once(
+    engine_disposals, migrated_sqlite_url
+):
+    container = build_container(Settings(database_url=migrated_sqlite_url))
+    with anyio.CancelScope() as cancelled:
+        async with container:
+            created = await container.todos.create("opens a real pooled connection")
+            assert (await container.todos.list_page()).items == (created,)
+            cancelled.cancel()
+            await anyio.lowlevel.checkpoint()
+
+    assert cancelled.cancelled_caught
+    assert len(engine_disposals) == 1
+    await container.aclose()
+    assert len(engine_disposals) == 1
 
 
 async def test_build_container_injected_clock_stamps_created_at(
@@ -140,6 +180,200 @@ async def test_container_aclose_releases_registered_resource_once(make_container
     await container.aclose()
 
     assert closed == ["resource"]
+
+
+async def test_container_context_cancelled_scope_finishes_callbacks_once(
+    make_container,
+):
+    entered = []
+    closed = []
+    resources = AsyncExitStack()
+
+    async def cleanup(name):
+        entered.append(name)
+        await anyio.lowlevel.checkpoint()
+        closed.append(name)
+
+    resources.push_async_callback(cleanup, "first")
+    resources.push_async_callback(cleanup, "second")
+    container = Container(make_container().todos, _resources=resources)
+
+    with anyio.CancelScope() as cancelled:
+        async with container:
+            cancelled.cancel()
+            await anyio.lowlevel.checkpoint()
+
+    assert cancelled.cancelled_caught
+    assert entered == ["second", "first"]
+    assert closed == ["second", "first"]
+    await container.aclose()
+    assert closed == ["second", "first"]
+
+
+async def test_container_aclose_cancelled_scope_finishes_before_cancellation(
+    make_container,
+):
+    closed = []
+    returned = []
+    resources = AsyncExitStack()
+
+    async def cleanup():
+        await anyio.lowlevel.checkpoint()
+        closed.append("resource")
+
+    resources.push_async_callback(cleanup)
+    container = Container(make_container().todos, _resources=resources)
+
+    with anyio.CancelScope() as cancelled:
+        cancelled.cancel()
+        await container.aclose()
+        returned.append("returned")
+
+    assert cancelled.cancelled_caught
+    assert returned == []
+    assert closed == ["resource"]
+    await container.aclose()
+    assert closed == ["resource"]
+
+
+@pytest.mark.parametrize(
+    ("fail", "outcome"),
+    [
+        pytest.param(False, "cancelled", id="cancelled"),
+        pytest.param(True, "failed", id="cleanup-failure"),
+    ],
+)
+async def test_container_suspended_cleanup_finishes_before_caller_outcome(
+    make_container, fail, outcome
+):
+    entered = anyio.Event()
+    release = anyio.Event()
+    done = anyio.Event()
+    closed = []
+    outcomes = []
+    resources = AsyncExitStack()
+
+    async def suspended():
+        entered.set()
+        await release.wait()
+        closed.append("held")
+        if fail:
+            message = "cleanup failed"
+            raise ValueError(message)
+
+    resources.push_async_callback(_record, closed, "remaining")
+    resources.push_async_callback(suspended)
+    container = Container(make_container().todos, _resources=resources)
+
+    async def close(task_status=anyio.TASK_STATUS_IGNORED):
+        task_status.started(asyncio.current_task())
+        try:
+            await container.aclose()
+        except asyncio.CancelledError:
+            outcomes.append("cancelled")
+        except ValueError:
+            outcomes.append("failed")
+        else:
+            outcomes.append("returned")
+        finally:
+            done.set()
+
+    async with anyio.create_task_group() as tasks:
+        caller = await tasks.start(close)
+        await entered.wait()
+        caller.cancel()
+        release.set()
+        await done.wait()
+
+    assert closed == ["held", "remaining"]
+    assert outcomes == [outcome]
+    await container.aclose()
+    assert closed == ["held", "remaining"]
+
+
+async def test_container_concurrent_close_callers_share_complete_lifo_cleanup(
+    make_container,
+):
+    entered = anyio.Event()
+    release = anyio.Event()
+    closed = []
+    snapshots = []
+    resources = AsyncExitStack()
+
+    async def suspended():
+        entered.set()
+        await release.wait()
+        closed.append("held")
+
+    resources.push_async_callback(_record, closed, "remaining")
+    resources.push_async_callback(suspended)
+    container = Container(make_container().todos, _resources=resources)
+
+    async def close(task_status=anyio.TASK_STATUS_IGNORED):
+        task_status.started()
+        await container.aclose()
+        snapshots.append(closed.copy())
+
+    async with anyio.create_task_group() as tasks:
+        await tasks.start(close)
+        await entered.wait()
+        await tasks.start(close)
+        release.set()
+
+    assert closed == ["held", "remaining"]
+    assert snapshots == [["held", "remaining"], ["held", "remaining"]]
+
+
+async def test_container_concurrent_exits_keep_suppression_with_its_original_error(
+    make_container,
+):
+    entered = anyio.Event()
+    release = anyio.Event()
+    outcomes = []
+    forwarded = []
+
+    class SuppressingResource:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_value, traceback):
+            forwarded.append(exc_type)
+            entered.set()
+            await release.wait()
+            return exc_type is ValueError
+
+    resources = AsyncExitStack()
+    await resources.enter_async_context(SuppressingResource())
+    container = Container(make_container().todos, _resources=resources)
+
+    async def first():
+        async with container:
+            message = "first error"
+            raise ValueError(message)
+        outcomes.append("first-suppressed")
+
+    def fail_second():
+        message = "second error"
+        raise TypeError(message)
+
+    async def second(task_status=anyio.TASK_STATUS_IGNORED):
+        task_status.started()
+        try:
+            async with container:
+                fail_second()
+        except TypeError:
+            outcomes.append("second-propagated")
+        else:
+            outcomes.append("second-suppressed")
+
+    async with anyio.create_task_group() as tasks:
+        tasks.start_soon(first)
+        await entered.wait()
+        await tasks.start(second)
+        release.set()
+
+    assert forwarded == [ValueError]
+    assert sorted(outcomes) == ["first-suppressed", "second-propagated"]
 
 
 async def test_container_context_exit_releases_registered_resource(make_container):

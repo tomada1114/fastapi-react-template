@@ -6,6 +6,7 @@ from importlib import metadata, reload
 from inspect import iscoroutinefunction
 from uuid import UUID
 
+import anyio
 import httpx2
 import pytest
 from fastapi import FastAPI
@@ -168,6 +169,32 @@ def test_create_app_shutdown_closes_factory_built_container(
         assert closed == []
 
     assert closed == ["built"]
+
+
+async def test_create_app_cancelled_shutdown_finishes_factory_owned_cleanup(
+    make_container, monkeypatch
+):
+    closed = []
+    resources = AsyncExitStack()
+
+    async def close():
+        await anyio.lowlevel.checkpoint()
+        closed.append("owned")
+
+    resources.push_async_callback(close)
+    container = Container(make_container().todos, _resources=resources)
+    monkeypatch.setattr(app_module, "build_container", lambda _: container)
+    app = create_app(Settings(database_url=None))
+
+    with anyio.CancelScope() as cancelled:
+        async with app.router.lifespan_context(app):
+            cancelled.cancel()
+            await anyio.lowlevel.checkpoint()
+
+    assert cancelled.cancelled_caught
+    assert closed == ["owned"]
+    await container.aclose()
+    assert closed == ["owned"]
 
 
 async def test_create_app_shutdown_leaves_supplied_container_caller_owned(

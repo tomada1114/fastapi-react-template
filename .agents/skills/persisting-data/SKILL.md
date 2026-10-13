@@ -85,6 +85,10 @@ container, hands it to every SQL repository, and registers
   garbage collection can warn `Event loop is closed`
   (https://docs.sqlalchemy.org/en/21/orm/extensions/asyncio.html, checked 2026-10-09),
   and `filterwarnings = ["error"]` turns that into an intermittent test failure.
+- Container owns a single cancellation-safe cleanup task on that loop. It completes
+  registered callbacks in LIFO order before propagating caller cancellation, including
+  factory-owned lifespan shutdown. Concurrent closers share it; retries do not recover
+  a callback interrupted after ExitStack removed it (`designing-core-logic`).
 - Pooled connections belong to one event loop. Each `TestClient` context runs the app
   on a loop of its own, so a SQL API test builds its app with `create_app(settings)`,
   whose lifespan disposes the engine on that loop; never pass it a SQL container
