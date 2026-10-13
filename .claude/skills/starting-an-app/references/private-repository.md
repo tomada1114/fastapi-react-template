@@ -17,10 +17,10 @@ skip to step 4. Otherwise continue.
 
 ## 2. Drop the required contexts first
 
-Remove "Analyze (python)", "Analyze (actions)", and "Dependency Review" from
-`required_status_checks` in `.github/rulesets/main.json`, keeping every other context.
-`tests/test_apply_ruleset.py` pins the required list, so update its expected contexts in
-the same change.
+Remove "Analyze (python)", "Analyze (actions)", "Analyze (javascript-typescript)", and
+"Dependency Review" from `required_status_checks` in `.github/rulesets/main.json`,
+keeping every other context. `tests/test_apply_ruleset.py` pins the required list, so
+update its expected contexts in the same change.
 
 ## 3. Delete the workflows
 
