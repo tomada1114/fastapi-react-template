@@ -6,8 +6,8 @@ description: >
   stay out of a commit, grouping changes into Conventional Commits, the files that move
   together (pyproject.toml with uv.lock, .agents/skills/ with .claude/skills/, a
   backend/src/ change with its test and the document it owes), recovering when a
-  pre-commit hook refuses a commit (ruff, ruff-format, mypy, typos, zizmor,
-  check-staged, agents-check, no-commit-to-branch), and pushing only when asked.
+  pre-commit hook refuses a commit (ruff, ruff-format, mypy, biome, tsc, typos,
+  zizmor, check-staged, agents-check, no-commit-to-branch), and pushing only when asked.
 ---
 
 # Smart Commit
