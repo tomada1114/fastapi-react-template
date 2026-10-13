@@ -79,10 +79,7 @@ def test_required_contexts_match_settled_defaults() -> None:
 
     assert len(contexts) == len(set(contexts))
     assert set(contexts) == {
-        "Lint & Type Check",
-        "Coverage",
-        "Spell Check",
-        "Workflow Security Lint",
+        "CI result",
         "Validate PR title",
         "Analyze (python)",
         "Analyze (actions)",
