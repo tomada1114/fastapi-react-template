@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useId } from "react";
+import { useId, useRef, useState } from "react";
 import { listTodosInfiniteOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { ErrorMessage } from "../../lib/ErrorMessage";
 import { toApiError } from "../../lib/problem-details";
@@ -10,6 +10,8 @@ export const TODO_PAGE_SIZE = 20;
 
 export function TodosScreen() {
   const headingId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const [staleMessage, setStaleMessage] = useState(false);
   const query = useInfiniteQuery({
     ...listTodosInfiniteOptions({ query: { limit: TODO_PAGE_SIZE } }),
     initialPageParam: {},
@@ -20,14 +22,22 @@ export function TodosScreen() {
     <section aria-labelledby={headingId} className="max-w-2xl space-y-6">
       <CreateTodoForm />
       <div className="space-y-3">
-        <h2 id={headingId} tabIndex={-1} className="text-xl font-semibold">
+        <h2
+          ref={heading}
+          id={headingId}
+          tabIndex={-1}
+          className="text-xl font-semibold"
+        >
           To-dos
         </h2>
+        {staleMessage && (
+          <p role="status">That to-do no longer exists. The list has been refreshed.</p>
+        )}
         {query.isPending ? (
           <p role="status" className="text-gray-600">
             Loading to-dos…
           </p>
-        ) : query.isError ? (
+        ) : query.isError && !query.data ? (
           <>
             <ErrorMessage error={toApiError(query.error)} />
             <button
@@ -40,7 +50,25 @@ export function TodosScreen() {
             </button>
           </>
         ) : (
-          <TodoList todos={query.data.pages[0]?.items ?? []} headingId={headingId} />
+          <>
+            <TodoList
+              todos={query.data?.pages.flatMap((page) => page.items) ?? []}
+              headingId={headingId}
+              onDeleted={() => heading.current?.focus()}
+              onStale={() => setStaleMessage(true)}
+            />
+            {query.hasNextPage && (
+              <button
+                type="button"
+                disabled={query.isFetching}
+                onClick={() => void query.fetchNextPage()}
+                className="rounded-md border border-gray-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 disabled:opacity-50"
+              >
+                {query.isFetchingNextPage ? "Loading more…" : "Load more"}
+              </button>
+            )}
+            {query.isError && <ErrorMessage error={toApiError(query.error)} />}
+          </>
         )}
       </div>
     </section>
