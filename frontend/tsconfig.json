@@ -26,6 +26,7 @@
     "tests",
     "vite.config.ts",
     "vitest.config.ts",
-    "openapi-ts.config.ts"
+    "openapi-ts.config.ts",
+    "generate-api.ts"
   ]
 }

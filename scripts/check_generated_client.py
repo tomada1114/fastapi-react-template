@@ -21,7 +21,10 @@ if TYPE_CHECKING:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GENERATED = Path("frontend/src/api/generated")
 RUNTIME_PREFIXES = (GENERATED / "client", GENERATED / "core")
-DIRECTIVE = re.compile(r"(?m)^[\s\ufeff]*(?://+|/\*|\*)\s*@ts-nocheck\b", re.IGNORECASE)
+DIRECTIVE = re.compile(
+    r"(?m)^[\s\ufeff]*(?://+|/\*+|\*)\s*(@ts-(?:nocheck|ignore|expect-error))\b",
+    re.IGNORECASE,
+)
 TS_SUFFIXES = {".ts", ".tsx", ".mts", ".cts"}
 
 
@@ -44,12 +47,12 @@ def _scope_findings(tree: Path, prefix: Path) -> list[str]:
             if path.suffix not in TS_SUFFIXES:
                 continue
             display = prefix / path.relative_to(tree)
-            if any(display.is_relative_to(runtime) for runtime in RUNTIME_PREFIXES):
-                continue
-            if DIRECTIVE.search(path.read_text(encoding="utf-8")):
-                findings.append(
-                    f"{display}: @ts-nocheck is outside the approved runtime"
-                )
+            runtime = any(display.is_relative_to(item) for item in RUNTIME_PREFIXES)
+            for match in DIRECTIVE.finditer(path.read_text(encoding="utf-8")):
+                directive = match.group(1).lower()
+                if runtime and directive == "@ts-nocheck":
+                    continue
+                findings.append(f"{display}: {directive} is not an approved exception")
     return sorted(findings)
 
 

@@ -97,11 +97,11 @@ export const listTodosInfiniteQueryKey = (options?: Options<ListTodosData>): Que
  */
 export const listTodosInfiniteOptions = (options?: Options<ListTodosData>) => {
     const opts = infiniteQueryOptions<ListTodosResponse, ListTodosError, InfiniteData<ListTodosResponse>, QueryKey<Options<ListTodosData>>, string | null | Pick<QueryKey<Options<ListTodosData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
-    // @ts-ignore
     {
+        initialPageParam: {},
+        getNextPageParam: () => undefined,
         queryFn: async ({ pageParam, queryKey, signal }) => {
-            // @ts-ignore
-            const page: Pick<QueryKey<Options<ListTodosData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
+            const page: Pick<QueryKey<Options<ListTodosData>>[0], 'body' | 'headers' | 'path' | 'query'> = pageParam !== null && typeof pageParam === 'object' ? pageParam : {
                 query: {
                     cursor: pageParam
                 }

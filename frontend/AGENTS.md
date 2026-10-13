@@ -123,6 +123,9 @@ frontend/
   hey-api 0.99.0 fails `exactOptionalPropertyTypes` there. Generated types, SDK,
   query options, and handwritten code keep every strict flag; the scope gate
   in `just frontend lint` also verifies newly generated output during the contract check.
+  `generate-api.ts` corrects the pinned generator's nullable infinite-page branch
+  and supplies the required single-page defaults without suppression directives.
+  Consumers override `getNextPageParam` with their response-specific cursor rule.
 - **Tailwind CSS 4 is the only styling layer**, through `@tailwindcss/vite`:
   utility classes in the markup, and `src/styles.css` (`@import "tailwindcss";`)
   imported by `main.tsx` alone. No CSS modules, CSS-in-JS, other stylesheets,

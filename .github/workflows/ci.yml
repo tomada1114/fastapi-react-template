@@ -104,6 +104,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev --locked
 
+      - name: Install the recipe integration test runner
+        # Recipe integration tests execute Just, using the same pin as the
+        # recipe-running jobs. The Python-only runner otherwise lacks it.
+        run: |
+          uv tool install rust-just==1.47.1
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+
       # `just test`: the root suite, and backend::test (`just backend test`), the
       # app's suite with the coverage floor, run in backend/. Lines stay verbatim.
       - name: Run the root tests

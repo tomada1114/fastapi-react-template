@@ -109,13 +109,23 @@ def test_generated_client_failure_preserves_starting_bytes_and_git_state(
     [
         "src/routeTree.gen.ts",
         "src/api/generated/types.gen.ts",
+        "src/api/generated/@tanstack/react-query.gen.ts",
         "src/page.tsx",
         "tests/page.test.ts",
     ],
 )
 @pytest.mark.parametrize(
     "comment",
-    ["// @ts-nocheck", "/* @ts-nocheck */", "// @TS-NOCHECK", "//\u00a0@ts-nocheck"],
+    [
+        "// @ts-nocheck",
+        "/* @ts-nocheck */",
+        "// @TS-NOCHECK",
+        "//\u00a0@ts-nocheck",
+        "// @ts-ignore",
+        "/* @ts-ignore */",
+        "// @ts-expect-error",
+        "// @TS-EXPECT-ERROR",
+    ],
 )
 def test_typecheck_policy_forbidden_directive_fails_naming_file(
     make_root, path, comment, capsys
@@ -138,6 +148,14 @@ def test_typecheck_policy_approved_runtime_passes_without_generator(
     target.write_text("// @ts-nocheck\nexport {};\n")
 
     assert checker.main(["--scope-only"], root=make_root) == 0
+
+
+@pytest.mark.parametrize("directive", ["@ts-ignore", "@ts-expect-error"])
+def test_typecheck_policy_runtime_unapproved_suppression_fails(make_root, directive):
+    target = make_root / "frontend/src/api/generated/client/runtime.ts"
+    target.write_text(f"// {directive}\nexport {{}};\n")
+
+    assert checker.main(["--scope-only"], root=make_root) == 1
 
 
 @pytest.mark.parametrize("fail", [False, True])

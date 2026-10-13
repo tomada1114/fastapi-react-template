@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "api:generate": "openapi-ts",
+    "api:generate": "node generate-api.ts",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
