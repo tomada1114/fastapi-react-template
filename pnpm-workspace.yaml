@@ -17,11 +17,11 @@ pmOnFail: download
 # dependencies.
 verifyDepsBeforeRun: error
 
-# Supply-chain window: refuse dependency versions published less than 14 days
-# (20160 minutes) ago, so a compromised or broken release has time to be found
+# Supply-chain window: refuse dependency versions published less than 7 days
+# (10080 minutes) ago, so a compromised or broken release has time to be found
 # before it can enter this project. Equal to the root pyproject.toml's
-# `[tool.uv] exclude-newer = "14 days"`: one window for the whole repository.
-minimumReleaseAge: 20160
+# `[tool.uv] exclude-newer = "7 days"`: one window for the whole repository.
+minimumReleaseAge: 10080
 # Apply the window to every version, including ones already in the lockfile.
 minimumReleaseAgeStrict: true
 # Fail closed when registry metadata has no publish time, rather than assuming
