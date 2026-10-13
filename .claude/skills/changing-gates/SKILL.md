@@ -141,8 +141,13 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
   `skipped` is not `success`, so a required job cannot need a job that is skipped on
   purpose. Enforced by: `tests/harness/test_ruleset_contexts.py`, which also fails on a
   workflow layout its scanner cannot read.
-- Renaming a required job, or adding one that should block merges, edits
-  `.github/rulesets/main.json` and the context list in
+- The ruleset requires one CI context, `CI result` (`ci.yml`'s `ci-result` job), plus
+  the contexts other workflows report. A gating CI job joins `ci-result`'s `needs:` and
+  its failing step's `if:` (one `needs.<id>.result != 'success'` term each), with no
+  ruleset edit; a job that does not gate goes in `tests/harness/test_ci_aggregate.py`'s
+  `EXEMPT_JOBS` with its reason. That test fails on a `ci.yml` job in neither.
+- Renaming `CI result` is the one CI change that edits `.github/rulesets/main.json`;
+  so do adding or renaming a required context from another workflow. Each also edits
   `tests/test_apply_ruleset.py::test_required_contexts_match_settled_defaults` in the
   same pull request. The live ruleset changes only when the owner reruns `just ruleset`
   — an admin step an agent proposes and never runs. **BACKGROUND:** `starting-an-app`
