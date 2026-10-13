@@ -13,6 +13,18 @@ describe("generated API contract", () => {
     expect(listTodosOptions().queryKey[0]._id).toBe("listTodos");
   });
 
+  it("keeps an explicit empty base URL instead of the client's default host", () => {
+    const testClient = createClient(createConfig({ baseUrl: "https://other.example" }));
+
+    const options = { client: testClient, baseUrl: "" };
+
+    expect(listTodosOptions(options).queryKey[0].baseUrl).toBe("");
+    expect(listTodosInfiniteOptions(options).queryKey[0].baseUrl).toBe("");
+    expect(listTodosOptions({ client: testClient }).queryKey[0].baseUrl).toBe(
+      "https://other.example",
+    );
+  });
+
   it.each([null, {}, "next-page"])(
     "requests a page with the supported parameter %j",
     async (pageParam) => {
