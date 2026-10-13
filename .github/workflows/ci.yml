@@ -224,6 +224,20 @@ jobs:
           RUST_LOG: zizmor=info
         run: uv run --locked pre-commit run zizmor --all-files --verbose
 
+  contract-drift:
+    name: Contract Drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Install the backend dependencies
+        run: uv sync --group dev --locked --package my-app
+      - name: Check the committed API contract
+        run: uvx --from rust-just==1.47.1 just contract-check
+
   # The one CI context .github/rulesets/main.json requires. It needs every
   # gating job above and fails unless each succeeded, so a new gating job joins
   # `needs:` and the failing step's `if:`, never the ruleset; a job that does
@@ -235,7 +249,7 @@ jobs:
   ci-result:
     name: CI result
     if: ${{ always() }}
-    needs: [lint, coverage, frontend, postgres, spell-check, zizmor]
+    needs: [lint, coverage, frontend, postgres, spell-check, zizmor, contract-drift]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -251,7 +265,8 @@ jobs:
         if: >-
           ${{ needs.lint.result != 'success' || needs.coverage.result != 'success'
           || needs.frontend.result != 'success' || needs.postgres.result != 'success'
-          || needs.spell-check.result != 'success' || needs.zizmor.result != 'success' }}
+          || needs.spell-check.result != 'success' || needs.zizmor.result != 'success'
+          || needs.contract-drift.result != 'success' }}
         run: |
           echo "::error::a job CI result needs did not succeed; its result is above"
           exit 1

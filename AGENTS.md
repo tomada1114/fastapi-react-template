@@ -78,7 +78,9 @@ just frontend build  # Build the frontend for production into frontend/dist (vit
 just check           # Mutating dev check: fmt → lint → test
 just lock            # Update uv.lock after dependency changes
 just lock-check      # Fail when uv.lock is out of date, without changing it
-just verify          # Non-mutating gate: lock-check → agents-check → check-harness → lint → test-skills → test → frontend::build
+just verify          # Non-mutating gate: lock-check → agents-check → check-harness → contract-check → lint → test-skills → test → frontend::build
+just contract        # Export the backend's OpenAPI contract into frontend/openapi.json
+just contract-check  # Fail when the committed OpenAPI contract is missing or stale
 just check-harness   # Harness drift (skills, Skills table, recipes, this index, ruleset, labels, workflows) + the Product section check
 just test-skills     # Run the unittest suites bundled under .agents/skills/*/scripts/tests
 just worktree-prepare # Recreate the locked environments (uv, then pnpm once pnpm-lock.yaml exists) in an existing linked worktree

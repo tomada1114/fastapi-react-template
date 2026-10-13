@@ -126,7 +126,15 @@ check: fmt lint test
 # `lint` and `test` already run the frontend's lint and tests; frontend::build
 # adds the production build, last.
 # Non-mutating local PR gate (fail-fast: cheap gates before the suite)
-verify: lock-check agents-check check-harness lint test-skills test frontend::build
+verify: lock-check agents-check check-harness contract-check lint test-skills test frontend::build
+
+# Export the backend's OpenAPI contract without a server or runtime settings
+contract:
+    uv run --locked --directory backend python -m my_app.api.contract --output ../frontend/openapi.json
+
+# Fail when the committed OpenAPI contract is missing or stale, without writing
+contract-check:
+    uv run --locked --directory backend python -m my_app.api.contract --output ../frontend/openapi.json --check
 
 # tests/harness checks skills, AGENTS.md (its Skills table and Quick Reference),
 # recipes, the ruleset, labels, and workflows against each other.
