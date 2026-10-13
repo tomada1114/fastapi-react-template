@@ -21,9 +21,26 @@ lint:
 test:
     pnpm exec vitest run --coverage
 
-# Build the frontend for production into frontend/dist
+# vite build regenerates src/routeTree.gen.ts from src/routes/. The check after
+# it compares the tree with the Git index, not the commit, so a regenerated tree
+# that is staged passes; `git status --porcelain` would also list a staged file.
+# When it fails, the build has already rewritten the tree: review and stage it.
+# Build the frontend into frontend/dist; fail when the route tree is unstaged
 build:
+    #!/usr/bin/env bash
+    set -euo pipefail
     pnpm exec vite build
+    tree=src/routeTree.gen.ts
+    if ! git ls-files --error-unmatch -- "$tree" >/dev/null 2>&1; then
+      echo "error: frontend/$tree is not tracked by Git." >&2
+      echo "The build generated it from src/routes/: review it, then git add it." >&2
+      exit 1
+    fi
+    if ! git diff --quiet -- "$tree"; then
+      echo "error: frontend/$tree differs from the Git index." >&2
+      echo "The build regenerated it from src/routes/: review it, then git add it." >&2
+      exit 1
+    fi
 
 # Never ends on its own; an agent never runs it (running-the-app).
 # Human-run: serve the frontend with Vite's dev server on http://localhost:5173

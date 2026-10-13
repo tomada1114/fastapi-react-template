@@ -6,9 +6,17 @@
     "useIgnoreFile": true,
     "root": ".."
   },
+  "files": {
+    "includes": ["**", "!src/routeTree.gen.ts"]
+  },
   "formatter": {
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 88
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }
