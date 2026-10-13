@@ -28,7 +28,7 @@ command runs here, and no lockfile but the root `pnpm-lock.yaml` is committed.
 
 ## Validating a change
 
-Every command here runs from anywhere in the repository. Run the narrowest
+Every command here runs from the repository root. Run the narrowest
 check that can fail while iterating, then `just verify` before a completion
 claim.
 
@@ -71,9 +71,10 @@ frontend/
   or test file, weakens a gate (`changing-gates`).
 - `skipLibCheck` is on: `@testing-library/jest-dom` 7.0.1's Vitest types
   declare `Assertion<T>`, which conflicts with Vitest 5's `Assertion<R, T>`
-  inside `node_modules`. It skips checking third-party declaration files only;
-  every file under `src/` and `tests/` is still fully checked, matchers
-  included.
+  inside `node_modules`. It skips checking every declaration file (`*.d.ts`),
+  so add none under `src/` or `tests/`; their `.ts` and `.tsx` files are
+  still fully checked, the matchers' types included. Drop it once jest-dom
+  ships Vitest 5 types.
 - `typescript` stays on `~6.0.3`: moving to 7.x waits for the API client
   generator to support it.
 
