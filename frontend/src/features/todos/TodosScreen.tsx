@@ -79,7 +79,10 @@ export function TodosScreen() {
               <button
                 type="button"
                 disabled={query.isFetching}
-                onClick={() => void query.fetchNextPage()}
+                onClick={() => {
+                  clearNotice();
+                  void query.fetchNextPage();
+                }}
                 className="rounded-md border border-gray-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900 disabled:opacity-50"
               >
                 {query.isFetchingNextPage ? "Loading more…" : "Load more"}

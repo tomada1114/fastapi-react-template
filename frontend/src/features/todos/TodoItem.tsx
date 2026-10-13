@@ -19,23 +19,28 @@ export function TodoItem({
   onAction: () => void;
 }) {
   const queryClient = useQueryClient();
-  const onError = (error: unknown) => {
+  const onSettled = async (_data: unknown, error: unknown) => {
     const parsed = toApiError(error);
-    if (
-      parsed.kind === "problem" &&
-      parsed.status === 404 &&
-      parsed.code === "todo_not_found"
-    ) {
-      onStale();
+    try {
+      await queryClient.invalidateQueries(
+        { queryKey: [{ _id: "listTodos" }] },
+        { throwOnError: true },
+      );
+      if (
+        parsed.kind === "problem" &&
+        parsed.status === 404 &&
+        parsed.code === "todo_not_found"
+      ) {
+        onStale();
+      }
+    } catch {
+      // The observed list query displays its refetch error; no success notice.
     }
   };
-  const onSettled = () =>
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listTodos" }] });
-  const complete = useMutation({ ...completeTodoMutation(), onError, onSettled });
+  const complete = useMutation({ ...completeTodoMutation(), onSettled });
   const remove = useMutation({
     ...deleteTodoMutation(),
     onSuccess: onDeleted,
-    onError,
     onSettled,
   });
   const pending = complete.isPending || remove.isPending;

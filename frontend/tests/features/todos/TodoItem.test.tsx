@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import type {
@@ -167,6 +167,123 @@ describe("TodoItem", () => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     },
   );
+
+  it("waits for a successful refetch before announcing a stale id", async () => {
+    const entered = deferred();
+    const gate = deferred();
+    let gets = 0;
+    server.use(
+      http.get("/api/todos", async () => {
+        gets += 1;
+        if (gets === 1)
+          return HttpResponse.json<TodoPageResponse>({
+            items: [todo("buy milk")],
+            next_cursor: null,
+          });
+        entered.release();
+        await gate.promise;
+        return HttpResponse.json<TodoPageResponse>({ items: [], next_cursor: null });
+      }),
+      http.delete("/api/todos/:todoId", () =>
+        HttpResponse.json<ProblemDetails>(problem(404), { status: 404 }),
+      ),
+    );
+    try {
+      renderWithQuery(<TodosScreen />);
+      const button = await screen.findByRole("button", { name: "Delete buy milk" });
+      await act(async () => {
+        fireEvent.click(button);
+        await entered.promise;
+      });
+
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
+      gate.release();
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "The list has been refreshed.",
+        ),
+      );
+      expect(gets).toBe(2);
+    } finally {
+      gate.release();
+    }
+  });
+
+  it("reports a failed stale-id refetch without claiming the list refreshed", async () => {
+    let gets = 0;
+    server.use(
+      http.get<Record<string, never>, never, TodoPageResponse | ProblemDetails>(
+        "/api/todos",
+        () => {
+          gets += 1;
+          return gets === 1
+            ? HttpResponse.json<TodoPageResponse>({
+                items: [todo("buy milk")],
+                next_cursor: null,
+              })
+            : HttpResponse.json<ProblemDetails>(problem(500), { status: 500 });
+        },
+      ),
+      http.delete("/api/todos/:todoId", () =>
+        HttpResponse.json<ProblemDetails>(problem(404), { status: 404 }),
+      ),
+    );
+    renderWithQuery(<TodosScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete buy milk" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Request ID: row-error");
+    expect(screen.getByText("buy milk")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Delete buy milk" })).toBeEnabled(),
+    );
+    expect(gets).toBe(2);
+  });
+
+  it("clears a stale notice when Load more starts", async () => {
+    let removed = false;
+    const entered = deferred();
+    const gate = deferred();
+    server.use(
+      http.get("/api/todos", async ({ request }) => {
+        if (new URL(request.url).searchParams.has("cursor")) {
+          entered.release();
+          await gate.promise;
+          return HttpResponse.json<TodoPageResponse>({
+            items: [todo("last", secondId)],
+            next_cursor: null,
+          });
+        }
+        return HttpResponse.json<TodoPageResponse>({
+          items: [todo(removed ? "remaining" : "buy milk")],
+          next_cursor: "c1",
+        });
+      }),
+      http.delete("/api/todos/:todoId", () => {
+        removed = true;
+        return HttpResponse.json<ProblemDetails>(problem(404), { status: 404 });
+      }),
+    );
+    try {
+      renderWithQuery(<TodosScreen />);
+      fireEvent.click(await screen.findByRole("button", { name: "Delete buy milk" }));
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "The list has been refreshed.",
+        ),
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      await entered.promise;
+
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
+      gate.release();
+      await screen.findByText("last");
+      expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    } finally {
+      gate.release();
+    }
+  });
 
   it("announces every stale response and clears the notice for a new action", async () => {
     const third = todo("third", "0199c1f0-0000-7000-8000-000000000003");

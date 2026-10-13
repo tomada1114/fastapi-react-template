@@ -141,7 +141,9 @@ frontend/
   pages refetch from the first cursor. After a successful delete, focus the
   screen's `To-dos` heading. Keep a screen-level status region mounted, replace
   its notification child for every stale-id response, and clear it on a new action
-  so repeated stale responses are announced again.
+  (including Load more) so repeated stale responses are announced again. Announce
+  a completed refresh only after invalidation succeeds; the list shows its refetch
+  error if it fails.
 - Vite's development server proxies `/api` and `/healthz` to the loopback API.
   `MY_APP_API_PORT` selects that target port (default 8000); the API must be bound
   to the same port. `VITE_PORT` selects Vite's port (default 5173), with strict
