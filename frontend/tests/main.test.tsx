@@ -18,7 +18,8 @@ test("main renders App into #root", async () => {
 
   await import("../src/main");
 
-  expect(await screen.findByRole("heading", { name: "My App" })).toBeInTheDocument();
+  const heading = await screen.findByRole("heading", { name: "My App" });
+  expect(heading).toBeInTheDocument();
 });
 
 test("main without #root throws naming the element", async () => {
