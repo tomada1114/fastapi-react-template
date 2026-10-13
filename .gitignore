@@ -29,6 +29,8 @@ coverage.xml
 node_modules/
 frontend/dist/
 frontend/coverage/
+# TanStack Router's generator scratch directory (src/routeTree.gen.ts is tracked)
+frontend/.tanstack/
 
 # IDE
 .vscode/

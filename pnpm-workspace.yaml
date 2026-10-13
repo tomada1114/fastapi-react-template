@@ -37,6 +37,17 @@ trustLockfile: false
 # Refuse transitive dependencies fetched from git or arbitrary tarball URLs.
 blockExoticSubdeps: true
 
+# One reviewed trust exception, decided by the owner on 2026-10-13 (#20).
+# semver@6.3.1 carries no provenance while earlier-published semver releases
+# do, so trustPolicy: no-downgrade refuses it. It is reached only through
+# @tanstack/router-plugin (a build-time dev dependency) -> @babel/core 7 and its
+# Babel siblings, whose `^6.3.1` range no other version satisfies. Exempting
+# this one version keeps every other trust check. Drop it once semver 6.3.1
+# regains provenance or nothing reaches for semver@6 (e.g. router-plugin moves
+# to Babel 8, which no longer depends on semver).
+trustPolicyExclude:
+  - semver@6.3.1
+
 # Unmet or conflicting peer ranges are errors, not warnings.
 strictPeerDependencies: true
 # Fail the install when a dependency wants to run a lifecycle script that is
