@@ -18,6 +18,30 @@ REQUEST_ID_PATTERN = re.compile(rb"[A-Za-z0-9._-]{1,128}")
 logger = logging.getLogger("my_app.access")
 
 
+class ServerDiagnosticMiddleware:
+    """Pass sanitized HTTP failures to server diagnostics without another response."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        """Wrap the framework's complete error stack within request identity."""
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Keep frames, type and identity while discarding messages and chains."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        try:
+            await self.app(scope, receive, send)
+        except Exception as error:
+            # Starlette re-raises after its 500 handler or a started response.
+            # A fresh exception has no original args, notes or group members.
+            classification = f"{type(error).__module__}.{type(error).__qualname__}"
+            safe_error = RuntimeError(
+                f"{classification} [request_id={request_id_var.get()}]"
+            )
+            raise safe_error.with_traceback(error.__traceback__) from None
+
+
 class RequestIdMiddleware:
     """Keep identity active until even the outer error handler has responded."""
 

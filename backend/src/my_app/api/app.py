@@ -16,7 +16,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.errors import ServerErrorMiddleware
 from starlette.middleware.exceptions import ExceptionMiddleware
 
-from my_app.api.middleware import RequestIdMiddleware
+from my_app.api.middleware import RequestIdMiddleware, ServerDiagnosticMiddleware
 from my_app.api.routers import health, todos
 from my_app.api.schemas import (
     PROBLEM_MEDIA_TYPE,
@@ -101,7 +101,7 @@ class _ApiApp(FastAPI):
             )
         # Outside CORS and ServerErrorMiddleware: preflights and unexpected 500s
         # share the same active context and response-header wrapper.
-        return RequestIdMiddleware(middleware)
+        return RequestIdMiddleware(ServerDiagnosticMiddleware(middleware))
 
     def openapi(self) -> dict[str, Any]:
         """Publish error models as Problem Details, preserving success media types.

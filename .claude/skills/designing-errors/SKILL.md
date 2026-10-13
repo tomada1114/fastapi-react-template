@@ -171,8 +171,12 @@ unexpected error keeps its stack and exception type. The API handler logs on
 and cause chain, because a driver can put SQL parameters or credentials there;
 the structured `exception_type` field preserves the original module-qualified
 type for monitoring handlers and JSON consumers.
-Starlette re-raises after responding, so the server may also log it. Code that catches
-one to add context logs with `logging.exception()` and re-raises.
+Starlette re-raises after responding. `ServerDiagnosticMiddleware` wraps that stack
+inside request identity and passes the server a fresh exception containing only the
+module-qualified type and request ID, with the original frames and suppressed chaining.
+Original messages, notes and exception-group members reach neither diagnostic output.
+The wrapper sends no response, including after headers have started. Context records
+must use sanitized exceptions too, rather than logging arbitrary exception text.
 The outer request-ID middleware keeps context active through this 500 handler,
 including CORS preflights. Every Problem Details body and response header share
 the request ID; use it to correlate an error without logging user inputs.
