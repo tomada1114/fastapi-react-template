@@ -1,8 +1,11 @@
 # Development task runner — requires Just (https://just.systems)
-# All commands also work without Just by running the uv commands directly.
+# All commands also work without Just by running the uv and pnpm commands directly.
 
 # The FastAPI app in backend/: `just backend <recipe>`
 mod backend
+
+# The React app in frontend/: `just frontend <recipe>`
+mod frontend
 
 # Show available recipes
 default:
@@ -13,15 +16,22 @@ default:
 # CI=true (CI commits nothing) skips the failure: both still attempt the
 # install, and turn a failed install or a missing hook into a warning. A linked
 # worktree never installs: it only verifies the hooks it shares with the primary
-# checkout.
+# checkout. A failed pnpm install (no pnpm, or no Node.js 24 to download) does
+# not stop the hooks from being installed, but still fails the recipe, exempt or
+# not.
 # Install dependencies and the git hooks, then verify the hooks are in place
 install:
     #!/usr/bin/env bash
     set -euo pipefail
     uv sync --all-groups --locked
+    pnpm_status=0
+    pnpm install --frozen-lockfile || pnpm_status=$?
+    if [ "$pnpm_status" -ne 0 ]; then
+      echo "error: pnpm install --frozen-lockfile failed (exit $pnpm_status). Install pnpm 11 ('corepack enable'), with nodejs.org reachable or Node.js 24 per .node-version, then rerun 'just install'." >&2
+    fi
     if ! git rev-parse --git-dir >/dev/null 2>&1; then
       echo "Skipping pre-commit hook installation (not a Git repository)."
-      exit 0
+      exit "$pnpm_status"
     fi
     # --git-path prints a path relative to the current directory unless it is
     # absolute (a linked worktree), so resolve it from the top level.
@@ -75,28 +85,32 @@ install:
       fi
       exit 1
     fi
+    exit "$pnpm_status"
 
 # Alias for first-time project setup
 setup: install
 
+# frontend::fmt formats frontend/ with Biome; these lines format the Python tree.
 # Format code (lint fixes first so the formatter has the last word)
-fmt:
+fmt: frontend::fmt
     uv run --locked ruff check --fix .
     uv run --locked ruff format .
 
 # backend::lint checks the app with backend/pyproject.toml's config; these lines
 # check the whole tree with the root's (scripts/, tests/, and skill scripts for
 # mypy). Both trees hold a `tests` package, so mypy runs once in each.
-# Run linters and type checker (the backend's first)
-lint: backend::lint
+# frontend::lint runs Biome and tsc in frontend/.
+# Run linters and type checker (the backend's and the frontend's first)
+lint: backend::lint frontend::lint
     uv run --locked ruff check .
     uv run --locked ruff format --check .
     uv run --locked mypy
 
 # backend::test runs the app's suite with the 80% branch-coverage floor over
-# backend/src; this line runs the root suite (the harness and the scripts' tests).
-# Run tests in parallel with coverage (the backend's first)
-test: backend::test
+# backend/src; frontend::test runs Vitest with its 80% floor over frontend/src;
+# this line runs the root suite (the harness and the scripts' tests).
+# Run tests in parallel with coverage (the backend's and the frontend's first)
+test: backend::test frontend::test
     uv run --locked pytest -n auto
 
 # Human-run: serve the app (`just backend dev`); runs until stopped
@@ -109,8 +123,10 @@ lock:
 # Run all checks: format, lint, test
 check: fmt lint test
 
+# `lint` and `test` already run the frontend's lint and tests; frontend::build
+# adds the production build, last.
 # Non-mutating local PR gate (fail-fast: cheap gates before the suite)
-verify: lock-check agents-check check-harness lint test-skills test
+verify: lock-check agents-check check-harness lint test-skills test frontend::build
 
 # tests/harness checks skills, AGENTS.md (its Skills table and Quick Reference),
 # recipes, the ruleset, labels, and workflows against each other.

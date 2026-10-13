@@ -605,6 +605,16 @@ def test_module_tree_reads_repository_backend_module() -> None:
     assert findings == []
 
 
+def test_module_tree_reads_repository_frontend_module() -> None:
+    tree, findings = module_tree(REPO_ROOT)
+
+    frontend = tree.modules["frontend"]
+    assert frontend is not None
+    assert frontend.file == "frontend/justfile"
+    assert frontend.recipes == {"install", "fmt", "lint", "test", "build", "dev"}
+    assert findings == []
+
+
 # --- fixtures ---
 
 JUSTFILE_TEXT = """\
