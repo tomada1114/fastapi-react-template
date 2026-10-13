@@ -64,7 +64,8 @@ frontend/
 │   ├── router.ts         # createAppRouter(queryClient, options?) and the Register declaration
 │   ├── routeTree.gen.ts  # Generated from routes/ by the router plugin; committed, never hand-edited
 │   ├── routes/           # File-based routes: __root.tsx (the layout), index.tsx (/)
-│   ├── lib/              # App-wide helpers: query-client.ts (the retry policy)
+│   ├── features/         # Screens and components grouped by feature (todos/)
+│   ├── lib/              # Cross-feature query policy and Problem Details helpers
 │   └── styles.css        # `@import "tailwindcss";`, imported by main.tsx only
 └── tests/            # Vitest tests (*.test.ts, *.test.tsx), mirroring src/, and setup.ts
 ```
@@ -130,6 +131,15 @@ frontend/
   utility classes in the markup, and `src/styles.css` (`@import "tailwindcss";`)
   imported by `main.tsx` alone. No CSS modules, CSS-in-JS, other stylesheets,
   or UI kit. Biome parses Tailwind's directives (`css.parser.tailwindDirectives`).
+- **Screens live in `features/<feature>/`**, with cross-feature helpers in `lib/`.
+  Fetch data through the generated query/mutation options. Normalize thrown
+  values with `toApiError` and display errors through `ErrorMessage`; a domain
+  `invalid_todo` 422 maps to the title field. Keep the server as the validator:
+  submit typed titles unchanged, without `required`, `maxLength`, or a form library.
+- Vite's development server proxies `/api` and `/healthz` to the loopback API.
+  `MY_APP_API_PORT` selects that target port (default 8000); the API must be bound
+  to the same port. `VITE_PORT` selects Vite's port (default 5173), with strict
+  binding. These are process variables, not backend `Settings` or dotenv keys.
 
 ## Tests and the coverage floor
 
@@ -144,6 +154,14 @@ frontend/
   excluded. Lowering a threshold or widening the exclusions weakens a gate.
 - `.only` fails the run (`allowOnly: false`), and mocks, stubbed globals, and
   stubbed environment variables are restored after each test.
+- Component tests intercept actual generated-client requests with MSW 3 in
+  `tests/msw/server.ts`: `server.listen({ onUnhandledFrame: "error" })`, reset
+  handlers after each test, and close after the suite. That module sets the
+  client's `baseUrl` to `window.location.origin` because Node's `Request` in
+  jsdom cannot resolve relative URLs; production leaves it relative. Use
+  generated response types and a fresh retry-disabled QueryClient per test.
+  `tests/msw/helpers.tsx` supplies the provider and deferred request barriers;
+  wait for observable state instead of sleeping.
 
 ## Dependencies
 

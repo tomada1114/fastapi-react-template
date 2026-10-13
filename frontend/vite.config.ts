@@ -14,8 +14,23 @@ const routerOptions = {
   ],
 } as const;
 
+function developmentPort(name: "MY_APP_API_PORT" | "VITE_PORT", fallback: number) {
+  const port = Number(process.env[name] ?? fallback);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`${name} must be an integer port in 1-65535`);
+  }
+  return port;
+}
+
+const apiOrigin = `http://127.0.0.1:${developmentPort("MY_APP_API_PORT", 8000)}`;
+
 // Plugins live here only; vitest.config.ts merges this file into its own.
 // The router plugin runs before react(), as TanStack Router requires.
 export default defineConfig({
   plugins: [tanstackRouter(routerOptions), react(), tailwindcss()],
+  server: {
+    port: developmentPort("VITE_PORT", 5173),
+    strictPort: true,
+    proxy: { "/api": apiOrigin, "/healthz": apiOrigin },
+  },
 });

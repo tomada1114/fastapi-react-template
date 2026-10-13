@@ -4,6 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { createQueryClient } from "../../src/lib/query-client";
 import { createAppRouter } from "../../src/router";
+import "../msw/server";
 
 // On a line of its own: the bootstrap rewrites it to a display name of up to
 // 60 characters, which must not push any line past Biome's 88 columns.
