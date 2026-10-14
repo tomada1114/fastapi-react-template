@@ -132,12 +132,18 @@ dev:
     {{ quote(just_executable()) }} frontend dev </dev/null &
     screen=$!
     set +m
+    # A zombie still answers `kill -0`, and where PID 1 does not reap orphans
+    # (a container without an init) it never goes away; only a member that is
+    # not a zombie keeps a group running.
+    running() {
+      ps -A -o pgid= -o stat= | awk -v a="$api" -v s="$screen" '($1 == a || $1 == s) && $2 !~ /^Z/ { found = 1 } END { exit !found }'
+    }
     stop() {
       trap - INT TERM HUP EXIT
       kill -TERM -- "-$api" "-$screen" 2>/dev/null
       wait "$api" "$screen" 2>/dev/null
       tries=0
-      while [ "$tries" -lt 100 ] && { kill -0 -- "-$api" 2>/dev/null || kill -0 -- "-$screen" 2>/dev/null; }; do
+      while [ "$tries" -lt 100 ] && running; do
         sleep 0.1
         tries=$((tries + 1))
       done

@@ -79,11 +79,22 @@ def _recipe_body(justfile: Path, header: str) -> str:
 
 
 def _alive(pid: int) -> bool:
+    """Whether ``pid`` runs; a zombie (exited, not yet reaped) does not.
+
+    Where PID 1 does not reap orphans (a container without an init), a stopped
+    grandchild stays a zombie that still answers ``kill -0``.
+    """
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
-    return True
+    stat = subprocess.run(  # noqa: S603 -- a fixed ps argv, no shell
+        ["ps", "-o", "stat=", "-p", str(pid)],  # noqa: S607 -- ps from PATH, as the recipe runs it
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    return bool(stat) and not stat.startswith("Z")
 
 
 @dataclass
