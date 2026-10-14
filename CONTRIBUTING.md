@@ -19,8 +19,8 @@ Install these tools:
 - [Just](https://just.systems/man/en/installation.html) 1.42.3 or later
   (optional — you can run the `uv run` and `pnpm` commands directly). The root
   `justfile` loads `backend/justfile` and `frontend/justfile` as modules
-  (`just backend <recipe>`, `just frontend <recipe>`), and its `lint`, `test`,
-  and `dev` recipes depend on module recipes (`lint: backend::lint
+  (`just backend <recipe>`, `just frontend <recipe>`), and its `lint` and
+  `test` recipes depend on module recipes (`lint: backend::lint
   frontend::lint`). Just accepts such a dependency from 1.42.0, and from 1.42.3
   runs it in the module's directory (`backend/`, `frontend/`) as it must; an
   older Just fails to parse the `justfile` or runs an area's commands from the

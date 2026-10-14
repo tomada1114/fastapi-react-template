@@ -97,15 +97,21 @@ just clean           # Remove build artifacts and caches
 ### Long-running — human-run
 
 ```bash
-just dev             # Run just backend dev; runs until stopped
+just dev             # Run just backend dev and just frontend dev together: the screen on http://localhost:5173, the API behind its /api on http://127.0.0.1:8000; runs until stopped
 just backend dev     # Run db-upgrade, then serve the API on http://127.0.0.1:8000 with auto-reload; runs until stopped
-just frontend dev    # Serve the frontend with Vite's dev server on http://localhost:5173; runs until stopped
+just frontend dev    # Serve the frontend with Vite's dev server on http://localhost:5173, proxying /api and /healthz to the API; runs until stopped
 ```
 
-`just dev`, `just backend dev`, and `just frontend dev` are the developer's
-servers: never start, stop, or restart one, or bind its port. To see what only a running server shows,
-prefer a `TestClient` test, else your own `uv run --locked uvicorn
-my_app.api.app:create_app --factory --port <free port>`, stopped before your
+`MY_APP_API_PORT` (default 8000) moves the API and the port Vite proxies to;
+`VITE_PORT` (default 5173) moves the screen. Both are process variables, never
+`Settings` fields or `backend/.env` keys.
+
+The developer's `just dev`, `just backend dev`, and `just frontend dev` are
+theirs: never start, stop, or restart one, and never bind 8000 or 5173. To see
+what only a running server shows, prefer a `TestClient` test, else your own
+`uv run --locked uvicorn my_app.api.app:create_app --factory --port <free port>`,
+or, for the screen, your own pair on two free ports with a scratch database,
+`MY_APP_API_PORT=<port> VITE_PORT=<port> just dev`; stop either before your
 turn ends (`running-the-app`).
 
 ### Writes to GitHub

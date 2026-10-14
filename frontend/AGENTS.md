@@ -45,8 +45,9 @@ claim.
 | The whole frontend | `just frontend lint && just frontend test` |
 
 `just frontend dev` is the developer's Vite server, human-run: an agent never
-starts, stops, or restarts it (the root `AGENTS.md`'s Quick Reference,
-`running-the-app`).
+starts, stops, or restarts it, and never binds 5173. To see the screen served,
+an agent runs its own `just dev` pair on free ports instead (the root
+`AGENTS.md`'s Quick Reference, `running-the-app`).
 
 ## Layout
 
