@@ -15,7 +15,15 @@ from typing import TYPE_CHECKING, cast
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
-    from issue_types import DigestPayload, IssueRecord, RawIssue, RawPr, ShipContract
+    from issue_types import (
+        DependencyDeclaration,
+        DependencyState,
+        DigestPayload,
+        IssueRecord,
+        RawIssue,
+        RawPr,
+        ShipContract,
+    )
 
 # Dependency phrasings seen in real issue bodies, EN + JA. Group 1 of a leading
 # phrase is a list ("#1, #2 and #3"); every number in it is read.
@@ -33,23 +41,32 @@ DEP_PATTERNS = [
     (r"#(\d+)\s*(?:をブロック|の前提)", "blocks"),
 ]
 
-# A `Depends on: #N` line (file_followup.py writes one per blocker under
-# `## Dependencies`), optionally a list item. With the contract's `blocked-by=`
-# it is a structured source: when either is present, it alone sets depends_on.
+# Keep this grammar separate from the legacy prose scrape. These are explicit
+# declarations, including none, at the start of an optionally listed line.
+_DEPENDENCY_ITEM = r"(?:none\b|#\d+\b)"
+_DEPENDENCY_VALUES = (
+    r"("
+    + _DEPENDENCY_ITEM
+    + r"(?:(?:[ \t]*,[ \t]*(?:and[ \t]+)?|[ \t]+(?:and[ \t]+)?)"
+    + _DEPENDENCY_ITEM
+    + r")*)"
+)
 DEPENDS_ON_LINE_RE = re.compile(
     r"^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)?"
-    r"depends[ \t]+on[ \t]*:[ \t]*" + _REF_LIST,
+    r"depends[ \t]+on[ \t]*:[ \t]*" + _DEPENDENCY_VALUES,
     re.IGNORECASE | re.MULTILINE,
 )
 
 
-def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | None:
-    """depends_on from the structured sources, or None when the body has none.
+def dependency_declaration(
+    body: str, contract: ShipContract | None
+) -> DependencyDeclaration:
+    """Validate authoritative dependency sets before a graph consumes them.
 
-    The sources are the ship contract's `blocked-by=` field (`none` counts as
-    stated) and `Depends on: #N` lines. Prose phrasings are not read here, and
-    neither is a `Depends on:` line inside a code block or span or an HTML
-    comment: a quoted example or a template's hidden placeholder states nothing.
+    Repeated visible lines form one set. A present blocked-by field must agree
+    with it, and none cannot accompany a named dependency. Quoted code and
+    comment examples state nothing; an absent declaration allows prose fallback.
+    Conflicts retain their source sets for diagnosis but contribute no edges.
     """
     code = _code_spans(body)
     spans = list(code)
@@ -63,17 +80,67 @@ def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | No
         spans.append((pos, end))
         pos = body.find("<!--", end)
     lines = [
-        m
+        m.group(1)
         for m in DEPENDS_ON_LINE_RE.finditer(body)
         if not any(start <= m.start(1) < end for start, end in spans)
     ]
+    line_deps = sorted({int(n) for line in lines for n in re.findall(r"#(\d+)", line)})
+    diagnostics = []
+    if line_deps and any(re.search(r"\bnone\b", line, re.IGNORECASE) for line in lines):
+        diagnostics.append(
+            "Depends on lines mix none with named blockers; choose one set"
+        )
     has_field = contract is not None and "blocked-by" in contract["fields"]
-    if not lines and not has_field:
-        return None
-    stated = set(contract["depends_on"]) if contract and has_field else set()
-    for m in lines:
-        stated.update(int(n) for n in re.findall(r"\d+", m.group(1)))
-    return stated
+    contract_deps = contract["depends_on"] if contract and has_field else None
+    if contract and has_field:
+        value = contract["blocked_by"] or ""
+        if (
+            value.lower() not in ("", "none", "-")
+            and re.fullmatch(
+                r"(?:none|#?\d+)(?:,(?:none|#?\d+))*", value, re.IGNORECASE
+            )
+            is None
+        ):
+            diagnostics.append(
+                "blocked-by is invalid; use none or a comma-separated blocker set"
+            )
+        if contract_deps and re.search(r"\bnone\b", value, re.IGNORECASE):
+            diagnostics.append(
+                "blocked-by mixes none with named blockers; choose one set"
+            )
+        if lines and line_deps != contract_deps:
+            diagnostics.append(
+                "Depends on lines disagree with blocked-by; make both declare the same set"
+            )
+    declared = line_deps if lines else (contract_deps or [])
+    state: DependencyState = (
+        "conflict"
+        if diagnostics
+        else "absent"
+        if not lines and not has_field
+        else "declared"
+        if declared
+        else "empty"
+    )
+    return {
+        "state": state,
+        "depends_on": [] if diagnostics else declared,
+        "line_depends_on": line_deps if lines else None,
+        "contract_depends_on": contract_deps,
+        "diagnostics": diagnostics,
+    }
+
+
+def stated_depends_on(body: str, contract: ShipContract | None) -> set[int] | None:
+    """Return the validated structured set, or None for legacy prose fallback.
+
+    A conflict cannot be represented as a set: fail explicitly rather than
+    returning edges that a caller could silently treat as ready.
+    """
+    declaration = dependency_declaration(body, contract)
+    if declaration["state"] == "conflict":
+        raise ValueError("; ".join(declaration["diagnostics"]))
+    return None if declaration["state"] == "absent" else set(declaration["depends_on"])
 
 
 # owner/repo as preflight.sh's repo_slug block accepts it, and the URL schemes
@@ -362,6 +429,7 @@ def parse_ship_contract(body: str) -> ShipContract | None:
     touches_raw = raw.get("touches", "")
     return {
         "fields": sorted(raw),
+        "blocked_by": raw.get("blocked-by"),
         "unknown_fields": sorted(k for k in raw if k not in CONTRACT_KNOWN_FIELDS),
         # An empty `blocked-by=` is a natural "none"; an empty `tier=` or
         # `touches=` settles nothing, so it still counts as missing.
@@ -1112,6 +1180,9 @@ def tier_cell(rec: IssueRecord) -> str:
 
 
 def readiness(rec: IssueRecord, allow_design: bool = False) -> str:
+    declaration = rec.get("dependency_declaration")
+    if declaration and declaration["state"] == "conflict":
+        return "DEPENDENCY-CONFLICT:" + "; ".join(declaration["diagnostics"])
     if rec["depends_on_open"]:
         return "BLOCKED-BY:" + ",".join(f"#{n}" for n in rec["depends_on_open"])
     if rec["not_ready_labels"]:
@@ -1165,21 +1236,24 @@ def build_records(
     # selected one high-leverage.
     all_deps: dict[int, dict[str, list[int]]] = {}
     contracts: dict[int, ShipContract | None] = {}
+    declarations: dict[int, DependencyDeclaration] = {}
+    inferred: dict[int, list[int]] = {}
     for it in issues:
         num = it["number"]
         body = it.get("body") or ""
         deps = extract_deps(body, it.get("title", ""), num)
         contract = parse_ship_contract(body)
         contracts[num] = contract
-        stated = stated_depends_on(body, contract)
-        if contract or stated is not None:
+        declaration = declarations[num] = dependency_declaration(body, contract)
+        inferred[num] = deps["depends_on"].copy()
+        if contract or declaration["state"] != "absent":
             prose_depends = set(deps["depends_on"])
             # A stated edge (`blocked-by=`, `Depends on: #N`) is a fact; the
             # regex scrape is an inference from prose. When a body states its
             # dependencies, they alone count: prose such as "after #19" in a
             # scope note made #25 look blocked by the issue it blocks.
-            if stated is not None:
-                deps["depends_on"] = sorted(n for n in stated if n != num)
+            if declaration["state"] != "absent":
+                deps["depends_on"] = [n for n in declaration["depends_on"] if n != num]
             # `blocks` has no structured line form: union the contract's
             # edges with the scrape, as before.
             if contract:
@@ -1251,6 +1325,8 @@ def build_records(
             "created_at": it.get("createdAt", "")[:10],
             "updated_at": it.get("updatedAt", "")[:10],
             "depends_on": deps["depends_on"],
+            "dependency_declaration": declarations[num],
+            "inferred_depends_on": inferred[num],
             "blocks": deps["blocks"],
             "mentions": deps["mentions"],
             "depends_on_open": depends_on_open,

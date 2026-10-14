@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 
 class Label(TypedDict):
@@ -46,6 +46,7 @@ class RawPr(TypedDict, total=False):
 
 class ShipContract(TypedDict):
     fields: list[str]
+    blocked_by: str | None
     unknown_fields: list[str]
     missing_fields: list[str]
     tier: str | None
@@ -54,6 +55,17 @@ class ShipContract(TypedDict):
     blocks: list[int]
     touches: list[str]
     design: str | None
+
+
+DependencyState = Literal["absent", "empty", "declared", "conflict"]
+
+
+class DependencyDeclaration(TypedDict):
+    state: DependencyState
+    depends_on: list[int]
+    line_depends_on: list[int] | None
+    contract_depends_on: list[int] | None
+    diagnostics: list[str]
 
 
 class OpenPr(TypedDict):
@@ -72,6 +84,8 @@ class IssueRecord(TypedDict, total=False):
     created_at: str
     updated_at: str
     depends_on: list[int]
+    dependency_declaration: DependencyDeclaration
+    inferred_depends_on: list[int]
     blocks: list[int]
     mentions: list[int]
     depends_on_open: list[int]

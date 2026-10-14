@@ -28,9 +28,16 @@ which is why `file_followup.py` writes a contract on everything this run files.
 | `design=`                 | the readiness gate                           | `design=open` holds the issue out of automatic implementation exactly as a `blocked: design` label does. |
 
 An empty `blocked-by=` reads as none; an empty `tier=` or `touches=` counts as missing.
-A `blocked-by=` field (even `none`) or any `Depends on: #N` line makes those the only
-source of the issue's dependencies: dependency phrasings in its prose are then read as
-mentions, not edges. A `Depends on:` line counts at the start of a line, bare or as a
+A `blocked-by=` field (even `none`) or any `Depends on: #N` or `Depends on: none`
+line makes structured declarations the only source of dependencies; prose is then
+read as mentions, not edges. Repeated visible lines union and deduplicate. If both
+visible lines and `blocked-by=` are present, their sets must agree. `none` mixed with
+a named blocker, or different sets, produces an actionable `DEPENDENCY-CONFLICT`
+diagnostic; no plan can select that issue until its declarations are corrected.
+The shared model distinguishes absent, explicitly empty, consistent named and
+conflicting declarations before graph construction. JSON retains the separate source
+sets, diagnostics and legacy inferred candidates. Only an absent declaration permits
+prose fallback; only validated dependencies feed reverse edges and ranking inputs. A `Depends on:` line counts at the start of a line, bare or as a
 bullet, numbered, or task-list item; one inside a code block, a code span, or an HTML
 comment is a quoted example and does not. `blocks=` is still merged with the prose
 `blocks #N` edges.

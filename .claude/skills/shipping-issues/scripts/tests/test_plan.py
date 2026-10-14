@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import plan
+from issue_records import build_records
 
 PREFLIGHT = """git_repo: ok
 repo_root: /repo
@@ -295,6 +296,43 @@ class MainTest(unittest.TestCase):
                 rc = exc.code
         return rc, out.getvalue(), err.getvalue()
 
+    def test_validated_dependency_graph_drives_single_all_and_explicit_plans(self):
+        payload = build_records(
+            [
+                {
+                    "number": 1,
+                    "title": "conflicting",
+                    "labels": [{"name": "priority: P0"}],
+                    "body": "Depends on: #7\n<!-- ship: blocked-by=none touches=a/ -->",
+                },
+                {
+                    "number": 2,
+                    "title": "ready",
+                    "labels": [{"name": "priority: P2"}],
+                    "body": "Depends on: none\nrequires #99\n<!-- ship: blocked-by=none touches=b/ -->",
+                },
+                {"number": 7, "labels": [{"name": "on hold"}]},
+                {"number": 99, "labels": [{"name": "on hold"}]},
+            ],
+            [],
+        )
+        for mode in ("single", "all", "1"):
+            with self.subTest(mode=mode):
+                rc, out, err = self._run(
+                    ["--mode", mode, "--json"],
+                    payload["ranking"],
+                    issues=payload["issues"],
+                )
+                self.assertEqual(rc, 0, err)
+                result = json.loads(out)
+                if mode == "1":
+                    self.assertIsNone(result["select"])
+                    self.assertEqual(result["batches"], [])
+                    self.assertIn("DEPENDENCY-CONFLICT:", result["select_hold"])
+                else:
+                    self.assertEqual(result["select"], 2)
+                    self.assertEqual(result["batches"], [[2]])
+
     def test_single_mode_prints_a_serial_plan_with_a_branch_command(self):
         rc, out, err = self._run([], [rank_row(85, touches=["src/a/"])])
         self.assertEqual(rc, 0, err)
@@ -385,6 +423,7 @@ class MainTest(unittest.TestCase):
             "LABEL:on hold",
             "LABEL:blocked: external",
             "HAS-PR:#7",
+            "DEPENDENCY-CONFLICT:make declarations agree",
         ):
             with self.subTest(readiness=readiness):
                 rows = [

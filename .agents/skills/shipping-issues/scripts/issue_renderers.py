@@ -47,6 +47,8 @@ def print_details(rows: list[IssueRecord], body_chars: int) -> None:
     """Print issue details in the established Markdown format."""
     for r in rows:
         flags = []
+        if r["readiness"].startswith("DEPENDENCY-CONFLICT:"):
+            flags.append(r["readiness"])
         if r["not_ready_labels"]:
             flags.append(f"NOT-READY-LABEL:{','.join(r['not_ready_labels'])}")
         if r["design_labels"]:
