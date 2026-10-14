@@ -5,12 +5,12 @@
 
 <!-- template-only -->
 > [!NOTE]
-> This is the fastapi-react-template repository itself. It is being migrated
-> from a Python-only template to a FastAPI + React full-stack one; the
-> [tracking issue](https://github.com/tomada1114/fastapi-react-template/issues/3)
-> holds the plan and its progress. To start an application from it, follow the
+> This is the fastapi-react-template repository itself: a FastAPI + React
+> full-stack template. To start an application from it, follow the
 > `starting-an-app` skill (`.agents/skills/starting-an-app/SKILL.md`);
-> `TEMPLATE.md` explains why the template is built the way it is.
+> `TEMPLATE.md` explains its design. The Python-only sibling,
+> [`tomada1114/uv-template`](https://github.com/tomada1114/uv-template), is for
+> command-line tools and API-only services.
 <!-- /template-only -->
 
 A short description of what this application does.
