@@ -10,9 +10,15 @@ gh run list --branch <branch> --limit 1 --json databaseId -q '.[0].databaseId' \
   | xargs -I{} gh run view {} --log-failed
 ```
 
-Which _job_ failed is the fastest way to tell these apart. CI runs `Lint & Type Check`,
-`Coverage`, `Spell Check`, and `Workflow Security Lint`
-(zizmor).
+Which _job_ failed is the fastest way to tell these apart. `ci.yml`'s gating jobs are
+`Lint & Type Check`, `Coverage`, `Frontend`, `PostgreSQL`, `Contract Drift`, `E2E`,
+`Spell Check`, and `Workflow Security Lint` (zizmor). `CI result` is the aggregate, the
+one required CI context (`.github/rulesets/main.json`): it needs every gating job and
+fails when any of them did, so a red `CI result` says only that — read the failing
+needed job's log, never `CI result`'s own. `Skill Scripts (Python 3.9)` (and, in the
+template, `Template Bootstrap Smoke`) also run but are not in its `needs`. The ruleset's
+other required contexts come from their own workflows: `Validate PR title`,
+`Analyze (<language>)` (CodeQL), and `Dependency Review`.
 
 ## F1 — Workflow security lint
 
