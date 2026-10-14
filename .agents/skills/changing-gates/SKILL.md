@@ -82,7 +82,7 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
 |---|---|---|---|
 | ruff check, ruff format | `ruff`, `ruff-format` | `lint` | `Lint & Type Check` |
 | mypy, root (`scripts`, `tests`, skill scripts) | `mypy` | `lint` | `Lint & Type Check` |
-| mypy, `backend/` (`src`, `tests`) | `mypy-backend` | `lint` (`backend::lint`) | `Lint & Type Check` (in `backend/`) |
+| mypy, `backend/` (`src`, `tests`, `migrations`) and `e2e/verify_persistence.py` | `mypy-backend` | `lint` (`backend::lint`) | `Lint & Type Check` (in `backend/`) |
 | Skills mirror | `agents-check` (working tree) | `agents-check` (working tree) | `Lint & Type Check` (the commit) |
 | Skill script tests | — | `test-skills` | `Lint & Type Check` |
 | `uv lock --check` | — | `lock-check` | `--locked` on every `uv sync` |
@@ -92,7 +92,7 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
 | Vitest and the 80 `coverage.thresholds` over `frontend/src` | — | `test` (`frontend::test`) | `Frontend` |
 | The frontend build and its staged route tree | — | `frontend::build` | `Frontend` |
 | The API contract and generated client | — | `contract-check` | `Contract Drift` |
-| Biome and `tsc` over `e2e/` | — | `lint` (`e2e-lint`) | `E2E` |
+| Biome and `tsc` over `e2e/` | `biome-e2e`, `tsc-e2e` | `lint` (`e2e-lint`) | `E2E` |
 | The browser test, screen to database (`just e2e`) | — | — (run it on its own) | `E2E` |
 | typos | `typos` | — | `Spell Check` |
 | zizmor | `zizmor` | — | `Workflow Security Lint` |
@@ -170,7 +170,7 @@ author to reach for `--no-verify`, which switches off the secret gate with it. T
 new or changed hook against an ordinary commit before trusting it to catch a bad one.
 Every hook names `stages: [pre-commit]` itself; only `check-staged` also runs at
 `pre-merge-commit` (`tests/test_check_staged.py`). The frontend's `biome` and `tsc`
-hooks run `pnpm exec` from `frontend/`. Their shape, what `check-staged` refuses, how
+hooks run `pnpm exec` from `frontend/`, and `biome-e2e` and `tsc-e2e` from `e2e/`. Their shape, what `check-staged` refuses, how
 merges and rebases interact with it, how `just install` verifies the hooks, and what
 replaced the old agent hooks: [references/pre-commit-layer.md](references/pre-commit-layer.md).
 
