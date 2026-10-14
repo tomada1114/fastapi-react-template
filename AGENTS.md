@@ -196,6 +196,7 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 |---|---|
 | `authoring-skills` | adding, editing, or reviewing a skill under `.agents/skills/`, or a skill never fires |
 | `building-api-routes` | adding or changing an HTTP route, request or response model, or API dependency, and the TestClient tests for it |
+| `building-screens` | adding or changing a screen, route, or feature under `frontend/src/`: server data through the generated client, API errors, styling, accessibility, and its component tests |
 | `changing-gates` | editing a hook, a CI workflow, the ruleset, or a ruff, mypy, pytest, or coverage setting, or asking whether a change weakens a gate |
 | `cloud-claude-shipping-issues` | Claude Code cloud sessions only (`CLAUDE_CODE_REMOTE=true`): shipping the next issue or the backlog over REST `gh api` calls, serially — rank, implement, PR, the PR's review, CI, merge, follow-ups |
 | `codex-shipping-issues` | shipping one GitHub issue from a Codex-managed checkout through a regular PR, up to three Codex review rounds with their findings addressed, current-head CI, and an explicitly authorized merge |

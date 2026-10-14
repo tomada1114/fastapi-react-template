@@ -89,13 +89,13 @@ frontend/
 - `typescript` stays on `~6.0.3`: moving to 7.x waits for the API client
   generator to support it.
 
-## Routing, server state, and styling
+## Routes, the generated client, and screens
 
-- **Routes** live in `src/routes/`, one file per route, under TanStack Router's
-  file-based conventions: `__root.tsx` is the layout every page renders inside
-  (a `<header>` and an `<Outlet />`), `index.tsx` is `/`. Its root route is
-  made with `createRootRouteWithContext`, so every loader reads the query
-  client from `context.queryClient`.
+How a screen is built — its route and feature, server data through the generated
+client, API errors, styling, accessibility, and its component tests — is the
+`building-screens` skill's: load it for any change under `src/routes/`,
+`src/features/`, or `src/lib/`. Every frontend task keeps these rules:
+
 - **`src/routeTree.gen.ts` is generated and committed.** `@tanstack/router-plugin`
   (in `vite.config.ts`, before `react()`) rewrites it whenever Vite, Vitest, or
   the build runs; never edit it by hand. Its header is replaced so it carries
@@ -108,17 +108,7 @@ frontend/
   has already rewritten it, so review it and `git add` it. The check reads the
   index, so a staged tree passes before it is committed, and in CI's clean
   checkout the index is the pushed commit.
-- **Server state goes through TanStack Query**, with the client from
-  `src/lib/query-client.ts`'s `createQueryClient()`. `main.tsx` creates one and
-  hands the same instance to `QueryClientProvider` and `createAppRouter`; a
-  test creates its own. The retry policy (`shouldRetry`): a query whose error
-  carries a numeric `status` in 400-499 is never retried (the same request
-  gets the same answer); any other failure — a 5xx, a network error with no
-  `status` — is retried once. Mutations keep TanStack's default of no retry,
-  and every other option stays TanStack's default. An API error type sets
-  `status` for this policy to read.
-- **Never edit `src/api/generated/`.** Change the backend and run `just contract`;
-  import query and mutation options from `src/api/generated/@tanstack/react-query.gen`.
+- **Never edit `src/api/generated/`.** Change the backend and run `just contract`.
   `just contract-check` generates into a temporary directory and rejects drift
   without changing checkout files. Only the bundled `generated/client/` and
   `generated/core/` runtime carries the owner-approved `@ts-nocheck` exception:
@@ -128,23 +118,6 @@ frontend/
   `generate-api.ts` corrects the pinned generator's nullable infinite-page branch
   and supplies the required single-page defaults without suppression directives.
   Consumers override `getNextPageParam` with their response-specific cursor rule.
-- **Tailwind CSS 4 is the only styling layer**, through `@tailwindcss/vite`:
-  utility classes in the markup, and `src/styles.css` (`@import "tailwindcss";`)
-  imported by `main.tsx` alone. No CSS modules, CSS-in-JS, other stylesheets,
-  or UI kit. Biome parses Tailwind's directives (`css.parser.tailwindDirectives`).
-- **Screens live in `features/<feature>/`**, with cross-feature helpers in `lib/`.
-  Fetch data through the generated query/mutation options. Normalize thrown
-  values with `toApiError` and display errors through `ErrorMessage`; a domain
-  `invalid_todo` 422 maps to the title field. Keep the server as the validator:
-  submit typed titles unchanged, without `required`, `maxLength`, or a form library.
-- Each to-do row owns its complete/delete mutations and disables both row actions
-  while either is pending. Invalidate the list prefix on settlement so loaded
-  pages refetch from the first cursor. After a successful delete, focus the
-  screen's `To-dos` heading. Keep a screen-level status region mounted, replace
-  its notification child for every stale-id response, and clear it on a new action
-  (including Load more) so repeated stale responses are announced again. Announce
-  a completed refresh only after invalidation succeeds; the list shows its refetch
-  error if it fails.
 - Vite's development server proxies `/api` and `/healthz` to the loopback API.
   `MY_APP_API_PORT` selects that target port (default 8000); the API must be bound
   to the same port. `VITE_PORT` selects Vite's port (default 5173), with strict
@@ -163,14 +136,10 @@ frontend/
   excluded. Lowering a threshold or widening the exclusions weakens a gate.
 - `.only` fails the run (`allowOnly: false`), and mocks, stubbed globals, and
   stubbed environment variables are restored after each test.
-- Component tests intercept actual generated-client requests with MSW 3 in
-  `tests/msw/server.ts`: `server.listen({ onUnhandledFrame: "error" })`, reset
-  handlers after each test, and close after the suite. That module sets the
-  client's `baseUrl` to `window.location.origin` because Node's `Request` in
-  jsdom cannot resolve relative URLs; production leaves it relative. Use
-  generated response types and a fresh retry-disabled QueryClient per test.
-  `tests/msw/helpers.tsx` supplies the provider and deferred request barriers;
-  wait for observable state instead of sleeping.
+- Component tests answer every generated-client request with MSW 3
+  (`tests/msw/server.ts`, which fails a request no handler covers) and render
+  through `tests/msw/helpers.tsx`; how a screen's test uses them is
+  `building-screens`'.
 
 ## Dependencies
 
