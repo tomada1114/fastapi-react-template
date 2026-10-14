@@ -27,6 +27,17 @@ function serve(items: TodoResponse[]) {
   return state;
 }
 
+// The first render waits on the initial list request, which on a machine busy with
+// the full `just verify` has taken longer than Testing Library's default 1000 ms
+// (#120). Every row action first waits here for the loaded row, with room for that
+// load (kept under Vitest's 5000 ms test timeout), so no test depends on the
+// first render landing within 1000 ms.
+const firstRenderTimeout = 4000;
+
+function loadedRow(name: string) {
+  return screen.findByRole("button", { name }, { timeout: firstRenderTimeout });
+}
+
 function problem(status: number): ProblemDetails {
   return {
     type: "about:blank",
@@ -54,7 +65,7 @@ describe("TodoItem", () => {
     );
     renderWithQuery(<TodosScreen />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Complete buy milk" }));
+    fireEvent.click(await loadedRow("Complete buy milk"));
 
     expect(await screen.findByText("Completed")).toBeInTheDocument();
     expect(
@@ -81,7 +92,7 @@ describe("TodoItem", () => {
       );
       renderWithQuery(<TodosScreen />);
 
-      fireEvent.click(await screen.findByRole("button", { name: "Delete buy milk" }));
+      fireEvent.click(await loadedRow("Delete buy milk"));
 
       await waitFor(() =>
         expect(screen.queryByText("buy milk")).not.toBeInTheDocument(),
@@ -114,9 +125,7 @@ describe("TodoItem", () => {
     );
     try {
       renderWithQuery(<TodosScreen />);
-      fireEvent.click(
-        await screen.findByRole("button", { name: `${action} buy milk` }),
-      );
+      fireEvent.click(await loadedRow(`${action} buy milk`));
       await entered.promise;
 
       await waitFor(() => {
@@ -153,9 +162,7 @@ describe("TodoItem", () => {
       );
       renderWithQuery(<TodosScreen />);
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: `${action} buy milk` }),
-      );
+      fireEvent.click(await loadedRow(`${action} buy milk`));
 
       await waitFor(() =>
         expect(screen.getByRole("status")).toHaveTextContent(
@@ -190,7 +197,7 @@ describe("TodoItem", () => {
     );
     try {
       renderWithQuery(<TodosScreen />);
-      const button = await screen.findByRole("button", { name: "Delete buy milk" });
+      const button = await loadedRow("Delete buy milk");
       await act(async () => {
         fireEvent.click(button);
         await entered.promise;
@@ -229,7 +236,7 @@ describe("TodoItem", () => {
       ),
     );
     renderWithQuery(<TodosScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Delete buy milk" }));
+    fireEvent.click(await loadedRow("Delete buy milk"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Request ID: row-error");
     expect(screen.getByText("buy milk")).toBeInTheDocument();
@@ -266,7 +273,7 @@ describe("TodoItem", () => {
     );
     try {
       renderWithQuery(<TodosScreen />);
-      fireEvent.click(await screen.findByRole("button", { name: "Delete buy milk" }));
+      fireEvent.click(await loadedRow("Delete buy milk"));
       await waitFor(() =>
         expect(screen.getByRole("status")).toHaveTextContent(
           "The list has been refreshed.",
@@ -300,7 +307,7 @@ describe("TodoItem", () => {
       }),
     );
     const { container } = renderWithQuery(<TodosScreen />);
-    await screen.findByRole("button", { name: "Delete buy milk" });
+    await loadedRow("Delete buy milk");
     const message = "That to-do no longer exists. The list has been refreshed.";
     const announcements: string[] = [];
     const observer = new MutationObserver((records) => {
@@ -352,9 +359,7 @@ describe("TodoItem", () => {
       );
       renderWithQuery(<TodosScreen />);
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: `${action} buy milk` }),
-      );
+      fireEvent.click(await loadedRow(`${action} buy milk`));
 
       const row = screen.getByText("buy milk").closest("li");
       if (!row) throw new Error("The title must belong to its row");
