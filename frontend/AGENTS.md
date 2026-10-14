@@ -125,10 +125,6 @@ client, API errors, styling, accessibility, and its component tests — is the
 
 ## Tests and the coverage floor
 
-- Tests live in `frontend/tests/`, never beside the source, and match
-  `tests/**/*.test.{ts,tsx}`. `tests/setup.ts` registers the jest-dom matchers
-  and runs Testing Library's `cleanup` after each test (Vitest runs without
-  `globals`).
 - `just frontend test` fails when lines, functions, statements, or branches
   fall below 80% over `src/**/*.{ts,tsx}` — the backend's bar. The only
   exclusions are generated code, `src/api/generated/**` and
@@ -136,30 +132,19 @@ client, API errors, styling, accessibility, and its component tests — is the
   excluded. Lowering a threshold or widening the exclusions weakens a gate.
 - `.only` fails the run (`allowOnly: false`), and mocks, stubbed globals, and
   stubbed environment variables are restored after each test.
-- Component tests answer every generated-client request with MSW 3
-  (`tests/msw/server.ts`, which fails a request no handler covers) and render
-  through `tests/msw/helpers.tsx`; how a screen's test uses them is
-  `building-screens`'.
+- One test file runs with
+  `pnpm --dir frontend exec vitest run tests/<name>.test.tsx`; the whole suite
+  and its floor with `just frontend test`.
+- Where a test, a fixture, or an MSW handler goes is `placing-tests`'; how a test
+  is written (queries, user-event, matchers, MSW, no `.only`) is `writing-tests`';
+  how a screen's test uses them is `building-screens`'.
 
 ## Dependencies
 
-- A new package — runtime or dev — needs the owner's sign-off and
-  `managing-dependencies`' review record before `pnpm add` runs. Add it with
-  `pnpm --dir frontend add <package>` (`-D` for a dev dependency) rather than
-  typing a version.
-- `pnpm-workspace.yaml`'s `minimumReleaseAge` holds every version back until it
-  is 7 days old, the same window as the root `pyproject.toml`'s
-  `exclude-newer`: a package lands only once the window admits it. A
-  `minimumReleaseAgeExclude` entry, an override, or a peer-range exception is
-  the owner's decision, never an implementer's.
-- `pnpm-workspace.yaml`'s `trustPolicyExclude` holds one owner-approved
-  exception (2026-10-13, #20): `semver@6.3.1`, which lacks the provenance
-  earlier semver releases carry, so `trustPolicy: no-downgrade` refuses it.
-  Only `@tanstack/router-plugin`'s Babel 7 reaches it. Drop the entry once 6.3.1
-  regains provenance or nothing reaches for `semver@6` (the plugin moves to
-  Babel 8). Any other trust exception is a new owner decision.
-- `strictDepBuilds` fails the install when a dependency wants a lifecycle
-  script. Each `allowBuilds` entry is a reviewed exception with a comment saying
-  what the script does and why: `false` when the package works without it,
-  `true` only with the owner's sign-off, like a new package.
-- `package.json` and `pnpm-lock.yaml` move in the same commit.
+A new package — runtime or dev — needs the owner's sign-off and a review record
+before `pnpm add` runs, and `package.json` moves with `pnpm-lock.yaml` in one
+commit. How it lands (`pnpm --dir frontend add`, `--save-dev` for a dev
+dependency), the 7-day `minimumReleaseAge` window, and every
+`pnpm-workspace.yaml` exception (`minimumReleaseAgeExclude`,
+`trustPolicyExclude`, `allowBuilds`, overrides) are `managing-dependencies`'
+(`references/pnpm.md`).
