@@ -27,18 +27,22 @@ Prerequisites (CONTRIBUTING.md's "Prerequisites" has the links and the details):
   with Node.js 24); `package.json` pins the version
 - no Docker
 
+<!-- template-only -->
+In the template repository itself, first copy it ("Use this template" on GitHub)
+and bootstrap the copy with the `starting-an-app` skill
+(`.agents/skills/starting-an-app/SKILL.md`); the steps below are the copy's.
+<!-- /template-only -->
+
 Then:
 
-1. Copy the template ("Use this template" on GitHub) and bootstrap the copy with
-   the `starting-an-app` skill (`.agents/skills/starting-an-app/SKILL.md`).
-2. Install the dependencies and the git hooks, then start the app:
+1. Install the dependencies and the git hooks, then start the app:
 
    ```bash
    just install   # the Python and JavaScript dependencies, and the git hooks
    just dev       # migrate backend/var/dev.db, then serve the screen and the API, reloading on source changes (Ctrl-C stops both)
    ```
 
-3. Open <http://localhost:5173>: the to-do screen. The API answers on
+2. Open <http://localhost:5173>: the to-do screen. The API answers on
    <http://127.0.0.1:8000>, with `/healthz` and the interactive docs at `/docs`.
 
 `just dev` is the developer's own server and runs until stopped; an agent runs
