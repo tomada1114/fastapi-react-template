@@ -14,8 +14,8 @@ description: >
 
 **Owns:** whether a change owes a documentation update, which surface it lands on, and
 how documentation prose is written. **Does not own:** how a skill is authored and
-mirrored (`authoring-skills`); an ADR or the roadmap (`recording-architecture-decisions`,
-`steering-the-roadmap`); what a docstring says (`writing-python`); the error status
+mirrored (`authoring-skills`); a design change's description (`AGENTS.md`'s "Before
+changing the architecture"); the roadmap (`steering-the-roadmap`); what a docstring says (`writing-python`); the error status
 table's content (`designing-errors`).
 
 ## Decide on what a reader can observe
@@ -40,7 +40,7 @@ Each surface has one job; do not let one grow a second copy of another's content
 | `AGENTS.md` | What every agent task needs: the quick reference, the "Validating a change" table, the Skills table, the approval rules, the enforcement layers | One of those facts changes |
 | `backend/AGENTS.md` | What every task in `backend/` needs: its "Validating a change" table, its architecture, its skills | The backend's layout or narrowest checks change |
 | `.agents/skills/<name>/` | One kind of change's conventions, loaded on demand | Those conventions change (`authoring-skills`) |
-| `docs/architecture/` | ADRs and the roadmap | A decision owes an ADR, or the direction moves |
+| `docs/architecture/roadmap.md` | The roadmap | The direction moves |
 | Docstrings | A function's contract and its why | The function changes (`writing-python`) |
 
 <!-- template-only -->
@@ -61,7 +61,7 @@ reader of the diff catches it.
 | When you change | Also change | Caught by |
 |---|---|---|
 | A skill added, renamed, or deleted | Its row in AGENTS.md's Skills table | `tests/harness/test_skills.py` (`just check-harness`) |
-| A `just` recipe added, renamed, or removed | Its line in AGENTS.md's "Quick Reference", in the block for who runs it; `CONTRIBUTING.md` if it lists the recipe | `tests/harness/test_just_recipes.py` when a document it reads still names a renamed or removed one (its docstring lists them; not an ADR, the roadmap, `docs/product/`, or `.devcontainer/`); review for an added one |
+| A `just` recipe added, renamed, or removed | Its line in AGENTS.md's "Quick Reference", in the block for who runs it; `CONTRIBUTING.md` if it lists the recipe | `tests/harness/test_just_recipes.py` when a document it reads still names a renamed or removed one (its docstring lists them; not the roadmap, `docs/product/`, or `.devcontainer/`); review for an added one |
 | A gate, or the narrowest check for one kind of change | Its row in the "Validating a change" table of AGENTS.md, or of `backend/AGENTS.md` for the app | review |
 | An HTTP route | `README.md`'s HTTP table | review |
 | A `MY_APP_*` setting | `README.md`'s configuration table | review |
@@ -89,7 +89,7 @@ request. Adding a script reaches more files; **REQUIRED:** `writing-repo-scripts
 A code example in a document must be valid Python that works with the current code, and
 a command must run as written. No gate compiles or runs a fenced block or checks that a
 named path still exists. `just check-harness` checks a `just <recipe>` in command
-position, but not in an ADR, the roadmap, `docs/product/`, or `.devcontainer/`. Check
+position, but not in the roadmap, `docs/product/`, or `.devcontainer/`. Check
 by hand before committing:
 
 - every `just <recipe>` you name appears in `just --list`;

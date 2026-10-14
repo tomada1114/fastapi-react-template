@@ -5,7 +5,7 @@ description: >
   feature: AGENTS.md's Product section and tests/test_product_section.py, the bootstrap
   pull request, the roadmap, just labels, GitHub security settings and secrets, just
   ruleset and a private repository, keeping or dropping the HTTP API, removing the
-  sample to-do domain, and the first ADRs (app shape, persistence). In the template it
+  sample to-do domain, and the first design changes (app shape, persistence). In the template it
   also covers the rename step, .template-origin, and the template smoke check. Use when
   starting an app, setting up the new repository, or a placeholder survived the rename.
 ---
@@ -14,9 +14,9 @@ description: >
 
 **Owns:** the order of work from "Use this template" to an app's first feature: the
 rename, the Product section and roadmap as steps, the app's shape, removing the sample,
-the first ADRs, and the new repository's GitHub setup. **Does not own:** what the
-roadmap says (`steering-the-roadmap`); how an ADR is written
-(`recording-architecture-decisions`); labels and issue bodies (`triaging-issues`);
+the first design changes, and the new repository's GitHub setup. **Does not own:** what
+the roadmap says (`steering-the-roadmap`); how a design change is described
+(`AGENTS.md`'s "Before changing the architecture"); labels and issue bodies (`triaging-issues`);
 what makes a CI job a required check (`changing-gates`); which files go with the API
 (`building-api-routes`).
 
@@ -49,8 +49,7 @@ example an agent skill that cuts repositories from templates) follows the same o
    it, or chasing a leftover placeholder.
    <!-- /template-only -->
 3. **Write `AGENTS.md`'s Product section**: what the app is and for whom, the core
-   interaction, the non-goals, and where those decisions are recorded
-   (`docs/product/requirements.md`). It is the one home of the app's non-goals. The
+   interaction, the non-goals, and why it is shaped this way, in the present tense. It is the one home of the app's non-goals. The
    owner decides every entry; an agent drafts one only from what the owner has said.
    `tests/test_product_section.py`, and so `just verify`, fails while an entry is still
    a placeholder. Write it before any feature: a non-goal nobody wrote down is one an
@@ -76,7 +75,7 @@ example an agent skill that cuts repositories from templates) follows the same o
    provides; a secret the app adds later (a deploy key, an API key) is set by a person
    in the repository's settings and never committed — `check-staged` refuses one.
 8. **Replace the sample**, in the order of the sections below: the app's shape, the
-   first ADRs, then the to-do domain.
+   first design changes, then the to-do domain.
 9. **Ruleset, last** (**human**, an admin): `just ruleset` applies
    `.github/rulesets/main.json` ([references/github-settings.md](references/github-settings.md)
    › "Main branch ruleset"). From then on every change needs a pull request with
@@ -99,19 +98,19 @@ entry, and skill that goes with it. Run `uv lock` after removing a dependency, t
 `just verify`. An app that needs admin commands adds a command-line entry point beside
 the API, over the same core.
 
-## Record the first ADRs
+## Describe the first design changes
 
-Write each as Proposed (only the owner accepts), in `docs/architecture/adr/` with its
-row in `docs/architecture/README.md`, per **REQUIRED:**
-`recording-architecture-decisions`:
+Write each as present state — what the app does and why — in `AGENTS.md` and
+`backend/AGENTS.md`'s "Architecture" section, per `AGENTS.md`'s "Before changing the
+architecture"; the owner reviews it with the pull request:
 
 - **App shape**: whether the app keeps the API, and why.
 - **Persistence**: where and in what format the app keeps state — the in-memory
   repository, the SQL adapter (SQLAlchemy with Alembic migrations, on SQLite or
   PostgreSQL), or another store — with how a schema change reaches existing data. Write it as soon as the app keeps state of its own.
 
-Each new runtime dependency or external service the first features need is an ADR too,
-and a new dependency waits for the owner's sign-off.
+Each new runtime dependency or external service the first features need is a design
+change too, described the same way, and a new dependency waits for the owner's sign-off.
 
 ## Remove the sample to-do domain
 

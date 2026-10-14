@@ -30,7 +30,7 @@ ENTRY_LABELS = (
     "What it is, and who it is for",
     "The core interaction",
     "Non-goals",
-    "Where these decisions are recorded",
+    "Why it is shaped this way",
 )
 
 

@@ -117,8 +117,8 @@ The template carries no LLM layer since 2026-10-09, an owner decision
 (tomada1114/fastapi-react-template#3, D6): the apps planned from it call models
 through a provider this template leaves out, so a provider-specific adapter would
 be code every app deletes. An app that calls a model adds its own port and
-adapter under `designing-core-logic`'s port rules and records the choice in an
-ADR.
+adapter under `designing-core-logic`'s port rules and describes the choice in its
+present-state design docs (`AGENTS.md`'s "Before changing the architecture").
 
 ### Why Just over Make?
 

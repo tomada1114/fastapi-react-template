@@ -49,8 +49,10 @@ so `just verify` — fails while any entry below is still a placeholder.
 - **Non-goals** — TODO: what this app deliberately does not do, even where it would
   be easy. Moving anything from here to a goal is a human's decision, not an
   implementer's.
-- **Where these decisions are recorded** — TODO: `docs/product/requirements.md`,
-  and the ADRs under `docs/architecture/` for the choices made since.
+- **Why it is shaped this way** — TODO: the reasoning behind the three entries above,
+  in the present tense — why this audience, why this interaction comes first, and why
+  each non-goal stays out — so a reader finds why and not only what. It is rewritten
+  when the reasoning changes, not appended to ("Before changing the architecture").
 
 ## Quick Reference
 
@@ -140,6 +142,40 @@ being run at all.
 The state of the work comes from Git, fresh test output, and CI — never from
 prose or a test count in a prompt.
 
+## Before changing the architecture
+
+The design is recorded as it stands now, never as a log of decisions: this file's
+Product section, `backend/AGENTS.md`'s "Architecture" section, and the skill that owns
+the subject say together how the app is built and why, and git history holds what it
+used to be. The changes below, which the skills call design changes, are hard to
+reverse, so the pull request that makes one also rewrites that description: the current
+design and the reasoning behind it (what it protects and, where it matters, the
+alternative it rules out and why), in the present tense, in place of the sentences it
+replaces, never as a dated entry beside them:
+
+- a runtime dependency — a package under `[project] dependencies` (a dev-only tool in
+  `[dependency-groups]` is not one unless it changes a gate);
+- a package boundary — a new top-level package or layer under `backend/src/`, or a
+  change to what may import what;
+- the public contract — what `__init__.py`'s `__all__` promises, or the shape of a CLI
+  command, an HTTP route, or a file format other programs read;
+- persistence — where and in what format state lives (files, SQLite, a database
+  server, a cache), and how a schema change reaches existing data;
+- an external service — a network API, a cloud provider, a message queue — and how its
+  credentials reach the process;
+- `requires-python` in `backend/pyproject.toml`;
+- distribution — a wheel on a package index, a container image, a tool installed with
+  `uv tool`, a hosted service.
+
+Writing the reasoning down grants nothing: a new dependency or a remote write still
+needs the sign-off "Security and human approval" asks for, and the owner reviews the
+rewritten description with the change.
+<!-- template-only -->
+In the template itself, the reasoning behind the layers every app starts with lives in
+`TEMPLATE.md`'s "Design Philosophy"; a design change to the template rewrites that
+entry, rather than leaving the old reason beside the new one.
+<!-- /template-only -->
+
 ## Skills
 
 Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
@@ -160,11 +196,10 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `merging-dependency-prs` | landing open Dependabot pull requests (GitHub Actions and `uv` bumps) |
 | `persisting-data` | changing a table in `backend/src/my_app/adapters/sql/`, writing or reviewing an Alembic revision under `backend/migrations/`, running `just backend db-upgrade` or `db-revision`, a SQL repository's statements, or the `AsyncEngine`'s lifecycle |
 | `placing-tests` | adding a test file or a fixture, running one test, or a coverage run below the floor |
-| `recording-architecture-decisions` | a change owes an ADR, or an ADR under `docs/architecture/` is proposed, accepted, or superseded |
 | `running-the-app` | running a server of your own to observe a change, and stopping that server afterwards |
 | `shipping-issues` | Claude Code only: shipping the next issue or the whole backlog: rank, implement, PR, the PR's own review and its findings, CI, merge |
 | `smart-commit` | grouping working-tree changes into commits, or a pre-commit hook refuses a commit |
-| `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the API or the sample domain, the first ADRs; the template rename step |
+| `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the API or the sample domain, the first design changes; the template rename step |
 | `steering-the-roadmap` | asked what to work on next, or the Now / Next / Later roadmap moves |
 | `tdd` | changing behavior under `backend/src/` or `scripts/`, or fixing a bug: the failing test comes first |
 | `triaging-issues` | filing, labelling, or prioritizing an issue, or recording a problem found outside the task |
