@@ -369,6 +369,25 @@ class StructuredDependencySourcesTest(unittest.TestCase):
         self.assertIn("blocked-by", rec["readiness"])
         self.assertEqual(rec["depends_on"], [])
 
+    def test_wrapped_dependency_list_keeps_the_open_continuation_blocker(self):
+        for body in ("Depends on: #7,\n#8", "Depends on: #7 and\n#8"):
+            with self.subTest(body=body):
+                rec = self._record([gh_issue(1, body=body), gh_issue(8)], 1)
+                self.assertEqual(rec["depends_on"], [7, 8])
+                self.assertEqual(rec["readiness"], "BLOCKED-BY:#8")
+
+    def test_wrapped_list_ignores_quoted_items_and_rejects_visible_none(self):
+        for continuation in ("#8", "none"):
+            with self.subTest(continuation=continuation):
+                body = f"Depends on: #7,\n\n    {continuation}\n"
+                rec = self._record(
+                    [gh_issue(1, body=body), gh_issue(7), gh_issue(8)], 1
+                )
+                self.assertEqual(rec["depends_on"], [7])
+                self.assertEqual(rec["dependency_declaration"]["state"], "declared")
+        rec = self._record([gh_issue(1, body="Depends on: #7,\nnone")], 1)
+        self.assertTrue(rec["readiness"].startswith("DEPENDENCY-CONFLICT:"))
+
     def test_validated_declaration_states_and_source_sets(self):
         cases = [
             ("requires #99", "absent", [99]),

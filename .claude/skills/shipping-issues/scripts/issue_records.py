@@ -47,7 +47,7 @@ _DEPENDENCY_ITEM = r"(?:none\b|#\d+\b)"
 _DEPENDENCY_VALUES = (
     r"("
     + _DEPENDENCY_ITEM
-    + r"(?:(?:[ \t]*,[ \t]*(?:and[ \t]+)?|[ \t]+(?:and[ \t]+)?)"
+    + r"(?:(?:\s*,\s*(?:and\s+)?|\s+(?:and\s+)?)"
     + _DEPENDENCY_ITEM
     + r")*)"
 )
@@ -80,13 +80,21 @@ def dependency_declaration(
         spans.append((pos, end))
         pos = body.find("<!--", end)
     lines = [
-        m.group(1)
+        m
         for m in DEPENDS_ON_LINE_RE.finditer(body)
         if not any(start <= m.start(1) < end for start, end in spans)
     ]
-    line_deps = sorted({int(n) for line in lines for n in re.findall(r"#(\d+)", line)})
+    # A wrapped list can reach a later quoted item. Mask each item's position,
+    # not only the beginning of its declaration, before forming the source set.
+    items = [
+        item.group()
+        for line in lines
+        for item in re.finditer(_DEPENDENCY_ITEM, line.group(1), re.IGNORECASE)
+        if not any(start <= line.start(1) + item.start() < end for start, end in spans)
+    ]
+    line_deps = sorted({int(item[1:]) for item in items if item.startswith("#")})
     diagnostics = []
-    if line_deps and any(re.search(r"\bnone\b", line, re.IGNORECASE) for line in lines):
+    if line_deps and any(item.lower() == "none" for item in items):
         diagnostics.append(
             "Depends on lines mix none with named blockers; choose one set"
         )

@@ -30,7 +30,8 @@ which is why `file_followup.py` writes a contract on everything this run files.
 An empty `blocked-by=` reads as none; an empty `tier=` or `touches=` counts as missing.
 A `blocked-by=` field (even `none`) or any `Depends on: #N` or `Depends on: none`
 line makes structured declarations the only source of dependencies; prose is then
-read as mentions, not edges. Repeated visible lines union and deduplicate. If both
+read as mentions, not edges. Repeated visible lines union and deduplicate. Comma/and
+lists may wrap across lines; quoted continuation items are still excluded. If both
 visible lines and `blocked-by=` are present, their sets must agree. `none` mixed with
 a named blocker, or different sets, produces an actionable `DEPENDENCY-CONFLICT`
 diagnostic; no plan can select that issue until its declarations are corrected.
