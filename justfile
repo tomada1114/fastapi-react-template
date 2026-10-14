@@ -99,9 +99,9 @@ fmt: frontend::fmt
 # backend::lint checks the app with backend/pyproject.toml's config; these lines
 # check the whole tree with the root's (scripts/, tests/, and skill scripts for
 # mypy). Both trees hold a `tests` package, so mypy runs once in each.
-# frontend::lint runs Biome and tsc in frontend/.
-# Run linters and type checker (the backend's and the frontend's first)
-lint: backend::lint frontend::lint
+# frontend::lint runs Biome and tsc in frontend/; e2e-lint does the same in e2e/.
+# Run linters and type checker (the backend's, the frontend's, and e2e/'s first)
+lint: backend::lint frontend::lint e2e-lint
     uv run --locked ruff check .
     uv run --locked ruff format --check .
     uv run --locked mypy
@@ -165,6 +165,124 @@ dev:
     rc=$?
     stop
     exit "$rc"
+
+# Lints and type-checks e2e/ without starting a browser, so `just verify` (through
+# `lint`) covers the browser test's code; `just e2e` runs the type check again.
+# Lint and type-check e2e/ (biome ci, then tsc under the strict flags)
+e2e-lint:
+    pnpm --dir e2e exec biome ci .
+    pnpm --dir e2e run typecheck
+
+# e2e/playwright.config.ts starts the API (after migrating the database) and the
+# built screen behind Vite's preview proxy, on the two ports picked here: free
+# ones, or E2E_API_PORT and E2E_WEB_PORT, never 8000 or 5173 (the developer's
+# `just dev`), and never a server already running. Every inherited MY_APP_*
+# variable is dropped and each Settings field set, so neither the shell nor
+# backend/.env reaches the run; tests/test_just_e2e.py and
+# backend/tests/test_e2e_persistence.py hold the list equal to Settings. `set -m`
+# gives Playwright a process group of its own: INT, TERM, and HUP all reach it
+# as SIGINT, the one signal on which it stops its servers, and the recipe exits
+# 128 + the signal it got. On success, failure, and interruption alike, both
+# ports are then checked (a listener is named, never killed) and the temporary
+# directory is removed; a failed check turns only a passing run into exit 1.
+# Needs Chromium once: `pnpm --dir e2e exec playwright install chromium`.
+# Run the browser test from the screen to the database on own ports and a throwaway SQLite file
+[positional-arguments]
+e2e *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    for name in $(env | sed -n 's/^\(MY_APP_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"; done
+    free='import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+    probe='import socket, sys
+    port = int(sys.argv[1])
+    for family, host in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        try:
+            s = socket.socket(family)
+        except OSError:
+            continue
+        s.settimeout(1)
+        if s.connect_ex((host, port)) == 0:
+            sys.exit(0)
+        s.close()
+    sys.exit(1)'
+    api=${E2E_API_PORT:-}
+    web=${E2E_WEB_PORT:-}
+    if [ -z "$api" ]; then api=$(uv run --locked python -c "$free") || exit 1; fi
+    if [ -z "${E2E_WEB_PORT:-}" ]; then
+      web=$api
+      while [ "$web" = "$api" ]; do web=$(uv run --locked python -c "$free") || exit 1; done
+    fi
+    for port in "$api" "$web"; do
+      case "$port" in
+        '' | *[!0-9]*) echo "error: e2e ports must be integers, got '$port'" >&2; exit 1 ;;
+      esac
+      if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ] || [ "$port" = 8000 ] || [ "$port" = 5173 ]; then
+        echo "error: e2e port $port is outside 1-65535 or the developer's (8000, 5173)" >&2
+        exit 1
+      fi
+    done
+    if [ "$api" = "$web" ]; then echo "error: the API and the screen need two ports, got $api twice" >&2; exit 1; fi
+    for port in "$api" "$web"; do
+      uv run --locked python -c "$probe" "$port"; rc=$?
+      if [ "$rc" != 1 ]; then
+        echo "error: port $port is taken or could not be checked (status $rc): nothing started" >&2
+        exit 1
+      fi
+    done
+    tmp=$(mktemp -d) || exit 1
+    pid=
+    # Only a group with a member that is not a zombie still runs.
+    running() {
+      ps -A -o pgid= -o stat= | awk -v g="$pid" '$1 == g && $2 !~ /^Z/ { found = 1 } END { exit !found }'
+    }
+    finish() {
+      rc=$1
+      trap - INT TERM HUP EXIT
+      if [ -n "$pid" ]; then
+        if running; then
+          kill -INT -- "-$pid" 2>/dev/null
+          tries=0
+          while [ "$tries" -lt 300 ] && running; do
+            sleep 0.1
+            tries=$((tries + 1))
+          done
+          if running; then kill -KILL -- "-$pid" 2>/dev/null; fi
+        fi
+        wait "$pid" 2>/dev/null
+      fi
+      for port in "$api" "$web"; do
+        uv run --locked python -c "$probe" "$port"; probed=$?
+        case "$probed" in
+          1) echo "nothing listening on $port" ;;
+          0) echo "error: something still listens on $port: report it, do not kill it" >&2 ;;
+          *) echo "error: could not check port $port (status $probed)" >&2 ;;
+        esac
+        if [ "$probed" != 1 ] && [ "$rc" = 0 ]; then rc=1; fi
+      done
+      rm -rf -- "$tmp"
+      if [ -e "$tmp" ]; then
+        echo "error: could not remove $tmp" >&2
+        if [ "$rc" = 0 ]; then rc=1; fi
+      else
+        echo "removed $tmp"
+      fi
+      exit "$rc"
+    }
+    trap 'finish 130' INT
+    trap 'finish 143' TERM
+    trap 'finish 129' HUP
+    trap 'finish "$?"' EXIT
+    echo "just e2e: API port $api, screen port $web, database in $tmp"
+    export E2E_DATABASE_URL="sqlite+aiosqlite:///$tmp/e2e.db" E2E_API_PORT="$api" E2E_WEB_PORT="$web"
+    export JUST={{ quote(just_executable()) }}
+    export MY_APP_DATABASE_URL="$E2E_DATABASE_URL" MY_APP_CORS_ORIGINS= MY_APP_LOG_LEVEL=INFO MY_APP_LOG_FORMAT=text
+    pnpm --dir e2e run typecheck || finish "$?"
+    set -m
+    pnpm --dir e2e exec playwright test "$@" </dev/null &
+    pid=$!
+    set +m
+    wait "$pid"
+    finish "$?"
 
 # Update uv.lock after changing dependency declarations
 lock:

@@ -2,6 +2,7 @@
 # carry their own package.json. pnpm-lock.yaml beside this file locks them all.
 packages:
   - "frontend"
+  - "e2e"
 
 # The pnpm supply-chain policy, declared here so it is reviewable in a diff and
 # applies to every install (local, CI, a shipping worktree) without relying on
