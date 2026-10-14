@@ -90,11 +90,19 @@ Two things belong in the body because nothing else can recover them later:
 
 ## Ordering constraints
 
-Write an ordering constraint as `Depends on: #12` — this is the spelling automation
-parses. Prose like "after the guard work lands" is not machine-readable and will not be
-picked up.
+Write an ordering constraint as `Depends on: #12`; write `Depends on: none` to state
+that no dependency exists. Repeated per-blocker lines form one deduplicated set. If a
+ship contract also carries `blocked-by=`, its set must agree with those visible lines.
+Never mix `none` with a named blocker. Contradictions produce a `DEPENDENCY-CONFLICT`
+diagnostic and hold the issue out of every plan, including explicit issue selection;
+correct the declarations instead of choosing one silently.
 
-An issue carrying a `Depends on:` line also carries `blocked: dependency`. Closing
+These structured declarations are authoritative. Legacy prose inference applies only
+when neither visible lines nor `blocked-by=` exists, and is recorded separately from
+the declaration. A line or contract quoted in code, or a dependency line in an HTML
+comment, is an example rather than a declaration.
+
+An issue carrying a named dependency also carries `blocked: dependency`. Closing
 its blocker does not itself remove the label. The usual clearing step is the
 `shipping-issues` stale-label sweep: after verifying every named dependency is
 closed, it runs `apply_priority_labels.py --clear-dependency` within that workflow's

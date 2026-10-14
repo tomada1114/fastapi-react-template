@@ -343,6 +343,169 @@ class ExtractDepsTest(unittest.TestCase):
 
 
 class StructuredDependencySourcesTest(unittest.TestCase):
+    def test_explicit_none_suppresses_incidental_prose_in_every_graph_input(self):
+        issues = [
+            gh_issue(1, body="Depends on: none\nThis future example requires #99."),
+            gh_issue(99),
+        ]
+        payload = idg.build_records(issues, [], body_chars=0)
+        rec, blocker = sorted(payload["issues"], key=lambda r: r["number"])
+        self.assertEqual(rec["depends_on"], [])
+        self.assertEqual(rec["readiness"], "READY")
+        self.assertEqual(blocker["unblocks_open"], [])
+        self.assertFalse(any("unblocks" in r for r in blocker["score_reasons"]))
+
+    def test_contradictory_line_and_header_cannot_schedule_even_explicitly(self):
+        body = (
+            "Depends on: #7\n"
+            "<!-- ship: tier=P2 blocked-by=none touches=backend/ design=settled -->"
+        )
+        payload = idg.build_records(
+            [gh_issue(1, body=body), gh_issue(7)], [], wanted=[1], include_design=True
+        )
+        rec = payload["issues"][0]
+        self.assertTrue(rec["readiness"].startswith("DEPENDENCY-CONFLICT:"))
+        self.assertIn("Depends on", rec["readiness"])
+        self.assertIn("blocked-by", rec["readiness"])
+        self.assertEqual(rec["depends_on"], [])
+
+    def test_malformed_declaration_cannot_become_ready_or_use_prose_fallback(self):
+        for value in (
+            "TBD",
+            "",
+            "#7 or #8",
+            "none or #8",
+            "#7,",
+            "#7 and\nTBD",
+            "#7, #8 extra",
+        ):
+            with self.subTest(value=value):
+                body = f"Depends on: {value}\nThis future example requires #8."
+                rec = self._record([gh_issue(1, body=body), gh_issue(8)], 1)
+                self.assertEqual(rec["dependency_declaration"]["state"], "conflict")
+                self.assertEqual(rec["depends_on"], [])
+                self.assertTrue(rec["readiness"].startswith("DEPENDENCY-CONFLICT:"))
+                self.assertIn("complete blocker list", rec["readiness"])
+
+    def test_hidden_value_and_tail_examples_preserve_dependency_masking(self):
+        for body in (
+            "Depends on: `TBD`",
+            "<!-- Depends on: TBD -->",
+            "```\nDepends on: TBD\n```",
+            "```\nDepends on:",
+        ):
+            with self.subTest(body=body):
+                rec = self._record([gh_issue(1, body=body)], 1)
+                self.assertEqual(rec["dependency_declaration"]["state"], "absent")
+        for tail in (" <!-- or #8 -->", ", `#8`", " `or #8`"):
+            with self.subTest(tail=tail):
+                rec = self._record(
+                    [gh_issue(1, body=f"Depends on: #7{tail}"), gh_issue(8)], 1
+                )
+                self.assertEqual(rec["depends_on"], [7])
+                self.assertEqual(rec["readiness"], "READY")
+
+    def test_unrelated_following_paragraph_does_not_extend_dependency_list(self):
+        for tail in (
+            "None of the frontend work is included.",
+            "#8 is a future example.",
+        ):
+            for gap in ("\n", "\n\n"):
+                with self.subTest(tail=tail, gap=gap):
+                    rec = self._record(
+                        [gh_issue(1, body=f"Depends on: #7{gap}{tail}"), gh_issue(8)], 1
+                    )
+                    self.assertEqual(rec["depends_on"], [7])
+                    self.assertEqual(rec["readiness"], "READY")
+
+    def test_wrapped_dependency_list_keeps_the_open_continuation_blocker(self):
+        for body in ("Depends on: #7,\n#8", "Depends on: #7 and\n#8"):
+            with self.subTest(body=body):
+                rec = self._record([gh_issue(1, body=body), gh_issue(8)], 1)
+                self.assertEqual(rec["depends_on"], [7, 8])
+                self.assertEqual(rec["readiness"], "BLOCKED-BY:#8")
+
+    def test_wrapped_list_ignores_quoted_items_and_rejects_visible_none(self):
+        for continuation in ("#8", "none"):
+            with self.subTest(continuation=continuation):
+                body = f"Depends on: #7,\n\n    {continuation}\n"
+                rec = self._record(
+                    [gh_issue(1, body=body), gh_issue(7), gh_issue(8)], 1
+                )
+                self.assertEqual(rec["depends_on"], [7])
+                self.assertEqual(rec["dependency_declaration"]["state"], "declared")
+        rec = self._record([gh_issue(1, body="Depends on: #7,\nnone")], 1)
+        self.assertTrue(rec["readiness"].startswith("DEPENDENCY-CONFLICT:"))
+
+    def test_validated_declaration_states_and_source_sets(self):
+        cases = [
+            ("requires #99", "absent", [99]),
+            ("Depends on: none\nrequires #99", "empty", []),
+            ("Depends on: none\nDepends on: NONE", "empty", []),
+            ("Depends on: #7, #7 and #8\nDepends on: #8", "declared", [7, 8]),
+            (
+                "Depends on: #7\nDepends on: #8\n<!-- ship: blocked-by=#8,7 -->",
+                "declared",
+                [7, 8],
+            ),
+            ("Depends on: none\n<!-- ship: blocked-by=none -->", "empty", []),
+            ("<!-- ship: blocked-by= -->", "empty", []),
+            ("<!-- ship: blocked-by=- -->", "empty", []),
+            ("Depends on: #7\n<!-- ship: blocked-by=#8 -->", "conflict", []),
+            ("Depends on: none\n<!-- ship: blocked-by=#7 -->", "conflict", []),
+            ("Depends on: #7\n<!-- ship: blocked-by=#7,#8 -->", "conflict", []),
+            ("Depends on: none, #7", "conflict", []),
+            ("Depends on: #7 and none", "conflict", []),
+            ("Depends on: none #7", "conflict", []),
+            ("Depends on: none\nDepends on: #7", "conflict", []),
+            ("<!-- ship: blocked-by=none,#7 -->", "conflict", []),
+            ("<!-- ship: blocked-by=unknown -->", "conflict", []),
+        ]
+        for body, state, expected in cases:
+            with self.subTest(body=body):
+                rec = self._record(
+                    [gh_issue(1, body=body), gh_issue(7), gh_issue(8), gh_issue(99)], 1
+                )
+                declaration = rec["dependency_declaration"]
+                self.assertEqual(declaration["state"], state)
+                self.assertEqual(rec["depends_on"], expected)
+                if state == "conflict":
+                    self.assertTrue(declaration["diagnostics"])
+                    self.assertTrue(rec["readiness"].startswith("DEPENDENCY-CONFLICT:"))
+                else:
+                    self.assertEqual(declaration["diagnostics"], [])
+        rec = self._record(
+            [gh_issue(1, body="Depends on: #7\n<!-- ship: blocked-by=none -->")], 1
+        )
+        self.assertEqual(rec["dependency_declaration"]["line_depends_on"], [7])
+        self.assertEqual(rec["dependency_declaration"]["contract_depends_on"], [])
+
+    def test_declaration_conflicts_do_not_create_reverse_or_priority_edges(self):
+        body = "Depends on: #7\n<!-- ship: blocked-by=none -->"
+        payload = idg.build_records([gh_issue(1, body=body), gh_issue(7)], [])
+        blocker = next(r for r in payload["issues"] if r["number"] == 7)
+        self.assertEqual(blocker["unblocks_open"], [])
+        self.assertFalse(any("unblocks" in r for r in blocker["score_reasons"]))
+        with self.assertRaisesRegex(ValueError, "make both declare the same set"):
+            stated_depends_on(body, idg.parse_ship_contract(body))
+
+    def test_quoted_none_does_not_override_legacy_inference(self):
+        for example in (
+            "```\nDepends on: none\n```",
+            "    Depends on: none",
+            "`Depends on: none`",
+            "<!--\nDepends on: none\n-->",
+            "<!-- Depends on: none -->",
+            "```\n<!-- ship: blocked-by=none -->\n```",
+        ):
+            with self.subTest(example=example):
+                rec = self._record(
+                    [gh_issue(1, body=f"requires #99\n\n{example}\n"), gh_issue(99)], 1
+                )
+                self.assertEqual(rec["depends_on"], [99])
+                self.assertEqual(rec["inferred_depends_on"], [99])
+                self.assertEqual(rec["dependency_declaration"]["state"], "absent")
+
     def _record(self, issues, number):
         payload = idg.build_records(issues, [], body_chars=0)
         return next(r for r in payload["issues"] if r["number"] == number)
@@ -796,6 +959,29 @@ class DigestRunner:
 
 
 class MainEndToEndTest(DigestRunner, unittest.TestCase):
+    def test_dependency_validation_matches_model_json_selection_and_details(self):
+        issues = [
+            gh_issue(
+                1,
+                labels=["priority: P0"],
+                body="Depends on: #7\n<!-- ship: blocked-by=none -->",
+            ),
+            gh_issue(2, labels=["priority: P2"], body="Depends on: none\nrequires #99"),
+            gh_issue(7, labels=["on hold"]),
+            gh_issue(99, labels=["on hold"]),
+        ]
+        rc, out, err = self._run(["--json", "--body-chars", "0"], issues)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(json.loads(out), idg.build_records(issues, [], body_chars=0))
+        rc, out, err = self._run(["--select"], issues)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("#2", out)
+        self.assertNotIn("#1[P0] READY", out)
+        rc, out, err = self._run(["--no-rank", "--body-chars", "0"], issues)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("DEPENDENCY-CONFLICT:", out)
+        self.assertIn("make both declare the same set", out)
+
     def test_library_ranks_fetched_records_without_a_subprocess(self):
         issues = [
             gh_issue(1, title="small task", labels=["priority: P2"]),

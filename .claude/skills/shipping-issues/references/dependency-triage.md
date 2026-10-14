@@ -47,8 +47,13 @@ candidate.
 `issue_digest.py` catches explicit `#N` references and common EN/JA dependency
 phrasings (`depends on`, `blocked by`, `requires`, `#N に依存`, `#N の後`…; a bare
 English "after #N" is chronology and reads as a mention). When a body states its
-dependencies — a ship contract's `blocked-by=` or `Depends on: #N` lines — those alone
-set its `BLOCKED-BY` edges and the prose phrasings are ignored. These edges only appear
+dependencies — a ship contract's `blocked-by=`, `Depends on: #N` lines or
+`Depends on: none` — those alone set its dependency edges. Repeated visible lines form
+one set, which must agree with a present contract field. Mixing none and named blockers
+or disagreeing sets holds the issue with `DEPENDENCY-CONFLICT`, including explicit
+selection; fix the declarations. The common validated model feeds all graphs and
+plans. Legacy prose fallback applies only when declarations are absent, and JSON keeps
+its inferred origin separate. Quoted code/comment examples declare nothing. These edges only appear
 on reading:
 
 - **Same-file collision** — two issues that both rewrite `foo.py` are not formally
