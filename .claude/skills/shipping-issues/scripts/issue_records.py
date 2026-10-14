@@ -47,7 +47,7 @@ _DEPENDENCY_ITEM = r"(?:none\b|#\d+\b)"
 _DEPENDENCY_VALUES = (
     r"("
     + _DEPENDENCY_ITEM
-    + r"(?:(?:\s*,\s*(?:and\s+)?|\s+(?:and\s+)?)"
+    + r"(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+|[ \t]+)"
     + _DEPENDENCY_ITEM
     + r")*)"
 )

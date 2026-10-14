@@ -369,6 +369,19 @@ class StructuredDependencySourcesTest(unittest.TestCase):
         self.assertIn("blocked-by", rec["readiness"])
         self.assertEqual(rec["depends_on"], [])
 
+    def test_unrelated_following_paragraph_does_not_extend_dependency_list(self):
+        for tail in (
+            "None of the frontend work is included.",
+            "#8 is a future example.",
+        ):
+            for gap in ("\n", "\n\n"):
+                with self.subTest(tail=tail, gap=gap):
+                    rec = self._record(
+                        [gh_issue(1, body=f"Depends on: #7{gap}{tail}"), gh_issue(8)], 1
+                    )
+                    self.assertEqual(rec["depends_on"], [7])
+                    self.assertEqual(rec["readiness"], "READY")
+
     def test_wrapped_dependency_list_keeps_the_open_continuation_blocker(self):
         for body in ("Depends on: #7,\n#8", "Depends on: #7 and\n#8"):
             with self.subTest(body=body):

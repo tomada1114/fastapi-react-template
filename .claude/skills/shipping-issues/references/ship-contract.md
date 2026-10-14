@@ -31,7 +31,8 @@ An empty `blocked-by=` reads as none; an empty `tier=` or `touches=` counts as m
 A `blocked-by=` field (even `none`) or any `Depends on: #N` or `Depends on: none`
 line makes structured declarations the only source of dependencies; prose is then
 read as mentions, not edges. Repeated visible lines union and deduplicate. Comma/and
-lists may wrap across lines; quoted continuation items are still excluded. If both
+lists may wrap across lines only with an explicit delimiter; bare whitespace
+between values stays on one line. Quoted continuation items are still excluded. If both
 visible lines and `blocked-by=` are present, their sets must agree. `none` mixed with
 a named blocker, or different sets, produces an actionable `DEPENDENCY-CONFLICT`
 diagnostic; no plan can select that issue until its declarations are corrected.
