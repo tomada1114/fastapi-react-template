@@ -155,8 +155,9 @@ with".
   - `managing-dependencies`: "The JavaScript side", `references/pnpm.md`, and pnpm,
     `minimumReleaseAge`, and `pnpm-lock.yaml` in the window and scanner sections;
   - `merging-dependency-prs`: the `npm` and `npm_and_yarn` parts of its steps,
-    "`npm_and_yarn` PRs" in `references/review-checklist.md`, and the pnpm lines of
-    `references/failure-modes.md` and `references/landing.md`;
+    "`npm_and_yarn` PRs" in `references/review-checklist.md`, the pnpm lines of
+    `references/failure-modes.md` and `references/landing.md`, and `Frontend`,
+    `Contract Drift`, and `E2E` in `failure-modes.md`'s list of gating jobs;
   - `placing-tests`: "The frontend and the browser test", and the Vitest lines of
     "Running tests" and "The coverage floor";
   - `writing-tests`: "A frontend test", `references/frontend-tests.md`, and its
