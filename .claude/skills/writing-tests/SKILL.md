@@ -5,7 +5,7 @@ description: >
   test_<what>_<scenario>_<expected> name, Arrange-Act-Assert, the public surface, edge
   cases, pytest.raises with match=, parametrize ids, factory fixtures, fakes over
   mocks) or a Vitest test under frontend/tests/ (the it sentence, Testing
-  Library queries by role, fireEvent, jest-dom matchers, MSW handlers typed from the
+  Library queries by role, user-event, jest-dom matchers, MSW handlers typed from the
   generated client, findBy over timers); no sleep, skip, .only, or order dependency.
   Use when writing or reviewing a test, choosing what to assert or fake, or fixing a
   flaky or skipped test.
@@ -30,9 +30,9 @@ cases, fakes over mocks, independence — while its mechanics differ.
 
 A Vitest test under `frontend/tests/` replaces the pytest mechanics: it is named by the
 behavior sentence passed to `it`, queries in Testing Library's priority order
-(`getByRole` first, `getByTestId` last), drives input with `fireEvent` (`user-event` is
-not installed), asserts with the `jest-dom` matchers, answers every request with an MSW
-handler typed from the generated types, and waits with `findBy...` or `waitFor`, never a
+(`getByRole` first, `getByTestId` last), drives input with `userEvent.setup()`,
+asserts with the `jest-dom` matchers, answers every request with an MSW handler
+typed from the generated types, and waits with `findBy...` or `waitFor`, never a
 timer. The rules, the MSW server's unhandled-request behavior, and why the client's
 `baseUrl` is `window.location.origin` under `jsdom`:
 [references/frontend-tests.md](references/frontend-tests.md).

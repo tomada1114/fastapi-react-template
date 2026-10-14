@@ -2,7 +2,7 @@
 
 Read when writing a component test for a screen under `frontend/tests/`. Where the file
 goes and the coverage floor are `placing-tests`'; how the test itself is written — its
-`it` sentence, the query order, `fireEvent`, the `jest-dom` matchers, MSW handlers,
+`it` sentence, the query order, `userEvent.setup()`, the `jest-dom` matchers, MSW handlers,
 waiting, and the `baseUrl` trap under `jsdom` — is `writing-tests`'
 `references/frontend-tests.md`. This file holds only what is particular to a screen.
 

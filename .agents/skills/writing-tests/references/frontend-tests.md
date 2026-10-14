@@ -40,10 +40,14 @@ Query by what a user perceives, in Testing Library's priority order: `getByRole`
 
 ## Input
 
-Drive input with `fireEvent` from `@testing-library/react`: `fireEvent.change(input,
-{ target: { value } })`, then `fireEvent.click(button)` or `fireEvent.submit(form)`.
-`@testing-library/user-event` is not installed; adding it is a new package.
-**REQUIRED:** `managing-dependencies`.
+Drive input as a user does, with `@testing-library/user-event`: `const user =
+userEvent.setup()` at the top of the test, then `await user.type(input, text)`,
+`await user.click(button)`, `await user.keyboard("{Enter}")`, or `await user.tab()`.
+It moves focus and fires the key and pointer events a real user would, so a flow a
+keyboard user cannot complete fails the test. Keep `fireEvent` from
+`@testing-library/react` only where the test needs one raw DOM event a user cannot
+produce, such as two synchronous `fireEvent.submit(form)` calls proving a duplicate
+submit is blocked.
 
 ## Faking the API with MSW
 
