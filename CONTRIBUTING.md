@@ -14,7 +14,7 @@ Install these tools:
   downloads the Node.js 24 release `pnpm-lock.yaml` pins when the `node` on
   your `PATH` is another version, and runs the frontend's tools on it.
 - [pnpm](https://pnpm.io/) 11, through `corepack enable` (Node.js 24 ships
-  Corepack); any pnpm 11 fetches the version `package.json` pins. pnpm is the
+  Corepack); any pnpm 11 fetches the version `package.json`'s `packageManager` pins. pnpm is the
   only JavaScript package manager here: no `npm`, `yarn`, or `bun`.
 - [Just](https://just.systems/man/en/installation.html) 1.42.3 or later
   (optional — you can run the `uv run` and `pnpm` commands directly). The root
@@ -25,6 +25,8 @@ Install these tools:
   runs it in the module's directory (`backend/`, `frontend/`) as it must; an
   older Just fails to parse the `justfile` or runs an area's commands from the
   repository root.
+
+No Docker is needed: the development database is a SQLite file.
 
 Then install the dependencies and the git hooks (without Just, run the
 `install` recipe's commands from the `justfile`):
@@ -40,6 +42,13 @@ staging a secret, and `just install` fails if one is missing (README's
 ## Development Workflow
 
 ```bash
+# Install the Python and JavaScript dependencies and the git hooks
+just install
+
+# Human-run: migrate backend/var/dev.db, then serve the screen on
+# http://localhost:5173 and the API on http://127.0.0.1:8000 until Ctrl-C
+just dev
+
 # Format and auto-fix
 just fmt
 
@@ -54,6 +63,9 @@ just backend test
 
 # Run only the frontend's tests, with its coverage floor (`just --list frontend` lists the rest)
 just frontend test
+
+# Regenerate frontend/openapi.json and the typed API client after an API change
+just contract
 
 # Run the browser test: the built screen against the real API on a throwaway SQLite
 # file, on free ports (download Chromium once: pnpm --dir e2e exec playwright install chromium)
