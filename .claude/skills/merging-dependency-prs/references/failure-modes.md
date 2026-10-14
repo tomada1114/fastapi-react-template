@@ -14,10 +14,14 @@ Which _job_ failed is the fastest way to tell these apart. `ci.yml`'s gating job
 `Lint & Type Check`, `Coverage`, `Frontend`, `PostgreSQL`, `Contract Drift`, `E2E`,
 `Spell Check`, and `Workflow Security Lint` (zizmor). `CI result` is the aggregate, the
 one required CI context (`.github/rulesets/main.json`): it needs every gating job and
-fails when any of them did, so a red `CI result` says only that — read the failing
-needed job's log, never `CI result`'s own. `Skill Scripts (Python 3.9)` also runs but
-is not in its `needs`. The ruleset's other required contexts come from their own
-workflows: `Validate PR title`, `Analyze (<language>)` (CodeQL), and `Dependency Review`.
+fails unless each one succeeded — a failed, cancelled, or skipped job all turn it red.
+Its "Report each needed job's result" step prints every needed job's result: for a
+`failure`, read that job's log, never `CI result`'s own; for a `cancelled` or `skipped`
+one with no failure (a run superseded by a newer push, or cancelled by hand), there is
+no failure log — read the newer run's results, or re-run the cancelled one.
+`Skill Scripts (Python 3.9)` also runs but is not in its `needs`. The ruleset's other
+required contexts come from their own workflows: `Validate PR title`,
+`Analyze (<language>)` (CodeQL), and `Dependency Review`.
 
 ## F1 — Workflow security lint
 
