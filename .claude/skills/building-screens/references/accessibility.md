@@ -3,8 +3,8 @@
 Read before a screen ships, and when reviewing one. Each item is a rule first; the
 example after it comes from the sample to-do screen under
 `frontend/src/features/todos/` and can be deleted with it. A component test checks each
-item through Testing Library's role and name queries
-([testing-screens.md](testing-screens.md)).
+item through Testing Library's role and name queries (`writing-tests`), with the states
+[testing-screens.md](testing-screens.md) lists.
 
 ## Labels and names
 

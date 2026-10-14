@@ -23,10 +23,11 @@ That comment is a request, not a successful rebase. Never merge on checks for it
 head. A rerun is allowed only for the run/job and reason the plan covers; a newly
 needed one requires fresh approval.
 
-Every merged `uv` PR leaves the next one's `uv.lock` stale, so `uv` PRs land this way
-one after another: merge, wait for Dependabot to rebase the next PR on its own (it re-runs
-`uv lock`), request that rebase with the comment above only if it has not happened,
-review its new head, and only then merge it.
+Every merged `uv` PR leaves the next one's `uv.lock` stale, and every merged
+`npm_and_yarn` PR the next one's `pnpm-lock.yaml`, so each ecosystem's PRs land this
+way one after another: merge, wait for Dependabot to rebase the next PR on its own (it
+regenerates the lock), request that rebase with the comment above only if it has not
+happened, review its new head, and only then merge it.
 
 ## Combined PR
 

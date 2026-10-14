@@ -197,27 +197,27 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `authoring-skills` | adding, editing, or reviewing a skill under `.agents/skills/`, or a skill never fires |
 | `building-api-routes` | adding or changing an HTTP route, request or response model, or API dependency, and the TestClient tests for it |
 | `building-screens` | adding or changing a screen, route, or feature under `frontend/src/`: server data through the generated client, API errors, styling, accessibility, and its component tests |
-| `changing-gates` | editing a hook, a CI workflow, the ruleset, or a ruff, mypy, pytest, or coverage setting, or asking whether a change weakens a gate |
+| `changing-gates` | editing a hook, a CI workflow, the ruleset, or a ruff, mypy, pytest, coverage, Vitest, Biome, `tsconfig.json`, or `pnpm-workspace.yaml` setting, or asking whether a change weakens a gate |
 | `cloud-claude-shipping-issues` | Claude Code cloud sessions only (`CLAUDE_CODE_REMOTE=true`): shipping the next issue or the backlog over REST `gh api` calls, serially — rank, implement, PR, the PR's review, CI, merge, follow-ups |
 | `codex-shipping-issues` | shipping one GitHub issue from a Codex-managed checkout through a regular PR, up to three Codex review rounds with their findings addressed, current-head CI, and an explicitly authorized merge |
 | `create-pr` | opening or updating a pull request by hand |
 | `designing-core-logic` | adding a use case, domain rule, port, adapter, or `MY_APP_*` setting, or wiring the composition root |
 | `designing-errors` | adding a failure mode, or choosing the HTTP status a domain error becomes |
-| `managing-dependencies` | adding, bumping, or removing a package, or changing the `exclude-newer` window, its Dependabot cooldown, or a one-package exception |
-| `merging-dependency-prs` | landing open Dependabot pull requests (GitHub Actions and `uv` bumps) |
+| `managing-dependencies` | adding, bumping, or removing a Python or JavaScript package, or changing the `exclude-newer` or `minimumReleaseAge` window, a Dependabot cooldown, a one-package exception, or another `pnpm-workspace.yaml` exception |
+| `merging-dependency-prs` | landing open Dependabot pull requests (GitHub Actions, pre-commit, `uv`, and `npm_and_yarn` bumps) |
 | `persisting-data` | changing a table in `backend/src/my_app/adapters/sql/`, writing or reviewing an Alembic revision under `backend/migrations/`, running `just backend db-upgrade` or `db-revision`, a SQL repository's statements, or the `AsyncEngine`'s lifecycle |
-| `placing-tests` | adding a test file or a fixture, running one test, or a coverage run below the floor |
+| `placing-tests` | adding a test file or a fixture (pytest, Vitest, or the browser test), running one test, or a coverage run below a floor |
 | `running-the-app` | running a server of your own to observe a change, and stopping that server afterwards |
 | `shipping-issues` | Claude Code only: shipping the next issue or the whole backlog: rank, implement, PR, the PR's own review and its findings, CI, merge |
 | `smart-commit` | grouping working-tree changes into commits, or a pre-commit hook refuses a commit |
 | `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the API or the sample domain, the first design changes; the template rename step |
 | `steering-the-roadmap` | asked what to work on next, or the Now / Next / Later roadmap moves |
-| `tdd` | changing behavior under `backend/src/` or `scripts/`, or fixing a bug: the failing test comes first |
+| `tdd` | changing behavior under `backend/src/`, `scripts/`, or `frontend/src/`, or fixing a bug: the failing test comes first |
 | `triaging-issues` | filing, labelling, or prioritizing an issue, or recording a problem found outside the task |
-| `updating-docs` | deciding whether a change owes a README, AGENTS.md, or other document update |
+| `updating-docs` | deciding whether a change owes a README, AGENTS.md (the root's or an area's), regenerated contract, or other document update |
 | `writing-python` | writing or reviewing any Python module, class, or function: typing, imports, docstrings, idioms |
 | `writing-repo-scripts` | adding or editing a script under `scripts/`, its `just` recipe, or its tests |
-| `writing-tests` | writing or reviewing a test: its name, assertions, fixtures, fakes, and edge cases |
+| `writing-tests` | writing or reviewing a pytest or Vitest test: its name, assertions, fixtures, fakes or MSW handlers, and edge cases |
 
 ## Sub-agents
 

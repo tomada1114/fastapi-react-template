@@ -1,23 +1,39 @@
 ---
 name: writing-tests
 description: >
-  Covers how one pytest test is written under backend/tests/ or the root tests/: its
-  test_<what>_<scenario>_<expected> name, Arrange-Act-Assert, testing behavior through
-  a layer's public module, edge cases to sweep, pytest.raises with match=, parametrize
-  with pytest.param ids, factory fixtures, tmp_path and monkeypatch, fakes over mocks,
-  no sleep, skip, or order dependency, and the anti-patterns to reject in review. Use
-  when writing or reviewing a test, choosing what to assert or what to fake, or fixing
-  a flaky or skipped test.
+  Covers how one test is written: a pytest test under backend/tests/ or tests/ (its
+  test_<what>_<scenario>_<expected> name, Arrange-Act-Assert, the public surface, edge
+  cases, pytest.raises with match=, parametrize ids, factory fixtures, fakes over
+  mocks) or a Vitest test under frontend/tests/ (the it sentence, Testing
+  Library queries by role, fireEvent, jest-dom matchers, MSW handlers typed from the
+  generated client, findBy over timers); no sleep, skip, .only, or order dependency.
+  Use when writing or reviewing a test, choosing what to assert or fake, or fixing a
+  flaky or skipped test.
 ---
 
 # Writing Tests
 
-**Owns:** how one test case is written — its name, the interface it goes through, what
-it asserts, how it fakes the world, and what to reject in review. **Does not own:** which
-file and directory a test lives in, the fixtures' homes, and the coverage floor
-(`placing-tests`); the order of work that puts the test first (`tdd`); the mechanics of
-each seam (`building-api-routes`, `designing-core-logic`); the error classes a test
-asserts against (`designing-errors`); a script's tests (`writing-repo-scripts`).
+**Owns:** how one test case is written, pytest or Vitest — its name, the interface it
+goes through, what it asserts, how it fakes the world, and what to reject in review.
+**Does not own:** which file and directory a test lives in, the fixtures' homes, and the
+coverage floor (`placing-tests`); the order of work that puts the test first (`tdd`);
+the mechanics of each seam (`building-api-routes`, `designing-core-logic`); the error
+classes a test asserts against (`designing-errors`); a script's tests
+(`writing-repo-scripts`); how a screen's test renders it and which states it covers
+(`building-screens`).
+
+The sections below are written for pytest; their rules hold for a frontend test too.
+
+## A frontend test
+
+A Vitest test under `frontend/tests/` keeps every rule below and changes the tools:
+it is named by the behavior sentence passed to `it`, queries in Testing Library's
+priority order (`getByRole` first, `getByTestId` last), drives input with `fireEvent`
+(`user-event` is not installed), asserts with the `jest-dom` matchers, answers every
+request with an MSW handler typed from the generated types, and waits with `findBy...`
+or `waitFor`, never a timer. The rules, the MSW server's unhandled-request behavior,
+and why the client's `baseUrl` is `window.location.origin` under `jsdom`:
+[references/frontend-tests.md](references/frontend-tests.md).
 
 ## Naming and shape
 
@@ -155,8 +171,9 @@ checked.
   (`-n auto`) and CI also runs it across processes, so a hidden dependency surfaces as
   an intermittent failure.
 - No `time.sleep()`: inject the clock (`fixed_clock`) or patch it with `monkeypatch`.
-- No `@pytest.mark.skip`, `xfail`, or TODO test on `main` — fix the test or delete it.
-  Skipping a test is weakening a gate (AGENTS.md's "Security and human approval").
+- No `@pytest.mark.skip`, `xfail`, or TODO test on `main`, and no `.only`, `.skip`, or
+  `.todo` in a Vitest file — fix the test or delete it. Skipping a test is weakening a
+  gate (AGENTS.md's "Security and human approval").
 - A flaky test is fixed immediately, never retried or ignored.
 
 ## Anti-patterns to reject in review
