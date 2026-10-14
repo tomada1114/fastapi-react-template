@@ -7,6 +7,7 @@ uvicorn or Vite, a process the recipe never started itself), prints
 ``ready <module> <recipe> <pid> <child pid>``, and waits. With
 ``FAKE_BACKEND_EXIT`` or ``FAKE_FRONTEND_EXIT`` set, that module's fake exits
 with the code on ``SIGUSR1``, so a test decides when a server "fails".
+With ``FAKE_READY_FILE`` set, the ready line is also appended to that file.
 With ``FAKE_STUBBORN`` set, the fake and its ``sleep`` ignore ``SIGTERM``, as a
 server stuck in its shutdown would.
 
@@ -45,6 +46,11 @@ BACKEND_JUSTFILE = REPO_ROOT / "backend" / "justfile"
 JUST = "{{ quote(just_executable()) }}"
 READY_TIMEOUT = 10.0
 EXIT_TIMEOUT = 20.0
+# The stubborn-server test's recipe spends its full 10 s SIGTERM grace before
+# SIGKILL; on a loaded machine (load averages of 20-100 under `just verify`)
+# its exit also waits on slow `ps` polls, so 20 s timed out while 60 s is only a
+# ceiling: a passing run returns as soon as the recipe exits.
+STUBBORN_EXIT_TIMEOUT = 60.0
 
 FAKE_JUST = """\
 #!/usr/bin/env bash
@@ -57,6 +63,7 @@ sleep 300 >/dev/null 2>&1 &
 child=$!
 if [ -n "$code" ]; then trap 'exit "$code"' USR1; fi
 echo "ready $1 $2 $$ $child"
+if [ -n "${FAKE_READY_FILE:-}" ]; then echo "ready $1 $2 $$ $child" >>"$FAKE_READY_FILE"; fi
 wait "$child"
 """
 
@@ -113,8 +120,8 @@ class Dev:
     process: subprocess.Popen[bytes]
     servers: dict[str, Server]
 
-    def finish(self) -> int:
-        return self.process.wait(timeout=EXIT_TIMEOUT)
+    def finish(self, timeout: float = EXIT_TIMEOUT) -> int:
+        return self.process.wait(timeout=timeout)
 
     def pids(self) -> list[int]:
         return [pid for s in self.servers.values() for pid in (s.pid, s.child)]
@@ -209,6 +216,7 @@ def test_dev_starts_backend_dev_and_frontend_dev(
         pytest.param(signal.SIGINT, 130, id="int"),
         pytest.param(signal.SIGTERM, 143, id="term"),
         pytest.param(signal.SIGHUP, 129, id="hup"),
+        pytest.param(signal.SIGQUIT, 131, id="quit"),
     ],
 )
 def test_dev_signal_stops_both_servers_and_their_children(
@@ -230,8 +238,58 @@ def test_dev_signal_kills_servers_that_ignore_sigterm(
 
     dev.process.send_signal(signal.SIGTERM)
 
-    assert dev.finish() == 143
+    assert dev.finish(STUBBORN_EXIT_TIMEOUT) == 143
     assert [pid for pid in dev.pids() if _alive(pid)] == []
+
+
+@pytest.mark.parametrize("bash", BASHES)
+def test_dev_signal_before_second_server_starts_stops_the_first(
+    tmp_path: Path, bash: str
+) -> None:
+    fake = tmp_path / "just"
+    fake.write_text(FAKE_JUST, encoding="utf-8")
+    fake.chmod(0o755)
+    ready = tmp_path / "ready.txt"
+    first_launch = "api=$!\n"
+    body = _recipe_body(JUSTFILE, "dev:").replace(JUST, shlex.quote(str(fake)))
+    assert first_launch in body
+    # The recipe signals itself once the first server runs and before the
+    # second is launched: the window before its stop handlers were installed.
+    body = body.replace(
+        first_launch,
+        first_launch
+        + 'while [ ! -s "$FAKE_READY_FILE" ]; do sleep 0.05; done\n'
+        + "kill -TERM $$\n",
+        1,
+    )
+    script = tmp_path / "dev.sh"
+    script.write_text(body, encoding="utf-8")
+    environ = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_")}
+    process = subprocess.Popen(  # noqa: S603 -- fixed argv, no shell
+        [bash, str(script)],
+        cwd=tmp_path,
+        env=environ | {"FAKE_READY_FILE": str(ready)},
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        process_group=0,
+    )
+    try:
+        status = process.wait(timeout=EXIT_TIMEOUT)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=EXIT_TIMEOUT)
+    _, module, _, pid, child = ready.read_text(encoding="utf-8").split()
+    pids = [int(pid), int(child)]
+    survivors = [p for p in pids if _alive(p)]
+    if survivors:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(int(pid), signal.SIGKILL)
+
+    assert module == "backend"
+    assert status == 143
+    assert survivors == []
 
 
 @pytest.mark.parametrize("bash", BASHES)
