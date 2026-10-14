@@ -1,8 +1,9 @@
 # Testing a screen: the helpers and the traps
 
 Read when writing a component test under `frontend/tests/`. Where the file goes and the
-coverage floor are `placing-tests`' and `frontend/AGENTS.md`'s "Tests and the coverage
-floor"; how a test is named and what it asserts is `writing-tests`'.
+coverage floor are `frontend/AGENTS.md`'s "Tests and the coverage floor"; `placing-tests`
+and `writing-tests` describe the Python trees until #32 adds their frontend side, so a
+test here is named by the behavior sentence passed to `it`.
 
 ## Rendering
 

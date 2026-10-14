@@ -130,9 +130,12 @@ reachable from the keyboard.
 
 ## Testing a screen
 
-Where the file goes and the coverage floor: **REQUIRED:** `placing-tests` (for the
-frontend, `frontend/AGENTS.md`'s "Tests and the coverage floor" until that skill covers
-it). How one test is named and what it asserts: **REQUIRED:** `writing-tests`.
+Where the file goes and the coverage floor: `frontend/AGENTS.md`'s "Tests and the
+coverage floor" (`placing-tests`, `writing-tests`, and `tdd` cover only the Python test
+trees until #32 adds their frontend side). A test is named by the sentence passed to
+`it`, describing the behavior, not the pytest `test_<what>_<scenario>_<expected>` form.
+**BACKGROUND:** `writing-tests` for what carries over: Arrange-Act-Assert and fakes over
+mocks.
 
 - A screen is tested by Vitest component tests under `jsdom`: Testing Library queries in
   its priority order, `getByRole` first and `getByTestId` last
@@ -154,9 +157,12 @@ Take a hypothetical settings screen that reads `GET /api/settings` as the worked
 1. The API side comes first: the route, its schema, and its tests. **REQUIRED:**
    `building-api-routes`. Then `just contract`; a route function named `get_settings`
    becomes the generated `getSettingsOptions`.
-2. The tests, then the component. **REQUIRED:** `tdd`. First
+2. The tests, then the component, failing test first. First
    `frontend/tests/features/settings/SettingsScreen.test.tsx` with MSW handlers for each
-   state, then `frontend/src/features/settings/SettingsScreen.tsx` and its `index.ts`.
+   state; see it fail with
+   `pnpm --dir frontend exec vitest run tests/features/settings/SettingsScreen.test.tsx`;
+   then `frontend/src/features/settings/SettingsScreen.tsx` and its `index.ts` until it
+   passes.
 3. The route: `frontend/src/routes/settings.tsx` with `createFileRoute("/settings")`,
    rendering `SettingsScreen`. The layout in `__root.tsx` has no navigation yet.
 4. Check, from the repository root: `just frontend lint`, `just frontend test`, and
