@@ -11,6 +11,7 @@ from pathlib import Path
 
 import anyio
 import pytest
+from alembic import command
 from sqlalchemy import event
 
 from my_app import composition
@@ -78,6 +79,30 @@ async def test_build_container_sql_settings_shares_the_database(
     reopened = make_container(settings)
 
     assert (await reopened.todos.list_page()).items == (created,)
+
+
+@pytest.fixture(params=["literal", "native-uri"])
+def migrated_query_file_url(request, alembic_config, sqlite_url, monkeypatch):
+    """Migrate an owned file with options before starting an application loop."""
+    if request.param == "native-uri":
+        filename = sqlite_url.removeprefix("sqlite+aiosqlite:///")
+        url = f"sqlite+aiosqlite:///file:{filename}?mode=rwc&uri=true&timeout=5"
+    else:
+        url = f"{sqlite_url}?timeout=5"
+    monkeypatch.setenv("MY_APP_DATABASE_URL", url)
+    command.upgrade(alembic_config, "head")
+    return url
+
+
+async def test_build_container_query_file_reopens_migrated_schema_and_data(
+    migrated_query_file_url,
+):
+    settings = Settings(database_url=migrated_query_file_url)
+    async with build_container(settings) as first:
+        created = await first.todos.create("survives disposal with URL options")
+
+    async with build_container(settings) as reopened:
+        assert (await reopened.todos.list_page()).items == (created,)
 
 
 async def test_build_container_sql_settings_disposes_the_engine_on_aclose(

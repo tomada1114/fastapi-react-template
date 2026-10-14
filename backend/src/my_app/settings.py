@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Annotated, Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, parse_qsl, unquote, urlsplit
 
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -17,6 +17,20 @@ POSTGRESQL_URL_PREFIX = "postgresql+asyncpg://"
 # The blocking driver's form, refused with a pointer to the async one.
 SYNC_SQLITE_URL_PREFIX = "sqlite:///"
 SQLITE_MEMORY_PATH = ":memory:"
+# SQLAlchemy separates these Python driver options from native SQLite URI options:
+# https://docs.sqlalchemy.org/en/21/dialects/sqlite.html#uri-connections
+# Checked 2026-10-13 against the pinned 2.1.1 driver's create_connect_args.
+SQLITE_DRIVER_OPTIONS = frozenset(
+    {
+        "uri",
+        "timeout",
+        "isolation_level",
+        "detect_types",
+        "check_same_thread",
+        "cached_statements",
+    }
+)
+SQLITE_TRUE_VALUES = frozenset({"true", "yes", "on", "y", "t", "1"})
 CORS_ORIGIN_PATTERN = re.compile(r"^https?://[^/\s?#]+$")
 
 
@@ -133,18 +147,53 @@ def _check_sqlite_path(url: str, path: str) -> None:
         ValueError: If ``path`` is empty, the in-memory database, or a
             directory.
     """
+    path, memory = _sqlite_target(path)
     if not path:
         msg = f"must name a file after '{SQLITE_URL_PREFIX}', got {url!r}"
         raise ValueError(msg)
-    if path == SQLITE_MEMORY_PATH:
+    if memory:
         msg = (
-            f"{url!r} is not supported: each pooled connection would open its "
-            "own empty database. Unset the variable to use the in-memory store."
+            f"{url!r} is not supported: migrations and the application use separate "
+            "engine/process lifetimes, so the migrated in-memory schema would not "
+            "persist. Unset the variable to use the in-memory store."
         )
         raise ValueError(msg)
     if path.endswith("/"):
         msg = f"must name a file, not a directory, got {url!r}"
         raise ValueError(msg)
+
+
+def _sqlite_target(target: str) -> tuple[str, bool]:
+    """Interpret the SQLAlchemy database component before native URI validation.
+
+    Split query options before decoding a literal filename: an escaped question
+    mark is part of that filename. In URI mode, SQLAlchemy forwards non-Python
+    options into the native file URI; SQLite then decodes its path/query again.
+    Keep this boundary in stdlib strings and confirm it with driver-level tests.
+    """
+    database, _, query = target.partition("?")
+    path = unquote(database)
+    options = parse_qs(query)
+    uri_values = options.get("uri", [])
+    # SQLAlchemy coerces a repeated option's tuple with bool(), hence True even
+    # for repeated false strings; one string uses its normal boolean vocabulary.
+    uri = len(uri_values) > 1 or any(
+        value.strip().lower() in SQLITE_TRUE_VALUES for value in uri_values
+    )
+    memory = path == SQLITE_MEMORY_PATH
+    if uri and path.startswith("file:"):
+        forwarded = "&".join(
+            f"{key}={values[0] if len(values) == 1 else tuple(values)}"
+            for key, values in sorted(options.items())
+            if key not in SQLITE_DRIVER_OPTIONS
+        )
+        filename = path + (f"?{forwarded}" if forwarded else "")
+        parsed = urlsplit(filename)
+        path = unquote(parsed.path)
+        memory = path == SQLITE_MEMORY_PATH or ("mode", "memory") in parse_qsl(
+            parsed.query
+        )
+    return path, memory
 
 
 def _normalize_browser_origin(origin: str) -> str | None:
