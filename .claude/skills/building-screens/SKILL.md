@@ -132,7 +132,7 @@ A screen is tested by Vitest component tests under `jsdom` that render its featu
 component and answer every request it makes with an MSW handler typed from the
 generated types. **REQUIRED:** `placing-tests` for where the file goes and the
 coverage gate, `writing-tests` for how each test is written: its `it` sentence,
-Testing Library's query order with `getByRole` first, `fireEvent`, the `jest-dom`
+Testing Library's query order with `getByRole` first, `userEvent.setup()`, the `jest-dom`
 matchers, the MSW server's unhandled-request behavior, and waiting with `findBy...`.
 
 - Render through `renderWithQuery`, and a route through `createAppRouter` with a memory

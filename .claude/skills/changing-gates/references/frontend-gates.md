@@ -49,7 +49,8 @@ looks wrong and why, and a human decides.
   JavaScript side").
 - **Installs:** `pnpm install` without `--frozen-lockfile` in CI or a recipe, or a second
   lockfile (`package-lock.json`, `yarn.lock`, `bun.lock`).
-- **Hooks:** removing the `biome` or `tsc` pre-commit hook, or narrowing its `files`
+- **Hooks:** removing the `biome`, `tsc`, `biome-e2e`, or `tsc-e2e` pre-commit hook, or
+  narrowing its `files`
   ([pre-commit-layer.md](pre-commit-layer.md)).
 - **The browser test:** removing `e2e-lint` from `just lint`, or the `E2E` job from
   `CI result`'s `needs`; raising Playwright's `retries` from 0 or dropping
@@ -60,8 +61,8 @@ looks wrong and why, and a human decides.
 | Gate | File | Run by |
 |---|---|---|
 | Vitest, `allowOnly`, the coverage floor | `frontend/vitest.config.ts` | `just frontend test`; CI `Frontend` |
-| Biome | `frontend/biome.json`, `e2e/biome.json` | `just frontend lint`, `just e2e-lint`; the `biome` hook; CI `Frontend`, `E2E` |
-| `tsc` and the strict flags | `frontend/tsconfig.json`, `e2e/tsconfig.json` | the same, and the `tsc` hook |
+| Biome | `frontend/biome.json`, `e2e/biome.json` | `just frontend lint`, `just e2e-lint`; the `biome` and `biome-e2e` hooks; CI `Frontend`, `E2E` |
+| `tsc` and the strict flags | `frontend/tsconfig.json`, `e2e/tsconfig.json` | the same, and the `tsc` and `tsc-e2e` hooks |
 | The `@ts-*` directive scope | `scripts/check_generated_client.py` | `just frontend lint`, `just contract-check` |
 | Contract and client drift | `just contract-check` | `just verify`; CI `Contract Drift` |
 | The pnpm policy and window | `pnpm-workspace.yaml` | every `pnpm install` |

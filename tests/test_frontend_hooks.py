@@ -1,6 +1,6 @@
-"""Tests for the pre-commit hooks that run Biome and ``tsc`` on frontend files.
+"""Tests for the pre-commit hooks that run Biome and ``tsc`` on frontend and e2e files.
 
-Each test copies the two real hook definitions from ``.pre-commit-config.yaml``
+Each test copies the four real hook definitions from ``.pre-commit-config.yaml``
 into a throwaway repository and runs them through pre-commit itself, so file
 selection (``files``, ``types_or``, ``pass_filenames``) and the ``entry`` are
 the real ones. A fake ``pnpm`` on ``PATH`` stands in for ``pnpm exec``: it
@@ -25,6 +25,7 @@ from tests.harness._yaml import as_mapping, load_yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
 HOOK_IDS = ("biome", "tsc")
+E2E_HOOK_IDS = ("biome-e2e", "tsc-e2e")
 
 FAKE_PNPM = f"""\
 #!{sys.executable}
@@ -47,6 +48,10 @@ TRACKED = (
     "frontend/src/legacy.js",
     "frontend/src/Legacy.jsx",
     "frontend/src/index.css",
+    "e2e/package.json",
+    "e2e/playwright.config.ts",
+    "e2e/tests/my spec.spec.ts",
+    "e2e/verify_persistence.py",
 )
 BIOME_FILES = {
     "package.json",
@@ -68,13 +73,13 @@ def _hooks() -> dict[str, dict[str, object]]:
         for repo in repos
         if repo["repo"] == "local"
         for hook in repo["hooks"]
-        if hook["id"] in HOOK_IDS
+        if hook["id"] in HOOK_IDS + E2E_HOOK_IDS
     }
 
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """Return a repository tracking `TRACKED`, configured with the two hooks."""
+    """Return a repository tracking `TRACKED`, configured with the four hooks."""
     root = tmp_path / "repo"
     root.mkdir()
     for relative in TRACKED:
@@ -191,6 +196,30 @@ def test_frontend_hooks_config_pins_selection_and_entry() -> None:
             "pass_filenames": False,
             "stages": ["pre-commit"],
         },
+        "biome-e2e": {
+            "id": "biome-e2e",
+            "name": "biome (e2e)",
+            "entry": (
+                "bash -c 'cd e2e && exec pnpm exec biome check"
+                " --no-errors-on-unmatched --files-ignore-unknown=true"
+                ' "${@#e2e/}"\' --'
+            ),
+            "language": "system",
+            "files": "^e2e/",
+            "types_or": ["ts", "tsx", "javascript", "jsx", "json", "css"],
+            "require_serial": True,
+            "stages": ["pre-commit"],
+        },
+        "tsc-e2e": {
+            "id": "tsc-e2e",
+            "name": "tsc --noEmit (e2e)",
+            "entry": "bash -c 'cd e2e && exec pnpm exec tsc --noEmit' --",
+            "language": "system",
+            "files": "^e2e/",
+            "types_or": ["ts", "tsx"],
+            "pass_filenames": False,
+            "stages": ["pre-commit"],
+        },
     }
 
 
@@ -255,7 +284,9 @@ def test_frontend_hooks_no_matching_file_skip_both(
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert _calls(repo) == []
-    assert result.stdout.count("(no files to check)Skipped") == len(HOOK_IDS)
+    assert result.stdout.count("(no files to check)Skipped") == len(
+        HOOK_IDS + E2E_HOOK_IDS
+    )
 
 
 def test_tsc_hook_only_non_typescript_frontend_file_skips(repo: Path) -> None:
@@ -282,3 +313,49 @@ def test_frontend_hook_without_pnpm_fails_with_exit_127(
 
     assert result.returncode == 1
     assert "exit code: 127" in result.stdout
+
+
+def test_biome_e2e_hook_all_files_checks_e2e_files_from_e2e(repo: Path) -> None:
+    result = _run(repo, "biome-e2e", "--all-files")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    (call,) = _calls(repo)
+    argv = call["argv"]
+    assert isinstance(argv, list)
+    assert Path(str(call["cwd"])).resolve() == (repo / "e2e").resolve()
+    assert argv[:5] == [
+        "exec",
+        "biome",
+        "check",
+        "--no-errors-on-unmatched",
+        "--files-ignore-unknown=true",
+    ]
+    assert sorted(argv[5:]) == [
+        "package.json",
+        "playwright.config.ts",
+        "tests/my spec.spec.ts",
+    ]
+
+
+def test_tsc_e2e_hook_typescript_file_staged_checks_e2e_project(repo: Path) -> None:
+    result = _run(repo, "tsc-e2e", "--files", "e2e/playwright.config.ts")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    (call,) = _calls(repo)
+    assert Path(str(call["cwd"])).resolve() == (repo / "e2e").resolve()
+    assert call["argv"] == ["exec", "tsc", "--noEmit"]
+
+
+def test_e2e_hooks_frontend_file_staged_skip(repo: Path) -> None:
+    result = _run(repo, "--files", "frontend/src/App.tsx", pnpm_exit=0)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert {Path(str(call["cwd"])).name for call in _calls(repo)} == {"frontend"}
+
+
+@pytest.mark.parametrize("hook_id", E2E_HOOK_IDS)
+def test_e2e_hook_tool_fails_fails_the_hook(repo: Path, hook_id: str) -> None:
+    result = _run(repo, hook_id, "--files", "e2e/playwright.config.ts", pnpm_exit=1)
+
+    assert result.returncode == 1
+    assert "Failed" in result.stdout

@@ -105,12 +105,13 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
       # The app has its own mypy configuration (backend/pyproject.toml) and
-      # `tests` package, so it is checked by a second run from backend/.
+      # `tests` package, so it is checked by a second run from backend/. That
+      # configuration's `files` also owns e2e/verify_persistence.py.
       - id: mypy-backend
         name: mypy (backend)
         entry: uv run --locked --directory backend mypy
         language: system
-        files: ^backend/
+        files: ^(backend/|e2e/verify_persistence\.py$)
         types: [python]
         pass_filenames: false
         stages: [pre-commit]
@@ -138,6 +139,27 @@ repos:
         entry: bash -c 'cd frontend && exec pnpm exec tsc --noEmit' --
         language: system
         files: ^frontend/
+        types_or: [ts, tsx]
+        pass_filenames: false
+        stages: [pre-commit]
+      # The same two tools over e2e/, run from e2e/ so Biome finds
+      # e2e/biome.json and tsc finds e2e/tsconfig.json, as for frontend/.
+      - id: biome-e2e
+        name: biome (e2e)
+        entry: >-
+          bash -c 'cd e2e && exec pnpm exec biome check
+          --no-errors-on-unmatched --files-ignore-unknown=true
+          "${@#e2e/}"' --
+        language: system
+        files: ^e2e/
+        types_or: [ts, tsx, javascript, jsx, json, css]
+        require_serial: true
+        stages: [pre-commit]
+      - id: tsc-e2e
+        name: tsc --noEmit (e2e)
+        entry: bash -c 'cd e2e && exec pnpm exec tsc --noEmit' --
+        language: system
+        files: ^e2e/
         types_or: [ts, tsx]
         pass_filenames: false
         stages: [pre-commit]

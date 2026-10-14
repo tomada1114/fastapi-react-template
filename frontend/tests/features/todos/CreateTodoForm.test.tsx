@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import { listTodosOptions } from "../../../src/api/generated/@tanstack/react-query.gen";
@@ -19,11 +20,10 @@ type LegacyProblemDetails = Omit<ProblemDetails, "detail" | "request_id"> & {
   request_id?: string;
 };
 
-function submit(title: string) {
-  fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
-    target: { value: title },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+async function submit(title: string) {
+  const user = userEvent.setup();
+  await user.type(screen.getByRole("textbox", { name: "Title" }), title);
+  await user.click(screen.getByRole("button", { name: "Add" }));
 }
 
 describe("CreateTodoForm", () => {
@@ -53,7 +53,7 @@ describe("CreateTodoForm", () => {
       expect(input).not.toHaveAttribute("required");
       expect(input).not.toHaveAttribute("maxlength");
 
-      submit(title);
+      await submit(title);
 
       expect(await screen.findByRole("listitem")).toHaveTextContent(title);
       await waitFor(() => expect(input).toHaveValue(""));
@@ -63,6 +63,24 @@ describe("CreateTodoForm", () => {
       expect(queryClient.getQueryState(plainKey)?.isInvalidated).toBe(true);
     },
   );
+
+  it("submits from the keyboard with Enter in the title field", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post("/api/todos", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json<TodoResponse>(todo("buy milk"), { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithQuery(<CreateTodoForm />);
+
+    await user.tab();
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveFocus();
+    await user.keyboard("buy milk{Enter}");
+
+    await waitFor(() => expect(bodies).toEqual([{ title: "buy milk" }]));
+  });
 
   it("blocks duplicate submits while keeping the pending input editable", async () => {
     const gate = deferred();
@@ -76,17 +94,19 @@ describe("CreateTodoForm", () => {
         return HttpResponse.json<TodoResponse>(todo("first"), { status: 201 });
       }),
     );
+    const user = userEvent.setup();
     try {
       renderWithQuery(<CreateTodoForm />);
       const input = screen.getByRole("textbox", { name: "Title" });
-      fireEvent.change(input, { target: { value: "first" } });
+      await user.type(input, "first");
       const form = screen.getByRole("form", { name: "Add a to-do" });
       fireEvent.submit(form);
       fireEvent.submit(form);
       await entered.promise;
       expect(await screen.findByRole("button", { name: "Adding…" })).toBeDisabled();
       expect(input).not.toBeDisabled();
-      fireEvent.change(input, { target: { value: "editable" } });
+      await user.clear(input);
+      await user.type(input, "editable");
       expect(input).toHaveValue("editable");
       expect(posts).toBe(1);
 
@@ -163,7 +183,7 @@ describe("CreateTodoForm", () => {
       renderWithQuery(<TodosScreen />);
       await screen.findByText("No to-dos yet. Add one above.");
 
-      submit(title);
+      await submit(title);
 
       const error = await screen.findByRole("alert");
       expect(error).toHaveTextContent(message);
@@ -201,7 +221,7 @@ describe("CreateTodoForm", () => {
       );
       renderWithQuery(<CreateTodoForm />);
 
-      submit("buy milk");
+      await submit("buy milk");
 
       expect(await screen.findByRole("alert")).toHaveTextContent(message);
       expect(screen.getByRole("textbox", { name: "Title" })).not.toHaveAttribute(
@@ -228,7 +248,7 @@ describe("CreateTodoForm", () => {
       );
       renderWithQuery(<CreateTodoForm />);
 
-      submit("buy milk");
+      await submit("buy milk");
 
       const error = await screen.findByRole("alert");
       expect(error).toHaveTextContent("Something went wrong on our side. Try again.");
@@ -250,7 +270,7 @@ describe("CreateTodoForm", () => {
       );
       renderWithQuery(<CreateTodoForm />);
 
-      submit("buy milk");
+      await submit("buy milk");
 
       expect(await screen.findByRole("alert")).toHaveTextContent(
         "Could not reach the server. Check your connection and try again.",

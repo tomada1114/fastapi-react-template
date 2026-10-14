@@ -17,14 +17,17 @@ included. It excludes `^\.claude/skills/`, the byte-identical mirror of
 nothing to `pyproject.toml` or `uv.lock`. CI's `Lint & Type Check` runs it with
 `uv run --locked pre-commit run shellcheck --all-files`.
 
-## `biome` and `tsc`, the frontend hooks
+## `biome` and `tsc`, the frontend and e2e hooks
 
 Two local `language: system` hooks run the frontend's own tools on a commit that stages
 a file under `frontend/`: `biome` runs `biome check` on the staged TypeScript,
 JavaScript, JSON, and CSS files, and `tsc` runs `tsc --noEmit` over the whole project
-when a `.ts` or `.tsx` file is staged, as `mypy` does for Python.
-`tests/test_frontend_hooks.py` runs both definitions through pre-commit against a fake
-`pnpm`, pinning their file selection, working directory, and arguments.
+when a `.ts` or `.tsx` file is staged, as `mypy` does for Python. `biome-e2e` and
+`tsc-e2e` are the same two hooks for a file under `e2e/`, run from `e2e/` with
+`e2e/biome.json` and `e2e/tsconfig.json`; everything below holds for them with `e2e/`
+in place of `frontend/`. `tests/test_frontend_hooks.py` runs all four definitions
+through pre-commit against a fake `pnpm`, pinning their file selection, working
+directory, and arguments.
 
 - **Both run from `frontend/`** (`bash -c 'cd frontend && exec pnpm exec <tool> …' --`).
   pre-commit runs a hook from the repository root, and Biome looks for its
@@ -48,6 +51,14 @@ when a `.ts` or `.tsx` file is staged, as `mypy` does for Python.
   `pnpm-lock.yaml`, pnpm's `verifyDepsBeforeRun: error` fails them. The remedies are
   Node.js 24 with `corepack enable` and `just install`, never `SKIP=` (smart-commit's
   recovery table).
+
+## `mypy-backend` and `e2e/verify_persistence.py`
+
+`mypy-backend` runs `mypy` from `backend/` with `backend/pyproject.toml`'s
+configuration, whose `files` also lists `../e2e/verify_persistence.py`. Its `files:`
+pattern, `^(backend/|e2e/verify_persistence\.py$)`, fires it for that file too, so a
+commit that changes only `e2e/verify_persistence.py` still runs the type check that
+owns it.
 
 ## `check-staged`, the secret gate
 
