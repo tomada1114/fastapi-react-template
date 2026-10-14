@@ -105,9 +105,9 @@ Every error a query or mutation throws goes through the Problem Details helpers 
   message plus the request id when the body carries one; for `kind: "unknown"` (no
   response) a generic connection message, with no request id to show; for another 4xx,
   the body's `detail`, else its `title`.
-- A screen that handles a code itself (the to-do row reloads the list on a 404
-  `todo_not_found` instead of showing an error) still parses the error with `toApiError`
-  first.
+- A screen that handles a code itself still parses the error with `toApiError` first.
+  The to-do row reads `code === "todo_not_found"` on a 404 and reloads the list instead
+  of showing an error.
 
 ## Styling
 
