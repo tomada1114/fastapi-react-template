@@ -2,20 +2,21 @@
 name: merging-dependency-prs
 description: >
   Use when landing open Dependabot pull requests, clearing a backlog of dependency
-  updates, or several bot PRs contest the same workflow file or uv.lock. Covers the
-  read-only survey, pre-1.0 minor updates treated as major risk, review of SHA-pinned
-  Action bumps and of uv PRs (either pyproject.toml with uv.lock, a new locked package),
-  reviewing pre-commit hook revisions and locked Python tools, an exact approval
-  plan, individual merges or a combined branch, and closing originals only after their
-  replacement lands.
+  updates, or several bot PRs contest a workflow file, uv.lock, or pnpm-lock.yaml.
+  Covers the read-only survey, pre-1.0 minors treated as major risk, review of SHA-pinned
+  Action bumps, pre-commit hook revisions, uv PRs (pyproject.toml with uv.lock) and
+  npm_and_yarn PRs (package.json with pnpm-lock.yaml, @hey-api/openapi-ts, typescript),
+  a new locked package, an exact approval plan, individual merges or a combined branch,
+  and closing originals only after their replacement lands.
 ---
 
 # Merging Dependency PRs
 
 **Owns:** landing already-open Dependabot PRs — the `github-actions`, `pre-commit`,
-and `uv` updates `.github/dependabot.yml` proposes: survey, review, approval scope,
-landing mode, the combined branch, and cleanup. **Does not own:** whether a package may be added at all,
-the `exclude-newer` window, or a one-package exception to it (`managing-dependencies`).
+`uv`, and `npm` (pnpm) updates `.github/dependabot.yml` proposes: survey, review,
+approval scope, landing mode, the combined branch, and cleanup. **Does not own:**
+whether a package may be added at all, the `exclude-newer` or `minimumReleaseAge`
+window, or a one-package exception to it (`managing-dependencies`).
 
 ## Operating contract
 
@@ -59,6 +60,15 @@ Dependabot supports grouped remote hook updates
 (https://github.blog/changelog/2026-03-10-dependabot-now-supports-pre-commit-hooks/,
 checked 2026-10-07).
 
+The `npm` entry updates the pnpm workspace; Dependabot names its branches
+`dependabot/npm_and_yarn/...`, so the survey reports `npm_and_yarn`. It groups minor
+and patch updates into one `npm-minor-patch` PR a month and opens one PR per major,
+under a 7-day cooldown equal to `minimumReleaseAge`. Each always moves `pnpm-lock.yaml`,
+and moves `frontend/package.json` or `e2e/package.json` when it raises a range: read
+every version change in the lock diff. Its `ignore` entries hold `typescript` and
+`@types/node` to patches; `@hey-api/openapi-ts` is pinned exactly and regenerates the
+committed client ([review checklist](references/review-checklist.md)).
+
 A row whose ecosystem is `other` is not something this repository's Dependabot config
 asks for — typically a security update the repository settings enabled for another
 Python ecosystem (a `dependabot/pip/...` branch). Hold it: Python dependencies arrive
@@ -95,10 +105,11 @@ is clean with passing current-head checks. Otherwise build a combined PR: more P
 overlapping workflow files, or a unit needing completion favor that route. Mixed
 outcomes are allowed; name the mode for each PR.
 
-Two `uv` PRs always contest `uv.lock`, and that alone does not call for a combined
-branch: merge them one at a time. After each merge, wait for Dependabot to rebase the
-next PR and regenerate its lock on its own; comment `@dependabot rebase` only if it has
-not ([F6](references/failure-modes.md)). Re-review the new head either way.
+Two `uv` PRs always contest `uv.lock`, and two `npm_and_yarn` PRs `pnpm-lock.yaml`; that
+alone does not call for a combined branch: merge them one at a time. After each merge,
+wait for Dependabot to rebase the next PR and regenerate its lock on its own; comment
+`@dependabot rebase` only if it has not ([F6](references/failure-modes.md)). Re-review
+the new head either way.
 
 The survey's passing rollup is a classifier, not the complete gate: confirm that every
 expected required check actually registered and passed for the head being landed.
@@ -130,7 +141,8 @@ Follow [landing](references/landing.md) for the selected mode. The combined bran
 starts from the current default branch and applies the approved pins by hand-editing
 only the `uses:` lines (or an approved hook's `rev:`); it never integrates a bot branch's
 commits. A `uv` package lands there by `uv lock --upgrade-package`, never by editing
-`uv.lock` or taking it from a bot branch.
+`uv.lock` or taking it from a bot branch. An `npm_and_yarn` PR stays out of a combined
+branch: it lands individually, one at a time, and is held when it cannot.
 
 For an Action, copy the approved full SHA and its `# vX.Y.Z` comment exactly.
 
@@ -163,9 +175,14 @@ These require a separate decision even if a batch was approved:
   existing extra's entries included): a new entry, a new or removed extra, a `[tool.*]` table, a move of `exclude-newer`, or a new or extended
   `exclude-newer-package` entry. Removing a stale one, as the review checklist plans, is
   not.
-- A security update younger than the 7-day window, which `uv lock` refuses — usually
-  seen as a failed Dependabot job and an open alert rather than as a PR
-  ([F3](references/failure-modes.md)): whether to add a one-package exception is the
+- In an `npm_and_yarn` PR: a new package in `pnpm-lock.yaml`, a `package.json` change
+  beyond an existing range, any `pnpm-workspace.yaml` change, a dependency build script
+  that would need an `allowBuilds` entry, a changed lifecycle script, a regenerated API
+  client that differs, or `typescript` moving past `~6.0` (the TypeScript 7 retry in the
+  [review checklist](references/review-checklist.md) included).
+- A security update younger than the 7-day window, which `uv lock` or `pnpm install`
+  refuses — usually seen as a failed Dependabot job and an open alert rather than as a
+  PR ([F3](references/failure-modes.md)): whether to add a one-package exception is the
   owner's call (`managing-dependencies`).
 - A bump that is green only after relaxing a gate, a zizmor finding, or an Action pin.
 - An Action major whose migration changes inputs or behavior beyond a mechanical rename;

@@ -128,27 +128,19 @@ reachable from the keyboard.
 
 ## Testing a screen
 
-Where the file goes and the coverage floor: `frontend/AGENTS.md`'s "Tests and the
-coverage floor" (`placing-tests`, `writing-tests`, and `tdd` cover only the Python test
-trees until #32 adds their frontend side). A test is named by the sentence passed to
-`it`, describing the behavior, not the pytest `test_<what>_<scenario>_<expected>` form.
-**BACKGROUND:** `writing-tests` for what carries over: Arrange-Act-Assert and fakes over
-mocks.
+A screen is tested by Vitest component tests under `jsdom` that render its feature
+component and answer every request it makes with an MSW handler typed from the
+generated types. **REQUIRED:** `placing-tests` for where the file goes and the
+coverage gate, `writing-tests` for how each test is written: its `it` sentence,
+Testing Library's query order with `getByRole` first, `fireEvent`, the `jest-dom`
+matchers, the MSW server's unhandled-request behavior, and waiting with `findBy...`.
 
-- A screen is tested by Vitest component tests under `jsdom`: Testing Library queries in
-  its priority order, `getByRole` first and `getByTestId` last
-  (https://testing-library.com/docs/queries/about/#priority, checked 2026-10-13),
-  `fireEvent` for input, the `jest-dom` matchers, and an MSW handler typed from the
-  generated types for every request.
-- The MSW server listens with `onUnhandledFrame: "error"`, which stops a request no
-  handler covers before it reaches the network; the screen then sees a network error,
-  which does not by itself fail the test, so give every request the screen makes a
-  handler
-  (https://mswjs.io/docs/api/setup-server/listen, checked 2026-10-13).
-- The helpers, the full order of queries, and the traps are in
+- Render through `renderWithQuery`, and a route through `createAppRouter` with a memory
+  history; the helpers are in
   [references/testing-screens.md](references/testing-screens.md).
 - Cover each state the screen renders: loading, empty, data, a 422 next to its field, a
-  5xx with its request id, and a network failure.
+  5xx with its request id, and a network failure. The handler that produces each is in
+  the same reference.
 
 ## Adding a screen
 
@@ -157,7 +149,7 @@ Take a hypothetical settings screen that reads `GET /api/settings` as the worked
 1. The API side comes first: the route, its schema, and its tests. **REQUIRED:**
    `building-api-routes`. Then `just contract`; a route function named `get_settings`
    becomes the generated `getSettingsOptions`.
-2. The tests, then the component, failing test first. First
+2. The tests, then the component, failing test first. **REQUIRED:** `tdd`. First
    `frontend/tests/features/settings/SettingsScreen.test.tsx` with MSW handlers for each
    state; see it fail with
    `pnpm --dir frontend exec vitest run tests/features/settings/SettingsScreen.test.tsx`;

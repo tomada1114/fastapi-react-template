@@ -1,29 +1,32 @@
 ---
 name: managing-dependencies
 description: >
-  Covers whether a Python package may be added and how a dependency change lands: the
-  sign-off and review record a new package needs, backend/pyproject.toml's [project]
-  dependencies versus the root's dev group, >=X.Y ranges with uv.lock pinning, uv lock
-  and uv sync --all-groups --locked, the relative [tool.uv] exclude-newer window and the
-  Dependabot uv cooldown that must equal it, an exclude-newer-package exception for a
-  security fix, and OSV-Scanner and Dependency Review. Use when adding, bumping, or
-  removing a package, changing the window or an exception, or uv lock --check fails.
+  Covers whether a Python or JavaScript package may be added and how it lands: the
+  sign-off and review record, uv add into backend/ or the dev group, pnpm --dir frontend
+  or e2e add, ranges with uv.lock or pnpm-lock.yaml pinning, the 7-day window
+  (exclude-newer, pnpm-workspace.yaml's minimumReleaseAge) and the Dependabot cooldowns
+  equal to it, a one-package exception, allowBuilds and other pnpm-workspace.yaml
+  exceptions, OSV-Scanner and Dependency Review. Use when adding, bumping, or removing a
+  package, changing the window or an exception, or uv lock --check or a frozen pnpm
+  install fails.
 ---
 
 # Managing Dependencies
 
-**Owns:** whether a package may exist in this repository, which group it joins, how its
-version is declared and locked, and the supply-chain window (`exclude-newer`, and
-pnpm's `minimumReleaseAge`). **Does not own:** landing a Dependabot pull request, a
-`uv` one included (`merging-dependency-prs`); the design description a runtime
-dependency rewrites (`AGENTS.md`'s "Before changing the architecture"); editing a security workflow (`changing-gates`).
+**Owns:** whether a package, Python or JavaScript, may exist in this repository, which
+group or workspace member it joins, how its version is declared and locked, the
+supply-chain window (`exclude-newer`, and pnpm's `minimumReleaseAge`), and the
+exceptions `pnpm-workspace.yaml` admits. **Does not own:** landing a Dependabot pull
+request, a `uv` or `npm` one included (`merging-dependency-prs`); the design
+description a runtime dependency rewrites (`AGENTS.md`'s "Before changing the
+architecture"); editing a security workflow or loosening a policy key (`changing-gates`).
 
 ## A new package is a sign-off change
 
 Any new package — runtime or dev — needs the review record below and the owner's yes
-**before** `uv add` runs. Propose it with the record and stop; a decline ends the
-change. No standing exception covers it (AGENTS.md's "Standing exceptions"). A bump
-inside an existing range and a removal are not new packages; they follow the update
+**before** `uv add` or `pnpm add` runs. Propose it with the record and stop; a decline
+ends the change. No standing exception covers it (AGENTS.md's "Standing exceptions"). A
+bump inside an existing range and a removal are not new packages; they follow the update
 path below.
 
 ## The review record
@@ -36,12 +39,13 @@ has not happened yet.
   `scripts/` parse YAML and call GitHub without a dependency for exactly this reason.
 - **Active maintenance** — recent releases, an answered issue tracker.
 - **A compatible license**: MIT, BSD, or Apache. For a runtime package,
-  `.github/workflows/dependency-review.yml`'s `allow-licenses` list is what CI enforces;
-  a package outside it does not merge.
-- **Minimal transitive dependencies** — count what `uv lock` adds to `uv.lock`, not only
-  the direct entry.
-- **Python 3.14 support** (`requires-python`) and wheels for the platforms CI and
-  contributors use, rather than a source build.
+  `.github/workflows/dependency-review.yml`'s `allow-licenses` list is what CI enforces,
+  over `uv.lock` and `pnpm-lock.yaml` alike; a package outside it does not merge.
+- **Minimal transitive dependencies** — count what the lock gains (`uv.lock`'s
+  `[[package]]` entries, `pnpm-lock.yaml`'s `packages:`), not only the direct entry.
+- **Runs on the toolchain**: Python 3.14 support (`requires-python`) and wheels for the
+  platforms CI and contributors use, rather than a source build; for a JavaScript
+  package, Node.js 24, and any install script it wants (`allowBuilds`, below).
 - **Open advisories** against the version that will resolve.
 - **Its group, and why.** A runtime package is also a design change: the same pull
   request rewrites the present-state description, per `AGENTS.md`'s "Before changing
@@ -147,30 +151,16 @@ the window no longer moves it and every Dependabot proposal for it fails. The tr
 the review of every Dependabot `uv` PR — `merging-dependency-prs`' review checklist
 looks for an `exclude-newer-package` entry older than the window and plans its removal.
 
-### The pnpm window
+## The JavaScript side
 
-The JavaScript side has the same 7-day window: the root `pnpm-workspace.yaml`'s
-`minimumReleaseAge: 10080`, an integer count of minutes (not a duration string), with
-`minimumReleaseAgeStrict: true`, so `pnpm install` refuses any version younger than 7
-days, one already in `pnpm-lock.yaml` included. `.github/dependabot.yml`'s `npm` entry
-(pnpm's ecosystem; its one `directory: "/"` covers every workspace member through the
-root lockfile) runs monthly with `cooldown.default-days: 7`, grouped and labelled like
-the `uv` one; its `ignore` rules and their lift conditions are in its comments. One
-window holds for the repository: `tests/harness/test_dependabot_cooldown.py`
-(`just check-harness`) fails when the `npm` cooldown in minutes differs from
-`minimumReleaseAge`, when the `npm` and `uv` cooldowns differ, and when
-`minimumReleaseAge` is missing or not an integer. Change all four values together, or
-none.
-
-- **Dependabot documents pnpm v7 to v10**, and this repository runs pnpm 11, which works
-  in practice. If a Dependabot `npm` job fails because of the pnpm version, record it
-  (an issue with the job log, `triaging-issues`) and leave the pnpm version, the
-  lockfile, and the policy as they are; never work around it.
-- **A security update inside the window** skips the cooldown, not
-  `minimumReleaseAgeStrict`: the install refuses the version, in the Dependabot job or
-  the PR's CI. It waits out the window, or the owner decides a one-package
-  `minimumReleaseAgeExclude` entry, the pnpm counterpart of `exclude-newer-package`
-  above; never an implementer's call.
+The same rules hold for pnpm, with its own commands and policy file:
+[references/pnpm.md](references/pnpm.md) — `pnpm --dir frontend add` or
+`pnpm --dir e2e add` into the right workspace member, the caret range with pre-1.0
+packages pinned exactly, `pnpm-lock.yaml` committed with its `package.json`, the window
+(`pnpm-workspace.yaml`'s `minimumReleaseAge`, equal to the Dependabot `npm` cooldown),
+`minimumReleaseAgeExclude` as the one-package exception, and `allowBuilds`,
+`trustPolicyExclude`, `overrides`, and `peerDependencyRules` entries as reviewed
+exceptions. Read it before any `pnpm add` or `pnpm-workspace.yaml` edit.
 
 ## What the scanners catch
 

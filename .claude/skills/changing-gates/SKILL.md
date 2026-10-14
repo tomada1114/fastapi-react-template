@@ -2,12 +2,13 @@
 name: changing-gates
 description: >
   Covers changing a file that enforces rather than implements: .pre-commit-config.yaml,
-  scripts/check_staged.py, a .github/workflows/*.yml job, .github/rulesets/main.json,
-  both justfiles' verify, lint, and test recipes, typos.toml, and both pyproject.toml
-  files' ruff, mypy, pytest, and coverage tables - and what weakening a gate means here
-  (a removed ruff rule, a noqa without a reason, a lower coverage floor, a skipped test,
-  a dropped CI step). Use when changing hook configuration, a lint, type, or coverage
-  setting, or a CI job or required check. A hook refusing a commit is smart-commit's.
+  check_staged.py, a .github/workflows job, the ruleset, the justfiles' verify, lint,
+  and test recipes, typos.toml, pyproject.toml's ruff, mypy, pytest, and coverage
+  tables, vitest.config.ts coverage.thresholds, biome.json, tsconfig.json,
+  pnpm-workspace.yaml - and what weakening a gate means (a removed rule, a noqa or
+  @ts-ignore, a lower floor, a skipped test, a looser pnpm key, a dropped CI step). Use
+  when changing a hook, a lint, type, or coverage setting, or CI. A hook refusing a
+  commit is smart-commit's.
 ---
 
 # Changing Gates
@@ -45,9 +46,15 @@ says which gate looks wrong and why, and a human decides.
 - **The lock:** removing `--locked` from a recipe or a CI step, or `lock-check` from
   `just verify`.
 - **The supply-chain window:** shortening `[tool.uv] exclude-newer` in the root
-  `pyproject.toml` or a Dependabot `cooldown` in `.github/dependabot.yml` (the `uv`
-  entry's must equal `exclude-newer`), or a blanket or stale `exclude-newer-package`
-  entry (`managing-dependencies`).
+  `pyproject.toml`, `minimumReleaseAge` in `pnpm-workspace.yaml`, or a Dependabot
+  `cooldown` in `.github/dependabot.yml` (the `uv` and `npm` entries' must equal the
+  window), or a blanket or stale `exclude-newer-package` entry
+  (`managing-dependencies`).
+- **The frontend and pnpm** ([references/frontend-gates.md](references/frontend-gates.md)
+  has the full list): a lower `coverage.thresholds` value, a Biome rule off in
+  `biome.json`, a strict `tsconfig.json` flag removed, `@ts-nocheck` outside
+  `frontend/src/api/generated/{client,core}/**`, a looser `pnpm-workspace.yaml` key, an
+  `allowBuilds` entry without the owner, `pnpm install` without `--frozen-lockfile`.
 - **The pre-commit layer:** removing a hook, narrowing its `files`, `types`, or
   `stages`, loosening `scripts/check_staged.py`'s rules, adding an entry to
   `.check-staged-allow`, `--no-verify`, `SKIP=<id>`, or an edit to `.git/hooks/`.
@@ -63,18 +70,9 @@ things: which rule or option moved, why, and what now fails that did not before.
 
 ## Python baseline
 
-When changing the supported Python floor, update `backend/pyproject.toml`'s
-`requires-python` and minor-version classifier, mypy's `python_version` in both
-`pyproject.toml` files, the root's Ruff `target-version`, `.python-version`, and the
-Python tag in `.devcontainer/devcontainer.json` together. Any other explicit Ruff target
-or project CI Python pin must agree too. `tests/harness/test_python_baseline.py`
-rejects mismatches; run `just check-harness` after changing the baseline.
-
-The root `pyproject.toml` states Ruff's `target-version` because the virtual workspace
-root has no `requires-python` for Ruff to infer it from. CI leaves `setup-uv`'s
-`python-version` unset so `uv sync` follows `.python-version`, rather than overriding
-it with `UV_PYTHON`. The separate stdlib skill compatibility job still explicitly runs
-Python 3.9 with `--no-project`.
+Changing the supported Python moves several settings together, held by
+`tests/harness/test_python_baseline.py`:
+[references/python-baseline.md](references/python-baseline.md).
 
 ## The layers and what each sees
 
@@ -90,6 +88,10 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
 | `uv lock --check` | — | `lock-check` | `--locked` on every `uv sync` |
 | Tests, and the 80% floor over `backend/src` | — | `test` (`backend::test` for the floor) | `Coverage` |
 | Harness drift (`tests/harness`) and the Product section | — | `check-harness` | `Coverage` |
+| Biome, `tsc`, and the `@ts-*` scope over `frontend/` | `biome`, `tsc` | `lint` (`frontend::lint`) | `Frontend` |
+| Vitest and the 80 `coverage.thresholds` over `frontend/src` | — | `test` (`frontend::test`) | `Frontend` |
+| The frontend build and its staged route tree | — | `frontend::build` | `Frontend` |
+| The API contract and generated client | — | `contract-check` | `Contract Drift` |
 | Biome and `tsc` over `e2e/` | — | `lint` (`e2e-lint`) | `E2E` |
 | The browser test, screen to database (`just e2e`) | — | — (run it on its own) | `E2E` |
 | typos | `typos` | — | `Spell Check` |
@@ -97,6 +99,8 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
 | shellcheck (skill `.sh` scripts) | `shellcheck` | — | `Lint & Type Check` |
 | Skill scripts under Python 3.9 | — | — | `Skill Scripts (Python 3.9)` (not required) |
 | Staged secrets | `check-staged` | — | the weekly gitleaks history scan |
+| `uv.lock` and `pnpm-lock.yaml`: licenses, advisories | — | — | `Dependency Review` (PRs), `Scan lockfiles` (OSV-Scanner) |
+| CodeQL: `python`, `actions`, `javascript-typescript` | — | — | `Analyze (<language>)` |
 
 - A check added to `just verify` gets the matching CI step, and the reverse.
   `tests/harness/test_just_recipes.py` enforces parity for `agents-check`, `lint`,

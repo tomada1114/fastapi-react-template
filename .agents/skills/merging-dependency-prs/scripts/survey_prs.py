@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Survey open Dependabot PRs and emit a triage table.
 
+Each row names its ecosystem from the branch: `github_actions`, `pre_commit`,
+`uv`, `npm_and_yarn` (the pnpm workspace, configured as `npm`), or `other`.
+Overlap confined to the uv or the pnpm lockfile and manifests among PRs of
+that one ecosystem is reported as landing one at a time.
+
 Usage:
     python3 .agents/skills/merging-dependency-prs/scripts/survey_prs.py [--json]
 
@@ -106,11 +111,21 @@ PASSING_STATES = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
 # Not concluded yet: the answer is "come back later", not either verdict.
 PENDING_STATES = frozenset({"PENDING", "IN_PROGRESS", "QUEUED", "WAITING", "EXPECTED"})
 UNKNOWN_STATE = "UNKNOWN"
-# Branch-name ecosystem segments that .github/dependabot.yml configures.
-KNOWN_ECOSYSTEMS = frozenset({"github_actions", "pre_commit", "uv"})
+# Branch-name ecosystem segments that .github/dependabot.yml configures. Its
+# `npm` entry (pnpm) names branches `dependabot/npm_and_yarn/...`.
+KNOWN_ECOSYSTEMS = frozenset({"github_actions", "pre_commit", "uv", "npm_and_yarn"})
 # Files every uv PR may share; that overlap lands one PR at a time. The root
 # pyproject.toml is the uv workspace root; backend/pyproject.toml is its member.
 UV_MANIFEST_FILES = frozenset({"uv.lock", "pyproject.toml", "backend/pyproject.toml"})
+# Files every npm_and_yarn PR may share: the pnpm workspace's one lockfile, the
+# root package.json, and each member's. pnpm-workspace.yaml is left out on
+# purpose: a bot PR that changes the supply-chain policy is reviewed on its own.
+PNPM_MANIFEST_FILES = frozenset(
+    {"pnpm-lock.yaml", "package.json", "frontend/package.json", "e2e/package.json"}
+)
+# Each ecosystem whose PRs regenerate one shared lockfile, with the files they
+# may share and still land one at a time.
+ONE_AT_A_TIME_FILES = {"uv": UV_MANIFEST_FILES, "npm_and_yarn": PNPM_MANIFEST_FILES}
 
 
 class GhError(Exception):
@@ -233,11 +248,12 @@ def check_summary(rollup: list[CheckRun] | None) -> tuple[str, list[str]]:
 def ecosystem_of(branch: str) -> str:
     """Classify a Dependabot branch name into an ecosystem.
 
-    `.github/dependabot.yml` configures `github-actions`, `pre-commit`, and `uv`; Dependabot
+    `.github/dependabot.yml` configures `github-actions`, `pre-commit`, `uv`,
+    and `npm` (pnpm, whose branches Dependabot names `npm_and_yarn`); Dependabot
     names a branch `dependabot/<ecosystem>/<dependency or group>`, so they are
     matched on that segment alone, never on a dependency or group name that
-    happens to contain `uv` or `github_actions`. Anything else (a security
-    update the repository settings enabled, say) is `other`.
+    happens to contain `uv`, `npm_and_yarn`, or `github_actions`. Anything else
+    (a security update the repository settings enabled, say) is `other`.
     """
     parts = branch.split("/")
     if len(parts) > 2 and parts[0] == "dependabot" and parts[1] in KNOWN_ECOSYSTEMS:
@@ -246,14 +262,20 @@ def ecosystem_of(branch: str) -> str:
 
 
 def lands_one_at_a_time(path: str, nums: list[int], rows: list[Row]) -> bool:
-    """Whether a contested path is only uv PRs' lock or manifest.
+    """Whether a contested path is one ecosystem's shared lock or manifest.
 
-    Two `uv` PRs always contest `uv.lock` (and often `pyproject.toml`); they
-    land one at a time while Dependabot regenerates the next lock, so that
-    overlap alone does not call for a combined branch.
+    Two `uv` PRs always contest `uv.lock` (and often `pyproject.toml`), and two
+    `npm_and_yarn` PRs always contest `pnpm-lock.yaml` (and often a
+    `package.json`); each pair lands one at a time while Dependabot regenerates
+    the next lock, so that overlap alone does not call for a combined branch.
+    An overlap that includes a PR of another ecosystem, or a path outside that
+    ecosystem's set, does not qualify.
     """
-    uv_numbers = {row["number"] for row in rows if row["ecosystem"] == "uv"}
-    return path in UV_MANIFEST_FILES and set(nums) <= uv_numbers
+    for ecosystem, files in ONE_AT_A_TIME_FILES.items():
+        numbers = {row["number"] for row in rows if row["ecosystem"] == ecosystem}
+        if path in files and set(nums) <= numbers:
+            return True
+    return False
 
 
 def contested_files(rows: list[Row]) -> dict[str, list[int]]:
@@ -329,7 +351,9 @@ def report(rows: list[Row]) -> None:
     combined = [item for item in contested if item not in one_at_a_time]
     if one_at_a_time:
         emit()
-        emit("Overlapping uv files (land one at a time; Dependabot rebases the next):")
+        emit(
+            "Overlapping lock files (land one at a time; Dependabot rebases the next):"
+        )
         for path, nums in one_at_a_time:
             emit(f"  {path}: {', '.join(f'#{n}' for n in nums)}")
     if combined:

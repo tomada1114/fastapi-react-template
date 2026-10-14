@@ -80,3 +80,48 @@ A `dependabot/uv/...` PR moves Python dependencies. Review it as closely as an A
   major risk: read its changelog or release notes before approving.
 - A `ruff` bump is shared by the local system hooks and CI through `uv.lock`;
   no companion hook revision changes — SKILL.md Step 2.
+
+## `npm_and_yarn` PRs
+
+A `dependabot/npm_and_yarn/...` PR moves the pnpm workspace's JavaScript dependencies
+(the `npm` entry in `.github/dependabot.yml`; `managing-dependencies`'
+`references/pnpm.md` has the policy). Review it as closely as a `uv` PR:
+
+- It always moves `pnpm-lock.yaml`, and moves a member's `package.json`
+  (`frontend/package.json`, `e2e/package.json`) when it raises a range; a grouped
+  `npm-minor-patch` PR may move both. A `package.json` change without its lock is held.
+- In a `package.json`, only the range of a dependency that already exists in that
+  member's `dependencies` or `devDependencies` may change, and an exact pin stays exact
+  (`@hey-api/openapi-ts`). A new entry, a removed one, a move between the two, or any
+  other key (`scripts`, `packageManager`, `devEngines`) goes to "Stop and ask".
+- In `pnpm-lock.yaml`, a `packages:` entry the base did not lock is a new package,
+  transitive or not — "Stop and ask", with `managing-dependencies`' review record.
+  An upgraded entry's version, `resolution`, and dependencies are expected, as is an
+  entry dropping out because nothing requires it.
+- Any change to `pnpm-workspace.yaml` is "Stop and ask": its keys are the supply-chain
+  policy, and its entries (`allowBuilds`, `minimumReleaseAgeExclude`,
+  `trustPolicyExclude`, `overrides`, `peerDependencyRules`) are owner decisions. So is
+  a bump whose install now fails on a dependency build script (`strictDepBuilds`) or
+  whose package adds or changes a lifecycle script: it would need an `allowBuilds`
+  ruling.
+- `pnpm-workspace.yaml` holds no `minimumReleaseAgeExclude` entry past its removal date
+  (the day its version turned 7 days old). Plan its removal, comment included, as its
+  own change, with any `pnpm-lock.yaml` change a plain `pnpm install` then makes.
+- CI's `pnpm install --frozen-lockfile` passed on the current head in the `Frontend`,
+  `Contract Drift`, and `E2E` jobs: it refuses a lock that disagrees with a
+  `package.json`.
+- List every version change of a grouped PR. A 0.x minor among them is a major risk.
+- **`@hey-api/openapi-ts`** (pre-1.0, pinned exactly): the generated client is
+  committed, so on a checkout of the PR head run `just contract`, then
+  `just contract-check`, `just frontend lint`, and `just frontend test`. A regenerated
+  `frontend/src/api/generated/` that differs is a migration: hold the PR and report the
+  diff. When its release notes claim TypeScript 7 support, plan the TypeScript 7 retry
+  as its own change, which is "Stop and ask" (a range change): move `typescript` to the
+  newest 7.x the window admits, rerun those four checks and `just frontend build`, and
+  only if every one passes, drop the `typescript` `ignore` entry in
+  `.github/dependabot.yml` in the same change. If any fails, `typescript` stays on
+  `~6.0.3`.
+- **`typescript` and `@types/node`** take patches only: `.github/dependabot.yml`
+  ignores their minors and majors, with the lift conditions in its comments. A PR that
+  moves either past its range (`typescript` past `~6.0`, `@types/node` past the Node.js
+  runtime's minor) is held, outside the retry above.
