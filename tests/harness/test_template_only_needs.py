@@ -37,7 +37,7 @@ CI_WORKFLOW = ".github/workflows/ci.yml"
 # Spelled so that no line of this file is a marker the bootstrap would act on.
 OPEN = "<!-- " + "template-only -->"
 CLOSE = "<!-- /" + "template-only -->"
-# The same marker shape scripts/bootstrap.py removes, which an app no longer has.
+# The marker shape the bootstrap removes (an app no longer carries the script).
 _MARKER = re.compile(r"^\s*(?:#\s*)?<!-- (?P<close>/)?template-only -->\s*$")
 # The smoke job's scan for template-only text the bootstrap should have removed.
 _LEFTOVER_SCAN = re.compile(
