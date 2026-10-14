@@ -51,11 +51,60 @@ _DEPENDENCY_VALUES = (
     + _DEPENDENCY_ITEM
     + r")*)"
 )
-DEPENDS_ON_LINE_RE = re.compile(
+_DEPENDENCY_PREFIX = (
     r"^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)?"
-    r"depends[ \t]+on[ \t]*:[ \t]*" + _DEPENDENCY_VALUES,
-    re.IGNORECASE | re.MULTILINE,
+    r"depends[ \t]+on[ \t]*:[ \t]*"
 )
+DEPENDS_ON_LINE_RE = re.compile(
+    _DEPENDENCY_PREFIX + _DEPENDENCY_VALUES, re.IGNORECASE | re.MULTILINE
+)
+_DEPENDENCY_DECLARATION_RE = re.compile(
+    _DEPENDENCY_PREFIX + r"([^\r\n]*)", re.IGNORECASE | re.MULTILINE
+)
+
+
+def _dependency_lines(
+    body: str, spans: list[tuple[int, int]]
+) -> tuple[list[re.Match[str]], bool, list[str]]:
+    """Recognize declaration presence separately from a valid value prefix."""
+    declarations = []
+    for declaration in _DEPENDENCY_DECLARATION_RE.finditer(body):
+        raw = declaration.group(1)
+        first = declaration.start(1) + len(raw) - len(raw.lstrip(" \t"))
+        if not any(
+            start <= declaration.start() < end or start <= first < end
+            for start, end in spans
+        ):
+            declarations.append(declaration)
+    starts = {d.start() for d in declarations}
+    lines = {
+        m.start(): m for m in DEPENDS_ON_LINE_RE.finditer(body) if m.start() in starts
+    }
+    # Preserve offsets and line endings while masking examples in a value tail.
+    visible = list(body)
+    for start, end in spans:
+        for pos in range(start, end):
+            if visible[pos] not in "\r\n":
+                visible[pos] = " "
+    visible_body = "".join(visible)
+    diagnostics = []
+    for declaration in declarations:
+        match = lines.get(declaration.start())
+        if match is not None:
+            end = body.find("\n", match.end(1))
+            end = len(body) if end == -1 else end
+            # Lazy Markdown paragraph recovery can leave literal closing ticks;
+            # keep its unquoted reference, as the existing extraction tests require.
+            tail = visible_body[match.end(1) : end].strip(" \t\r`")
+            hidden_tail = any(
+                start < end and stop > match.end(1) for start, stop in spans
+            )
+            if not tail or (hidden_tail and tail in (",", "and", ", and")):
+                continue
+        diagnostics.append(
+            "Depends on value is invalid; use none or a complete blocker list"
+        )
+    return list(lines.values()), bool(declarations), diagnostics
 
 
 def dependency_declaration(
@@ -79,11 +128,7 @@ def dependency_declaration(
         end = len(body) if close == -1 else close + 3
         spans.append((pos, end))
         pos = body.find("<!--", end)
-    lines = [
-        m
-        for m in DEPENDS_ON_LINE_RE.finditer(body)
-        if not any(start <= m.start(1) < end for start, end in spans)
-    ]
+    lines, has_lines, diagnostics = _dependency_lines(body, spans)
     # A wrapped list can reach a later quoted item. Mask each item's position,
     # not only the beginning of its declaration, before forming the source set.
     items = [
@@ -93,7 +138,6 @@ def dependency_declaration(
         if not any(start <= line.start(1) + item.start() < end for start, end in spans)
     ]
     line_deps = sorted({int(item[1:]) for item in items if item.startswith("#")})
-    diagnostics = []
     if line_deps and any(item.lower() == "none" for item in items):
         diagnostics.append(
             "Depends on lines mix none with named blockers; choose one set"
@@ -116,16 +160,16 @@ def dependency_declaration(
             diagnostics.append(
                 "blocked-by mixes none with named blockers; choose one set"
             )
-        if lines and line_deps != contract_deps:
+        if has_lines and line_deps != contract_deps:
             diagnostics.append(
                 "Depends on lines disagree with blocked-by; make both declare the same set"
             )
-    declared = line_deps if lines else (contract_deps or [])
+    declared = line_deps if has_lines else (contract_deps or [])
     state: DependencyState = (
         "conflict"
         if diagnostics
         else "absent"
-        if not lines and not has_field
+        if not has_lines and not has_field
         else "declared"
         if declared
         else "empty"
@@ -133,7 +177,7 @@ def dependency_declaration(
     return {
         "state": state,
         "depends_on": [] if diagnostics else declared,
-        "line_depends_on": line_deps if lines else None,
+        "line_depends_on": line_deps if has_lines else None,
         "contract_depends_on": contract_deps,
         "diagnostics": diagnostics,
     }

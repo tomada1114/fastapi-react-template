@@ -32,7 +32,9 @@ A `blocked-by=` field (even `none`) or any `Depends on: #N` or `Depends on: none
 line makes structured declarations the only source of dependencies; prose is then
 read as mentions, not edges. Repeated visible lines union and deduplicate. Comma/and
 lists may wrap across lines only with an explicit delimiter; bare whitespace
-between values stays on one line. Quoted continuation items are still excluded. If both
+between values stays on one line. Quoted continuation items are still excluded.
+Empty/unknown values (such as `TBD`) and unrecognized visible tails (such as
+`#7 or #8`) are conflicts too; a valid prefix never authorizes scheduling. If both
 visible lines and `blocked-by=` are present, their sets must agree. `none` mixed with
 a named blocker, or different sets, produces an actionable `DEPENDENCY-CONFLICT`
 diagnostic; no plan can select that issue until its declarations are corrected.

@@ -369,6 +369,42 @@ class StructuredDependencySourcesTest(unittest.TestCase):
         self.assertIn("blocked-by", rec["readiness"])
         self.assertEqual(rec["depends_on"], [])
 
+    def test_malformed_declaration_cannot_become_ready_or_use_prose_fallback(self):
+        for value in (
+            "TBD",
+            "",
+            "#7 or #8",
+            "none or #8",
+            "#7,",
+            "#7 and\nTBD",
+            "#7, #8 extra",
+        ):
+            with self.subTest(value=value):
+                body = f"Depends on: {value}\nThis future example requires #8."
+                rec = self._record([gh_issue(1, body=body), gh_issue(8)], 1)
+                self.assertEqual(rec["dependency_declaration"]["state"], "conflict")
+                self.assertEqual(rec["depends_on"], [])
+                self.assertTrue(rec["readiness"].startswith("DEPENDENCY-CONFLICT:"))
+                self.assertIn("complete blocker list", rec["readiness"])
+
+    def test_hidden_value_and_tail_examples_preserve_dependency_masking(self):
+        for body in (
+            "Depends on: `TBD`",
+            "<!-- Depends on: TBD -->",
+            "```\nDepends on: TBD\n```",
+            "```\nDepends on:",
+        ):
+            with self.subTest(body=body):
+                rec = self._record([gh_issue(1, body=body)], 1)
+                self.assertEqual(rec["dependency_declaration"]["state"], "absent")
+        for tail in (" <!-- or #8 -->", ", `#8`", " `or #8`"):
+            with self.subTest(tail=tail):
+                rec = self._record(
+                    [gh_issue(1, body=f"Depends on: #7{tail}"), gh_issue(8)], 1
+                )
+                self.assertEqual(rec["depends_on"], [7])
+                self.assertEqual(rec["readiness"], "READY")
+
     def test_unrelated_following_paragraph_does_not_extend_dependency_list(self):
         for tail in (
             "None of the frontend work is included.",
