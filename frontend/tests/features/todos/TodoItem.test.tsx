@@ -1,4 +1,5 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import type {
@@ -51,6 +52,7 @@ function problem(status: number): ProblemDetails {
 
 describe("TodoItem", () => {
   it("completes through the API and renders the refetched completed row", async () => {
+    const user = userEvent.setup();
     const item = todo("buy milk");
     const state = serve([item]);
     const paths: string[] = [];
@@ -65,7 +67,7 @@ describe("TodoItem", () => {
     );
     renderWithQuery(<TodosScreen />);
 
-    fireEvent.click(await loadedRow("Complete buy milk"));
+    await user.click(await loadedRow("Complete buy milk"));
 
     expect(await screen.findByText("Completed")).toBeInTheDocument();
     expect(
@@ -79,6 +81,7 @@ describe("TodoItem", () => {
   it.each([false, true])(
     "deletes with 204 and focuses the heading, empty=%s",
     async (last) => {
+      const user = userEvent.setup();
       const item = todo("buy milk");
       const remaining = todo("buy bread", secondId);
       const state = serve(last ? [item] : [item, remaining]);
@@ -92,7 +95,7 @@ describe("TodoItem", () => {
       );
       renderWithQuery(<TodosScreen />);
 
-      fireEvent.click(await loadedRow("Delete buy milk"));
+      await user.click(await loadedRow("Delete buy milk"));
 
       await waitFor(() =>
         expect(screen.queryByText("buy milk")).not.toBeInTheDocument(),
@@ -107,6 +110,7 @@ describe("TodoItem", () => {
   );
 
   it.each(actions)("disables only that row while %s is pending", async (action) => {
+    const user = userEvent.setup();
     const item = todo("buy milk");
     serve([item, todo("buy bread", secondId)]);
     const entered = deferred();
@@ -125,7 +129,7 @@ describe("TodoItem", () => {
     );
     try {
       renderWithQuery(<TodosScreen />);
-      fireEvent.click(await loadedRow(`${action} buy milk`));
+      await user.click(await loadedRow(`${action} buy milk`));
       await entered.promise;
 
       await waitFor(() => {
@@ -150,6 +154,7 @@ describe("TodoItem", () => {
   it.each(actions)(
     "announces a stale id and refetches after %s returns 404",
     async (action) => {
+      const user = userEvent.setup();
       const state = serve([todo("buy milk")]);
       const response = () => {
         state.items = [];
@@ -162,7 +167,7 @@ describe("TodoItem", () => {
       );
       renderWithQuery(<TodosScreen />);
 
-      fireEvent.click(await loadedRow(`${action} buy milk`));
+      await user.click(await loadedRow(`${action} buy milk`));
 
       await waitFor(() =>
         expect(screen.getByRole("status")).toHaveTextContent(
@@ -176,6 +181,7 @@ describe("TodoItem", () => {
   );
 
   it("waits for a successful refetch before announcing a stale id", async () => {
+    const user = userEvent.setup();
     const entered = deferred();
     const gate = deferred();
     let gets = 0;
@@ -199,7 +205,7 @@ describe("TodoItem", () => {
       renderWithQuery(<TodosScreen />);
       const button = await loadedRow("Delete buy milk");
       await act(async () => {
-        fireEvent.click(button);
+        await user.click(button);
         await entered.promise;
       });
 
@@ -217,6 +223,7 @@ describe("TodoItem", () => {
   });
 
   it("reports a failed stale-id refetch without claiming the list refreshed", async () => {
+    const user = userEvent.setup();
     let gets = 0;
     server.use(
       http.get<Record<string, never>, never, TodoPageResponse | ProblemDetails>(
@@ -236,7 +243,7 @@ describe("TodoItem", () => {
       ),
     );
     renderWithQuery(<TodosScreen />);
-    fireEvent.click(await loadedRow("Delete buy milk"));
+    await user.click(await loadedRow("Delete buy milk"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Request ID: row-error");
     expect(screen.getByText("buy milk")).toBeInTheDocument();
@@ -248,6 +255,7 @@ describe("TodoItem", () => {
   });
 
   it("clears a stale notice when Load more starts", async () => {
+    const user = userEvent.setup();
     let removed = false;
     const entered = deferred();
     const gate = deferred();
@@ -273,14 +281,14 @@ describe("TodoItem", () => {
     );
     try {
       renderWithQuery(<TodosScreen />);
-      fireEvent.click(await loadedRow("Delete buy milk"));
+      await user.click(await loadedRow("Delete buy milk"));
       await waitFor(() =>
         expect(screen.getByRole("status")).toHaveTextContent(
           "The list has been refreshed.",
         ),
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      await user.click(screen.getByRole("button", { name: "Load more" }));
       await entered.promise;
 
       expect(screen.getByRole("status")).toBeEmptyDOMElement();
@@ -293,6 +301,7 @@ describe("TodoItem", () => {
   });
 
   it("announces every stale response and clears the notice for a new action", async () => {
+    const user = userEvent.setup();
     const third = todo("third", "0199c1f0-0000-7000-8000-000000000003");
     const state = serve([todo("buy milk"), todo("buy bread", secondId), third]);
     server.use(
@@ -318,20 +327,20 @@ describe("TodoItem", () => {
     });
     observer.observe(container, { childList: true, subtree: true });
     try {
-      fireEvent.click(screen.getByRole("button", { name: "Delete buy milk" }));
+      await user.click(screen.getByRole("button", { name: "Delete buy milk" }));
       await waitFor(() =>
         expect(screen.queryByText("buy milk")).not.toBeInTheDocument(),
       );
       await waitFor(() => expect(announcements).toHaveLength(1));
 
-      fireEvent.click(screen.getByRole("button", { name: "Delete buy bread" }));
+      await user.click(screen.getByRole("button", { name: "Delete buy bread" }));
 
       await waitFor(() =>
         expect(screen.queryByText("buy bread")).not.toBeInTheDocument(),
       );
       await waitFor(() => expect(announcements).toHaveLength(2));
       expect(screen.getByRole("status")).toHaveTextContent(message);
-      fireEvent.click(screen.getByRole("button", { name: "Complete third" }));
+      await user.click(screen.getByRole("button", { name: "Complete third" }));
       await screen.findByText("Completed");
       expect(screen.queryByText(message)).not.toBeInTheDocument();
       expect(state.gets).toBe(4);
@@ -347,6 +356,7 @@ describe("TodoItem", () => {
   )(
     "shows the row error and re-enables controls after $action $failure failure",
     async ({ action, failure }) => {
+      const user = userEvent.setup();
       const state = serve([todo("buy milk"), todo("buy bread", secondId)]);
       const response = () =>
         failure === "network"
@@ -359,7 +369,7 @@ describe("TodoItem", () => {
       );
       renderWithQuery(<TodosScreen />);
 
-      fireEvent.click(await loadedRow(`${action} buy milk`));
+      await user.click(await loadedRow(`${action} buy milk`));
 
       const row = screen.getByText("buy milk").closest("li");
       if (!row) throw new Error("The title must belong to its row");

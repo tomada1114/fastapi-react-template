@@ -1,4 +1,5 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 import type {
@@ -63,6 +64,7 @@ describe("TodosScreen", () => {
   });
 
   it("re-requests a failed list when Try again is clicked", async () => {
+    const user = userEvent.setup();
     let requests = 0;
     const problem: ProblemDetails = {
       type: "about:blank",
@@ -93,7 +95,7 @@ describe("TodosScreen", () => {
     expect(screen.queryByText(problem.detail ?? "")).not.toBeInTheDocument();
     expect(requests).toBe(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
 
     expect(await screen.findByRole("listitem")).toHaveTextContent("buy milk");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -111,6 +113,7 @@ describe("TodosScreen", () => {
   });
 
   it("appends the next page with its cursor and limit, then hides Load more", async () => {
+    const user = userEvent.setup();
     const items = Array.from({ length: 21 }, (_, index) =>
       todo(
         `task ${index + 1}`,
@@ -133,7 +136,7 @@ describe("TodosScreen", () => {
     const button = await screen.findByRole("button", { name: "Load more" });
     expect(screen.getAllByRole("listitem")).toHaveLength(20);
 
-    fireEvent.click(button);
+    await user.click(button);
 
     await screen.findByText("task 21");
     expect(
@@ -154,6 +157,7 @@ describe("TodosScreen", () => {
   });
 
   it("disables Load more while its request is pending", async () => {
+    const user = userEvent.setup();
     const gate = deferred();
     const entered = deferred();
     server.use(
@@ -174,7 +178,7 @@ describe("TodosScreen", () => {
     );
     try {
       renderWithQuery(<TodosScreen />);
-      fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+      await user.click(await screen.findByRole("button", { name: "Load more" }));
       await entered.promise;
 
       expect(
@@ -191,6 +195,7 @@ describe("TodosScreen", () => {
   it.each(["server", "network"])(
     "keeps loaded rows and retries a %s next-page error",
     async (failure) => {
+      const user = userEvent.setup();
       let nextRequests = 0;
       const problem: ProblemDetails = {
         type: "about:blank",
@@ -223,7 +228,7 @@ describe("TodosScreen", () => {
         ),
       );
       renderWithQuery(<TodosScreen />);
-      fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+      await user.click(await screen.findByRole("button", { name: "Load more" }));
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(
@@ -238,7 +243,7 @@ describe("TodosScreen", () => {
         button.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
 
-      fireEvent.click(button);
+      await user.click(button);
 
       await screen.findByText("second");
       expect(nextRequests).toBe(2);
@@ -267,6 +272,7 @@ describe("TodosScreen", () => {
   });
 
   it("focuses the heading when the last loaded page empties and stops refetching", async () => {
+    const user = userEvent.setup();
     const items = Array.from({ length: 21 }, (_, index) =>
       todo(
         `task ${index + 1}`,
@@ -291,8 +297,8 @@ describe("TodosScreen", () => {
       }),
     );
     renderWithQuery(<TodosScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete task 21" }));
+    await user.click(await screen.findByRole("button", { name: "Load more" }));
+    await user.click(await screen.findByRole("button", { name: "Delete task 21" }));
 
     await screen.findByText("No to-dos yet. Add one above.");
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
@@ -301,6 +307,7 @@ describe("TodosScreen", () => {
   });
 
   it("recomputes each loaded cursor after page-two deletion shifts the boundary", async () => {
+    const user = userEvent.setup();
     let items: TodoResponse[] = Array.from({ length: 23 }, (_, index) =>
       todo(
         `task ${index + 1}`,
@@ -330,10 +337,10 @@ describe("TodosScreen", () => {
     );
     const oldCursor = items[19]?.id;
     renderWithQuery(<TodosScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await user.click(await screen.findByRole("button", { name: "Load more" }));
     await screen.findByText("task 23");
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete task 21" }));
+    await user.click(screen.getByRole("button", { name: "Delete task 21" }));
 
     await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(21));
     expect(screen.queryByText("task 21")).not.toBeInTheDocument();
