@@ -88,14 +88,18 @@ outside `frontend/` but a `.gitignore` line, so they go with these:
   The live ruleset is the owner's, at the end;
 - `references/private-repository.md` (this skill) then has one context fewer to remove.
 
-## The frontend's commit hooks (#24)
+## The frontend's and e2e's commit hooks (#24, #122)
 
-- `.pre-commit-config.yaml`: the `biome` and `tsc` hooks and the comment above them;
-  `tests/test_frontend_hooks.py`;
-- `smart-commit`: `biome` and `tsc` in its description, and their bullets and rows in
-  `references/pre-commit-hook.md`;
-- `changing-gates`: "`biome` and `tsc`, the frontend hooks" in
-  `references/pre-commit-layer.md`, and their row in "The layers and what each sees".
+- `.pre-commit-config.yaml`: the `biome`, `tsc`, `biome-e2e`, and `tsc-e2e` hooks and
+  the comments above them; `mypy-backend`'s `files:` back to `^backend/` (drop the
+  `e2e/verify_persistence\.py` alternative) and its comment; `tests/test_frontend_hooks.py`;
+- `smart-commit`: `biome`, `tsc`, `biome-e2e`, and `tsc-e2e` in its description, their
+  bullets and rows in `references/pre-commit-hook.md`, and `e2e/verify_persistence.py`
+  in its `mypy-backend` line;
+- `changing-gates`: the "`biome` and `tsc`, the frontend and e2e hooks" and
+  "`mypy-backend` and `e2e/verify_persistence.py`" sections of
+  `references/pre-commit-layer.md`, and the hooks' rows in "The layers and what each
+  sees" (`references/frontend-gates.md` goes with the frontend, below).
 
 ## Worktrees (#25): nothing
 
