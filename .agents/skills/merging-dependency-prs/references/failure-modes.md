@@ -21,9 +21,12 @@ fails unless each one succeeded — a failed, cancelled, or skipped job all turn
 gh run view <run-id> --json jobs -q '.jobs[] | "\(.conclusion)\t\(.name)"'
 ```
 
-For a `failure`, read that job's log, never `CI result`'s own; for a `cancelled` or
-`skipped` one with no failure (a run superseded by a newer push, or cancelled by hand),
-there is no failure log — read the newer run's results, or re-run the cancelled one.
+For a `failure`, read that job's log, never `CI result`'s own. For `timed_out`, read its
+full log (`gh run view --job <job-id> --log`; `--log-failed` may leave it out): the last
+lines show where it stopped. For a `cancelled` or `skipped` one with no failure (a run
+superseded by a newer push, or cancelled by hand), there is no failure log — read the
+newer run's results, or re-run the cancelled one. Any other non-`success` conclusion
+gets the same full-log read before deciding.
 `Skill Scripts (Python 3.9)` also runs but is not in its `needs`. The ruleset's other
 required contexts come from their own workflows: `Validate PR title`,
 `Analyze (<language>)` (CodeQL), and `Dependency Review`.
