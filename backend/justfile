@@ -41,7 +41,9 @@ db-upgrade url=(shell(database_url_command)):
 db-revision MESSAGE url=(shell(database_url_command)): (db-upgrade url)
     url={{ quote(url) }}; set --; case "$url" in postgresql+asyncpg:*) set -- --extra postgres ;; esac; MY_APP_DATABASE_URL="$url" uv run --locked "$@" alembic revision --autogenerate -m {{ quote(MESSAGE) }}
 
-# Never ends on its own; an agent runs its own server on a free port instead (running-the-app).
-# Human-run: migrate the database, then serve the API on http://127.0.0.1:8000, reloading on source changes
+# MY_APP_API_PORT is a process variable that this recipe and frontend/vite.config.ts
+# read, never a Settings field. Never ends on its own; an agent runs its own server
+# on a free port instead, or its own `just dev` pair (running-the-app).
+# Human-run: migrate the database, then serve the API on http://127.0.0.1:${MY_APP_API_PORT:-8000}, reloading on source changes
 dev url=(shell(database_url_command)): (db-upgrade url)
-    url={{ quote(url) }}; set --; case "$url" in postgresql+asyncpg:*) set -- --extra postgres ;; esac; MY_APP_DATABASE_URL="$url" uv run --locked "$@" uvicorn my_app.api.app:create_app --factory --reload --no-access-log
+    url={{ quote(url) }}; set --; case "$url" in postgresql+asyncpg:*) set -- --extra postgres ;; esac; MY_APP_DATABASE_URL="$url" uv run --locked "$@" uvicorn my_app.api.app:create_app --factory --reload --no-access-log --host 127.0.0.1 --port "${MY_APP_API_PORT:-8000}"
