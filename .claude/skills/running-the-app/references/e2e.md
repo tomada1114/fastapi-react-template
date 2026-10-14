@@ -59,17 +59,22 @@ that directory and the HTML report as the `e2e-traces` artifact when the job fai
 
 ## What it prints
 
-The last lines, observed 2026-10-14 on macOS (the ports, the path, and the timing vary):
+The last lines, observed 2026-10-14 on macOS (the ports, the path, the id, and the
+timing vary):
 
 ```console
-  ✓  1 [chromium] › tests/todos.spec.ts:40:1 › a to-do goes from the screen to the database and away again (984ms)
-[API] INFO:     Finished server process [57383]
+to-do 01a138a4-d42f-71c4-9e4d-393dd02223c8 is stored, completed, in /var/folders/…/T/tmp.eqQ5Aly1Bo/e2e.db
+  ✓  1 [chromium] › tests/todos.spec.ts:41:1 › a to-do goes from the screen to the database and away again (1.1s)
+[API] INFO:     Finished server process [93335]
 
-  1 passed (6.8s)
-nothing listening on 64966
-nothing listening on 64967
-removed /var/folders/…/T/tmp.klykqCGvlm
+  1 passed (6.9s)
+nothing listening on 49279
+nothing listening on 49280
+removed /var/folders/…/T/tmp.eqQ5Aly1Bo
 ```
+
+A `SIGTERM` to `just` while the API was starting, observed the same day, ended with
+exit 143, "nothing listening" on both ports, and the directory removed.
 
 In a pull request's Test Plan, these lines are the evidence: the passing test, both
 "nothing listening" lines, and the removed directory.
