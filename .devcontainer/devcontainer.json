@@ -3,7 +3,12 @@
   "image": "mcr.microsoft.com/devcontainers/python:3.14",
   "features": {
     "ghcr.io/va-h/devcontainers-features/uv:1": {},
-    "ghcr.io/guiyomh/features/just:0": {}
+    "ghcr.io/guiyomh/features/just:0": {},
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "24",
+      "pnpmVersion": "none"
+    }
   },
-  "postCreateCommand": "just install"
+  "forwardPorts": [5173, 8000],
+  "postCreateCommand": "corepack enable && just install"
 }

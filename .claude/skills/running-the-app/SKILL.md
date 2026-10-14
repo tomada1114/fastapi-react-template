@@ -1,12 +1,12 @@
 ---
 name: running-the-app
 description: >
-  Covers observing the real app server when no test shows the behavior: starting
-  uvicorn with the create_app factory on a free port, optionally against a scratch
-  SQLite file, capturing curl output as evidence, and stopping it before the turn ends,
-  without starting, stopping, or reusing the developer's own server (`just dev`, port
-  8000). Use when asked to run the app, try an endpoint by hand, check a change against
-  a live server, or put request output in a pull request.
+  Covers observing the real app when no test shows the behavior: starting uvicorn with
+  the create_app factory on a free port, or an own `just dev` pair (API and Vite) on two
+  free ports with a scratch SQLite file, capturing curl output as evidence, and stopping
+  it before the turn ends, without touching the developer's own `just dev` (ports 8000
+  and 5173). Use when asked to run the app or the screen, try an endpoint by hand, check
+  a change against a live server, or put request output in a pull request.
 ---
 
 # Running the App
@@ -27,11 +27,14 @@ Stop at the first tier that shows what the change does.
    served headers, the startup path through uvicorn's `--factory` call of
    `create_app`, the environment as a user meets it, a request from outside the
    process.
+3. **A `just dev` pair of your own,** for what needs the screen's origin: Vite's proxy,
+   the served screen, `just dev` itself.
 
 ## The developer's server is not yours
 
-- `just dev` is the developer's: never start, stop, or restart it, and never bind its
-  port, 8000, which is also uvicorn's default — always pass `--port`.
+- The developer's `just dev` (API on 8000, Vite on 5173) is theirs: never start, stop,
+  or restart it, and never bind 8000 or 5173 — uvicorn's and the recipes' defaults, so
+  always pass `--port`, and an own pair always sets `MY_APP_API_PORT` and `VITE_PORT`.
 - **Let the OS pick the port** (bind to port 0), then check that nothing accepts
   connections on it. If something does, or the check itself fails, abort: start
   nothing and send nothing. A sibling worktree's server may hold any port.
@@ -43,8 +46,8 @@ Stop at the first tier that shows what the change does.
   step failed. Never by name (`pkill -f uvicorn`, `killall python`), and never "whatever
   listens on the port": if a listener remains after your own process has stopped,
   report it and stop; do not kill it.
-- **Loopback only.** uvicorn binds `127.0.0.1` by default; never pass
-  `--host 0.0.0.0`.
+- **Loopback only.** uvicorn binds `127.0.0.1` (`just backend dev` passes it); never
+  pass `--host 0.0.0.0`. Vite binds `localhost`, maybe `::1` alone: check both.
 
 ## Set every `MY_APP_*` setting explicitly
 
@@ -117,7 +120,7 @@ if [ "$rc" = 1 ]; then
   else
     echo "the server did not start; nothing was sent"
   fi
-  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; trap - EXIT
   uv run --locked python -c "$probe" "$port"; rc=$?
   case "$rc" in
     1) echo "nothing listening on $port" ;;
@@ -173,6 +176,17 @@ The server command is the one `just backend dev` serves with, minus `--reload`, 
 explicitly empty, keeps to-dos in memory even when `backend/.env` sets a URL. That
 store starts empty on every start; create what a request needs with a `POST` first.
 
+## Running a `just dev` pair of your own
+
+`just dev` runs `just backend dev` and `just frontend dev` together and stops both when
+either exits or on `SIGINT`, `SIGTERM`, or `SIGHUP`. `MY_APP_API_PORT` moves the API
+and Vite's proxy target, `VITE_PORT` moves Vite (`strictPort`: a taken port fails);
+neither is a setting. Everything above holds, plus: two free ports checked on both
+`127.0.0.1` and `::1`; a scratch database file, never an empty URL, which the recipes
+turn into the developer's `backend/var/dev.db`; requests only once both servers log
+ready; and a stop of only the outer `just` you launched. The rules in full, the
+script, and its observed output: [references/own-dev-pair.md](references/own-dev-pair.md).
+
 ## The evidence a pull request carries
 
 Under the pull request's Test Plan, for each behavior observed rather than asserted:
@@ -190,6 +204,7 @@ and no credential or environment value appears.
 
 - [ ] The final port check printed "nothing listening" for every port you used, or you
       reported the listener that remained, untouched.
-- [ ] The developer's server, if one was running, was never touched.
+- [ ] The developer's servers, if any were running, were never touched, and nothing
+      was sent to 8000 or 5173.
 - [ ] `git status --porcelain` shows only the change: logs and databases live outside
       the checkout.

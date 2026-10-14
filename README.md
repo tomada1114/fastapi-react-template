@@ -18,12 +18,14 @@ A short description of what this application does.
 ## Quickstart
 
 ```bash
-uv sync --locked
-just dev   # migrate backend/var/dev.db, then serve the API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C to stop)
+just install   # the Python and JavaScript dependencies, and the git hooks
+just dev       # migrate backend/var/dev.db, then serve the screen on http://localhost:5173 and the API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C stops both)
 # without Just, from backend/:
 #   mkdir -p var
 #   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked alembic upgrade head
 #   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked uvicorn my_app.api.app:create_app --factory --reload --no-access-log
+# and, in a second terminal, from frontend/:
+#   pnpm exec vite
 ```
 
 With the server running, from another terminal:
@@ -161,7 +163,22 @@ optionally [Just](https://just.systems/).
 ```bash
 just install   # dependencies + git hooks, then checks the hooks are in place
 just check
-just dev       # migrate backend/var/dev.db, then the API with auto-reload on http://127.0.0.1:8000
+just dev       # migrate backend/var/dev.db, then the screen on http://localhost:5173 and the API on http://127.0.0.1:8000
+```
+
+`just dev` runs `just backend dev` (uvicorn with auto-reload on
+http://127.0.0.1:8000) and `just frontend dev` (Vite on http://localhost:5173)
+together in one terminal. Open http://localhost:5173: Vite proxies `/api` and
+`/healthz` to the API, so the browser sees one origin and needs no CORS.
+Ctrl-C stops both; when either one exits, `just dev` stops the other and exits
+with that one's status. Two process variables move the ports when the
+defaults are taken: `MY_APP_API_PORT` (default 8000) moves the API and the
+port Vite proxies to, and `VITE_PORT` (default 5173) moves the screen, which
+fails rather than moving to another port when its own is taken. Neither is a
+`Settings` field, so neither belongs in `backend/.env`.
+
+```bash
+MY_APP_API_PORT=8001 VITE_PORT=5174 just dev
 ```
 
 The git hooks are not optional: they carry the secret gate that refuses a
