@@ -90,9 +90,11 @@ install:
 # Alias for first-time project setup
 setup: install
 
-# frontend::fmt formats frontend/ with Biome; these lines format the Python tree.
+# frontend::fmt formats frontend/ with Biome; the first line formats e2e/ with its
+# own Biome config (what e2e-lint checks), the others the Python tree.
 # Format code (lint fixes first so the formatter has the last word)
 fmt: frontend::fmt
+    pnpm --dir e2e exec biome check --write .
     uv run --locked ruff check --fix .
     uv run --locked ruff format .
 
@@ -343,7 +345,7 @@ ruleset *ARGS:
 
 # Remove build artifacts
 clean:
-    rm -rf dist/ build/ frontend/dist/ frontend/coverage/ .mypy_cache/ .ruff_cache/ .pytest_cache/ htmlcov/ .coverage .coverage.* coverage.xml
+    rm -rf dist/ build/ frontend/dist/ frontend/coverage/ e2e/test-results/ e2e/playwright-report/ .mypy_cache/ .ruff_cache/ .pytest_cache/ htmlcov/ .coverage .coverage.* coverage.xml
     rm -rf backend/.coverage backend/.coverage.* backend/htmlcov/ backend/.pytest_cache/ backend/.mypy_cache/ backend/.ruff_cache/
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
     find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true

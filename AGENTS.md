@@ -64,7 +64,7 @@ Grouped by who runs them; the `justfile` is the source of truth, this its index.
 ```bash
 just install         # Install dependencies (uv, then pnpm) and git hooks when .git/ is present
 just setup           # Alias for just install (first-time setup)
-just fmt             # Format code: just frontend fmt, then the Python tree (ruff check --fix + ruff format)
+just fmt             # Format code: just frontend fmt, e2e/ (biome check --write), then the Python tree (ruff check --fix + ruff format)
 just lint            # Lint + type check: just backend lint, just frontend lint, just e2e-lint, then the root (ruff, mypy)
 just test            # Run tests: just backend test, just frontend test, then the root suite
 just backend lint    # Lint and type-check the backend (ruff, ruff format --check, mypy strict)
