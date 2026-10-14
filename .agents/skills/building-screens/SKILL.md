@@ -80,7 +80,8 @@ checks are `frontend/AGENTS.md`'s.
   2026-10-13). The template has no route with search params yet.
 - **The query client comes from `createQueryClient()`** in `src/lib/query-client.ts`.
   Its `shouldRetry` never retries a query whose error carries a 4xx `status` and retries
-  anything else once; mutations never retry. `main.tsx` creates one and hands it to both
+  anything else once; mutations keep TanStack Query's defaults, as every other option
+  does. `main.tsx` creates one and hands it to both
   `QueryClientProvider` and `createAppRouter`. Change the policy there, never per screen.
 - **The server is the validator.** Submit what the user typed, unchanged: no `required`,
   `maxLength`, or client-side rule that repeats one the API owns, and no form library.
@@ -115,7 +116,7 @@ Tailwind CSS 4 utility classes in the markup are the only styling layer, through
 `@tailwindcss/vite`. `src/styles.css` (`@import "tailwindcss";`) is imported by
 `main.tsx` alone; a screen adds no stylesheet, CSS module, CSS-in-JS, or UI kit, and
 Biome parses Tailwind's directives (`css.parser.tailwindDirectives`). Every
-interactive element keeps a visible focus style; the sample's buttons use
+interactive element keeps a visible focus style. The sample's buttons use
 `focus-visible:outline-2 focus-visible:outline-offset-2`. A design system, UI kit, form
 library, or i18n is each app's own decision and a new package.
 
@@ -134,10 +135,14 @@ frontend, `frontend/AGENTS.md`'s "Tests and the coverage floor" until that skill
 it). How one test is named and what it asserts: **REQUIRED:** `writing-tests`.
 
 - A screen is tested by Vitest component tests under `jsdom`: Testing Library queries in
-  its priority order (`getByRole` first, `getByTestId` last), `fireEvent` for input,
-  the `jest-dom` matchers, and an MSW handler typed from the generated types for every
-  request. The MSW server listens with `onUnhandledFrame: "error"`, so a request no
-  handler covers fails the test. The helpers, the order of queries, and the traps:
+  its priority order, `getByRole` first and `getByTestId` last
+  (https://testing-library.com/docs/queries/about/#priority, checked 2026-10-13),
+  `fireEvent` for input, the `jest-dom` matchers, and an MSW handler typed from the
+  generated types for every request.
+- The MSW server listens with `onUnhandledFrame: "error"`, which stops a request no
+  handler covers, so the test fails instead of reaching the network
+  (https://mswjs.io/docs/api/setup-server/listen, checked 2026-10-13).
+- The helpers, the full order of queries, and the traps are in
   [references/testing-screens.md](references/testing-screens.md).
 - Cover each state the screen renders: loading, empty, data, a 422 next to its field, a
   5xx with its request id, and a network failure.
@@ -149,12 +154,11 @@ Take a hypothetical settings screen that reads `GET /api/settings` as the worked
 1. The API side comes first: the route, its schema, and its tests. **REQUIRED:**
    `building-api-routes`. Then `just contract`; a route function named `get_settings`
    becomes the generated `getSettingsOptions`.
-2. The tests and the component, in the order `tdd` sets:
+2. The tests, then the component. **REQUIRED:** `tdd`. First
    `frontend/tests/features/settings/SettingsScreen.test.tsx` with MSW handlers for each
    state, then `frontend/src/features/settings/SettingsScreen.tsx` and its `index.ts`.
 3. The route: `frontend/src/routes/settings.tsx` with `createFileRoute("/settings")`,
-   rendering `SettingsScreen`. Link to it from the layout in `__root.tsx` if it is a
-   top-level page.
+   rendering `SettingsScreen`. The layout in `__root.tsx` has no navigation yet.
 4. Check, from the repository root: `just frontend lint`, `just frontend test`, and
    `just frontend build` (stage the regenerated `routeTree.gen.ts`). Run `just e2e`
    when a user flow changes, and `just contract-check` after an API change. Then
