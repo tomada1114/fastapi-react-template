@@ -256,13 +256,7 @@ def test_main_ampersand_display_name_refused_without_writing(clone, capsys):
     assert _snapshot(clone) == before
 
 
-def test_bootstrap_workspace_package_names_include_optional_e2e(clone):
-    path = clone / "e2e/package.json"
-    path.parent.mkdir()
-    path.write_text('{"name":"my-app-e2e","private":true}\n')
-    _git(clone, "add", "e2e/package.json")
-    _git(clone, "commit", "-m", "workspace fixture")
-
+def test_bootstrap_workspace_package_names_include_e2e(clone):
     _run(clone)
 
     for relative, expected in (
@@ -801,6 +795,7 @@ FINISHING_EXPECTED = [
     ),
     ("pnpm", "--dir frontend exec node generate-api.ts"),
     ("pnpm", "--dir frontend exec biome check --write ."),
+    ("pnpm", "--dir e2e exec biome check --write ."),
 ]
 
 
@@ -814,7 +809,7 @@ def test_main_runs_uv_lock_then_formats_in_the_app(clone, fake_finishing, capsys
         f"{tool} {root} {args}" for tool, args in FINISHING_EXPECTED
     ]
     assert len(fake_uv.read_text().splitlines()) == 4
-    assert len(fake_pnpm.read_text().splitlines()) == 3
+    assert len(fake_pnpm.read_text().splitlines()) == 4
     assert "Next: write AGENTS.md's Product section" in capsys.readouterr().out
 
 
@@ -856,19 +851,14 @@ def test_main_missing_pnpm_stops_after_written_rename(
     assert (clone / bootstrap.ORIGIN_FILE).is_file()
 
 
-def test_main_formats_optional_e2e_with_its_own_biome_config(clone, fake_finishing):
+def test_main_skips_e2e_formatting_without_its_biome_config(clone, fake_finishing):
     _, _, log = fake_finishing
-    (clone / "e2e").mkdir()
-    (clone / "e2e/biome.json").write_text("{}\n")
-    _git(clone, "add", "e2e/biome.json")
-    _git(clone, "commit", "-m", "formatter fixture")
+    (clone / "e2e/biome.json").unlink()
+    _git(clone, "commit", "-am", "an app without the e2e formatter")
 
     assert bootstrap.main(SAMPLE_ARGV) == 0
 
-    assert (
-        log.read_text().splitlines()[-1]
-        == f"pnpm {clone.resolve()} --dir e2e exec biome check --write ."
-    )
+    assert not [line for line in log.read_text().splitlines() if "--dir e2e" in line]
 
 
 def test_ampersand_remains_valid_in_author_and_description():

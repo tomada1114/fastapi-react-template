@@ -27,8 +27,10 @@ Stop at the first tier that shows what the change does.
    served headers, the startup path through uvicorn's `--factory` call of
    `create_app`, the environment as a user meets it, a request from outside the
    process.
-3. **A `just dev` pair of your own,** for what needs the screen's origin: Vite's proxy,
-   the served screen, `just dev` itself.
+3. **`just e2e`,** for the screen against a real API: Chromium on the built screen, on
+   its own free ports and a throwaway database ([references/e2e.md](references/e2e.md)).
+4. **A `just dev` pair of your own,** for the rest that needs the screen's origin: Vite's
+   dev server and proxy, `just dev` itself.
 
 ## The developer's server is not yours
 
@@ -178,14 +180,12 @@ store starts empty on every start; create what a request needs with a `POST` fir
 
 ## Running a `just dev` pair of your own
 
-`just dev` runs `just backend dev` and `just frontend dev` together and stops both when
-either exits or on `SIGINT`, `SIGTERM`, or `SIGHUP`. `MY_APP_API_PORT` moves the API
-and Vite's proxy target, `VITE_PORT` moves Vite (`strictPort`: a taken port fails);
-neither is a setting. Everything above holds, plus: two free ports checked on both
-`127.0.0.1` and `::1`; a scratch database file, never an empty URL, which the recipes
-turn into the developer's `backend/var/dev.db`; requests only once both servers log
-ready; and a stop of only the outer `just` you launched. The rules in full, the
-script, and its observed output: [references/own-dev-pair.md](references/own-dev-pair.md).
+`MY_APP_API_PORT` moves the API and Vite's proxy target, `VITE_PORT` moves Vite
+(`strictPort`: a taken port fails); neither is a setting. Everything above holds, plus:
+two free ports checked on both `127.0.0.1` and `::1`; a scratch database file, never an
+empty URL, which the recipes turn into the developer's `backend/var/dev.db`; requests
+only once both servers log ready; and a stop of only the outer `just` you launched. The
+rules in full, the script, and its output: [references/own-dev-pair.md](references/own-dev-pair.md).
 
 ## The evidence a pull request carries
 

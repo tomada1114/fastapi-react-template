@@ -99,7 +99,9 @@ src = ["src", "tests"]
 # Run from this directory (`uv run --locked --directory backend mypy`); the
 # root pyproject.toml checks scripts/, the root tests/, and skill scripts.
 # migrations/ holds Alembic's env.py and the revisions it generates.
-files = ["src", "tests", "migrations"]
+# ../e2e/verify_persistence.py is the e2e suite's backend process: it imports
+# my_app, which only this run resolves (the package ships no py.typed).
+files = ["src", "tests", "migrations", "../e2e/verify_persistence.py"]
 python_version = "3.14"
 strict = true
 warn_return_any = true

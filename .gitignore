@@ -31,6 +31,9 @@ frontend/dist/
 frontend/coverage/
 # TanStack Router's generator scratch directory (src/routeTree.gen.ts is tracked)
 frontend/.tanstack/
+# Playwright's traces and HTML report (`just e2e`; CI uploads them on failure)
+e2e/test-results/
+e2e/playwright-report/
 
 # IDE
 .vscode/
