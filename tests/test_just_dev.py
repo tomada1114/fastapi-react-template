@@ -243,22 +243,30 @@ def test_dev_signal_kills_servers_that_ignore_sigterm(
 
 
 @pytest.mark.parametrize("bash", BASHES)
-def test_dev_signal_before_second_server_starts_stops_the_first(
-    tmp_path: Path, bash: str
+@pytest.mark.parametrize(
+    ("after", "started"),
+    [
+        pytest.param("backend dev </dev/null &\n", 1, id="first-launched"),
+        pytest.param("api=$!\n", 1, id="first-recorded"),
+        pytest.param("frontend dev </dev/null &\n", 2, id="second-launched"),
+    ],
+)
+def test_dev_signal_during_startup_stops_what_started(
+    tmp_path: Path, bash: str, after: str, started: int
 ) -> None:
     fake = tmp_path / "just"
     fake.write_text(FAKE_JUST, encoding="utf-8")
     fake.chmod(0o755)
     ready = tmp_path / "ready.txt"
-    first_launch = "api=$!\n"
     body = _recipe_body(JUSTFILE, "dev:").replace(JUST, shlex.quote(str(fake)))
-    assert first_launch in body
-    # The recipe signals itself once the first server runs and before the
-    # second is launched: the window before its stop handlers were installed.
+    assert body.count(after) == 1
+    # The recipe signals itself once `started` servers run, right after the
+    # line `after`: a launched group whose PID is not recorded yet included.
     body = body.replace(
-        first_launch,
-        first_launch
-        + 'while [ ! -s "$FAKE_READY_FILE" ]; do sleep 0.05; done\n'
+        after,
+        after
+        + f'while [ "$(wc -l <"$FAKE_READY_FILE" 2>/dev/null || echo 0)" -lt {started} ];'
+        + " do sleep 0.05; done\n"
         + "kill -TERM $$\n",
         1,
     )
@@ -280,14 +288,14 @@ def test_dev_signal_before_second_server_starts_stops_the_first(
         if process.poll() is None:
             process.kill()
             process.wait(timeout=EXIT_TIMEOUT)
-    _, module, _, pid, child = ready.read_text(encoding="utf-8").split()
-    pids = [int(pid), int(child)]
+    lines = [line.split() for line in ready.read_text(encoding="utf-8").splitlines()]
+    pids = [int(pid) for _, _, _, leader, child in lines for pid in (leader, child)]
     survivors = [p for p in pids if _alive(p)]
-    if survivors:
+    for _, _, _, leader, _ in lines:
         with contextlib.suppress(ProcessLookupError):
-            os.killpg(int(pid), signal.SIGKILL)
+            os.killpg(int(leader), signal.SIGKILL)
 
-    assert module == "backend"
+    assert len(lines) == started
     assert status == 143
     assert survivors == []
 

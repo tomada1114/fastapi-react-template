@@ -138,9 +138,14 @@ dev:
     running() {
       ps -A -o pgid= -o stat= | awk -v a="$api" -v s="$screen" '(($1 == a && a != "") || ($1 == s && s != "")) && $2 !~ /^Z/ { found = 1 } END { exit !found }'
     }
-    # Stops whichever groups have been started so far.
+    # Stops whichever groups have been started so far, including one launched
+    # whose PID the next line has not recorded yet: `$!` already holds it.
     stop() {
       trap - INT TERM HUP QUIT EXIT
+      last=${!:-}
+      if [ -n "$last" ] && [ "$last" != "$api" ] && [ "$last" != "$screen" ]; then
+        if [ -z "$api" ]; then api=$last; else screen=$last; fi
+      fi
       groups=
       [ -n "$api" ] && groups="-$api"
       [ -n "$screen" ] && groups="$groups -$screen"
