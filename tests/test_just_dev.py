@@ -7,6 +7,8 @@ uvicorn or Vite, a process the recipe never started itself), prints
 ``ready <module> <recipe> <pid> <child pid>``, and waits. With
 ``FAKE_BACKEND_EXIT`` or ``FAKE_FRONTEND_EXIT`` set, that module's fake exits
 with the code on ``SIGUSR1``, so a test decides when a server "fails".
+With ``FAKE_STUBBORN`` set, the fake and its ``sleep`` ignore ``SIGTERM``, as a
+server stuck in its shutdown would.
 
 Each body runs under every bash on the host that the tests can find: the one on
 ``PATH`` and ``/bin/bash``, which is bash 3.2 on macOS.
@@ -50,6 +52,7 @@ case "$1" in
   backend) code=${FAKE_BACKEND_EXIT:-} ;;
   *) code=${FAKE_FRONTEND_EXIT:-} ;;
 esac
+if [ -n "${FAKE_STUBBORN:-}" ]; then trap '' TERM; fi
 sleep 300 >/dev/null 2>&1 &
 child=$!
 if [ -n "$code" ]; then trap 'exit "$code"' USR1; fi
@@ -156,7 +159,7 @@ def start_dev(tmp_path: Path) -> Iterator[StartDev]:
         environ = {
             k: v
             for k, v in os.environ.items()
-            if k not in {"FAKE_BACKEND_EXIT", "FAKE_FRONTEND_EXIT"}
+            if k not in {"FAKE_BACKEND_EXIT", "FAKE_FRONTEND_EXIT", "FAKE_STUBBORN"}
         }
         process = subprocess.Popen(  # noqa: S603 -- fixed argv, no shell
             [bash, str(script)],
@@ -216,6 +219,18 @@ def test_dev_signal_stops_both_servers_and_their_children(
     dev.process.send_signal(signum)
 
     assert dev.finish() == status
+    assert [pid for pid in dev.pids() if _alive(pid)] == []
+
+
+@pytest.mark.parametrize("bash", BASHES)
+def test_dev_signal_kills_servers_that_ignore_sigterm(
+    start_dev: StartDev, bash: str
+) -> None:
+    dev = start_dev(bash, FAKE_STUBBORN="1")
+
+    dev.process.send_signal(signal.SIGTERM)
+
+    assert dev.finish() == 143
     assert [pid for pid in dev.pids() if _alive(pid)] == []
 
 

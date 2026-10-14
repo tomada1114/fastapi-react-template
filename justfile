@@ -121,6 +121,7 @@ test: backend::test frontend::test
 # that reads the terminal is stopped. Bash 3.2 (macOS) has no `wait -n`, so the
 # loop polls with `kill -0`. When either exits, the other is stopped and its
 # status is this recipe's; INT, TERM, and HUP stop both and exit 128 + the signal.
+# Stopping sends SIGTERM, then SIGKILL to whatever still runs 10 s later.
 # Never ends on its own; an agent runs its own pair on free ports (running-the-app).
 # Human-run: serve the screen on http://localhost:5173 and the API behind it; runs until stopped
 dev:
@@ -141,13 +142,14 @@ dev:
     stop() {
       trap - INT TERM HUP EXIT
       kill -TERM -- "-$api" "-$screen" 2>/dev/null
-      wait "$api" "$screen" 2>/dev/null
       tries=0
       while [ "$tries" -lt 100 ] && running; do
         sleep 0.1
         tries=$((tries + 1))
       done
       kill -KILL -- "-$api" "-$screen" 2>/dev/null
+      # Only now: a leader that outlives SIGTERM would block `wait` forever.
+      wait "$api" "$screen" 2>/dev/null
       return 0
     }
     trap 'stop; exit 130' INT
