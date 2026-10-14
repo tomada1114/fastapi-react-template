@@ -54,8 +54,11 @@ Drive input with `fireEvent` from `@testing-library/react`: `fireEvent.change(in
   (https://mswjs.io/docs/api/setup-server/listen, checked 2026-10-13).
 - The module points the generated client's `baseUrl` at `window.location.origin`
   (`http://localhost:5173`, from `vitest.config.ts`'s `environmentOptions`): under jsdom,
-  `fetch` and `Request` are Node's and cannot resolve a relative URL. Production keeps
-  the relative base. Never change the base URL in a test of its own.
+  `fetch` and `Request` are Node's and cannot resolve a relative URL (observed
+  2026-10-14 on Node v24.21.0: `node -e "new Request('/api/todos')"` throws
+  `TypeError: Failed to parse URL from /api/todos`; `frontend/vitest.config.ts` says the
+  same beside `environmentOptions`). Production keeps the relative base. Never change the
+  base URL in a test of its own.
 - To read what the screen sent, collect it inside the handler
   (`bodies.push(await request.json())`) and assert after the screen settles.
 
