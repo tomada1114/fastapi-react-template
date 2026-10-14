@@ -29,9 +29,9 @@ example an agent skill that cuts repositories from templates) follows the same o
 ## The order
 
 1. **Create and clone.** "Use this template" on GitHub and clone the new repository.
-   It needs uv, Just 1.42.3 or later, Node.js 24 (`.node-version`), and pnpm
-   (`corepack enable`, or any pnpm: it fetches the `pnpm@11.18.0` that `package.json`
-   pins), but no Docker; CONTRIBUTING.md's "Prerequisites" has the links. Run
+   It needs uv, Just 1.42.3 or later, Node.js 24 (`.node-version`), and pnpm 11
+   (`corepack enable`, or any pnpm 11: it fetches the `pnpm@11.18.0` that
+   `package.json` pins), but no Docker; CONTRIBUTING.md's "Prerequisites" has the links. Run
    `just install`, which installs both workspaces (uv's, then pnpm's) and the git
    hooks, then `git switch -c chore/bootstrap`. The `no-commit-to-branch` hook that
    `just install` installs refuses a commit on `main`, and bypassing a hook is
