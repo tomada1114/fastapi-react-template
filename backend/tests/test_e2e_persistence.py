@@ -132,7 +132,12 @@ async def test_verifier_ignores_an_inherited_database_url(
     await anyio.run_process(
         [sys.executable, "-m", "alembic", "-c", str(ALEMBIC_INI), "upgrade", "head"],
         env=without_settings_env(os.environ)
-        | {f"{ENV_PREFIX}DATABASE_URL": empty, f"{ENV_PREFIX}LOG_LEVEL": "INFO"},
+        | {
+            f"{ENV_PREFIX}DATABASE_URL": empty,
+            f"{ENV_PREFIX}CORS_ORIGINS": "",
+            f"{ENV_PREFIX}LOG_LEVEL": "INFO",
+            f"{ENV_PREFIX}LOG_FORMAT": "text",
+        },
     )
 
     result = await _verify(empty, todo.id, MY_APP_DATABASE_URL=migrated_sqlite_url)
