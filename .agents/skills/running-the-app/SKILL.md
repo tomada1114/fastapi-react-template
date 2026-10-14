@@ -120,7 +120,7 @@ if [ "$rc" = 1 ]; then
   else
     echo "the server did not start; nothing was sent"
   fi
-  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; trap - EXIT
   uv run --locked python -c "$probe" "$port"; rc=$?
   case "$rc" in
     1) echo "nothing listening on $port" ;;

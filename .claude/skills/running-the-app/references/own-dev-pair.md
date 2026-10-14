@@ -28,7 +28,7 @@ Everything in `SKILL.md`'s "The developer's server is not yours" holds, plus:
 
 One foreground shell command, under bash or zsh, with no `set -e`, so a failed `curl`
 still reaches the stop; the `trap` stops the pair when the command is interrupted part
-way:
+way, and is cleared once the pair is reaped, so a reused PID is never signalled:
 
 ```bash
 probe='import socket, sys
@@ -72,7 +72,7 @@ if [ "$a" = 1 ] && [ "$v" = 1 ] && [ "$api" != "$vite" ]; then
   else
     echo "the pair did not start; nothing was sent"
   fi
-  kill "$pid" 2>/dev/null; wait "$pid"; echo "just dev exited $?"
+  kill "$pid" 2>/dev/null; wait "$pid"; rc=$?; trap - EXIT; echo "just dev exited $rc"
   for port in "$api" "$vite"; do
     uv run --locked python -c "$probe" "$port"; rc=$?
     case "$rc" in
