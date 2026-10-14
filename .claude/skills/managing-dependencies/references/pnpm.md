@@ -109,12 +109,7 @@ their comments; read them there rather than a copy here.
   review record of a new package names any script it wants.
 - **`trustPolicyExclude`**: exempts a version from `trustPolicy: no-downgrade`, which
   fails a version whose trust level dropped from an earlier release
-  (https://pnpm.io/settings/dependency-resolution, checked 2026-10-14). The template
-  holds one owner-approved exception (2026-10-13, #20): `semver@6.3.1`, which lacks the
-  provenance earlier semver releases carry. Only `@tanstack/router-plugin`'s Babel 7
-  reaches it. Drop the entry once 6.3.1 regains provenance or nothing reaches for
-  `semver@6` (the plugin moves to Babel 8). Any other trust exception is a new owner
-  decision.
+  (https://pnpm.io/settings/dependency-resolution, checked 2026-10-14).
 - **`overrides`**: forces a version anywhere in the dependency graph
   (https://pnpm.io/settings/dependency-resolution, checked 2026-10-14), such as a
   transitive security fix the parent package has not taken yet.
