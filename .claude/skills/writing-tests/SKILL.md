@@ -22,17 +22,19 @@ classes a test asserts against (`designing-errors`); a script's tests
 (`writing-repo-scripts`); how a screen's test renders it and which states it covers
 (`building-screens`).
 
-The sections below are written for pytest; their rules hold for a frontend test too.
+The sections below are written for pytest. Their principles hold for a frontend test
+too — behavior over implementation, expected values from outside the code, the edge
+cases, fakes over mocks, independence — while its mechanics differ.
 
 ## A frontend test
 
-A Vitest test under `frontend/tests/` keeps every rule below and changes the tools:
-it is named by the behavior sentence passed to `it`, queries in Testing Library's
-priority order (`getByRole` first, `getByTestId` last), drives input with `fireEvent`
-(`user-event` is not installed), asserts with the `jest-dom` matchers, answers every
-request with an MSW handler typed from the generated types, and waits with `findBy...`
-or `waitFor`, never a timer. The rules, the MSW server's unhandled-request behavior,
-and why the client's `baseUrl` is `window.location.origin` under `jsdom`:
+A Vitest test under `frontend/tests/` replaces the pytest mechanics: it is named by the
+behavior sentence passed to `it`, queries in Testing Library's priority order
+(`getByRole` first, `getByTestId` last), drives input with `fireEvent` (`user-event` is
+not installed), asserts with the `jest-dom` matchers, answers every request with an MSW
+handler typed from the generated types, and waits with `findBy...` or `waitFor`, never a
+timer. The rules, the MSW server's unhandled-request behavior, and why the client's
+`baseUrl` is `window.location.origin` under `jsdom`:
 [references/frontend-tests.md](references/frontend-tests.md).
 
 ## Naming and shape

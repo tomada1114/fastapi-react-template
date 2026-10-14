@@ -71,14 +71,18 @@ fails when the `npm` cooldown in minutes (days × 1440) differs from
 `minimumReleaseAge` is missing or not an integer. Change all four values together, or
 none; shortening any of them loosens a gate, which is the owner's decision.
 
-- **Dependabot documents pnpm v7 to v10**, and this repository runs pnpm 11, which works
-  in practice. If a Dependabot `npm` job fails because of the pnpm version, record it
-  (an issue with the job log, `triaging-issues`) and leave the pnpm version, the
-  lockfile, and the policy as they are; never work around it.
-- **A security update inside the window** skips Dependabot's cooldown, not
-  `minimumReleaseAgeStrict`: the install refuses the version, in the Dependabot job or
-  the PR's CI. It waits out the window, or the owner decides the one-package exception
-  below; never an implementer's call.
+- **Dependabot documents pnpm v7 to v10**
+  (https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories,
+  checked 2026-10-14), and this repository runs pnpm 11, which works in practice. If a
+  Dependabot `npm` job fails because of the pnpm version, record it (an issue with the
+  job log, `triaging-issues`) and leave the pnpm version, the lockfile, and the policy
+  as they are; never work around it.
+- **A security update inside the window** skips Dependabot's cooldown, which applies
+  to version updates only
+  (https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference,
+  checked 2026-10-14), but not `minimumReleaseAgeStrict`: the install refuses the
+  version, in the Dependabot job or the PR's CI. It waits out the window, or the owner
+  decides the one-package exception below; never an implementer's call.
 
 ## Exceptions in `pnpm-workspace.yaml`
 
@@ -104,9 +108,12 @@ their comments; read them there rather than a copy here.
   without its script; `true` only with the owner's sign-off, like a new package. The
   review record of a new package names any script it wants.
 - **`trustPolicyExclude`**: exempts a version from `trustPolicy: no-downgrade`, which
-  fails a version whose trust level dropped from an earlier release.
+  fails a version whose trust level dropped from an earlier release
+  (https://pnpm.io/settings/dependency-resolution, checked 2026-10-14).
 - **`overrides`**: forces a version anywhere in the dependency graph
   (https://pnpm.io/settings/dependency-resolution, checked 2026-10-14), such as a
   transitive security fix the parent package has not taken yet.
-- **`peerDependencyRules`**: relaxes `strictPeerDependencies: true`, which makes an unmet
-  or conflicting peer range an error. The template has none.
+- **`peerDependencyRules`**: `strictPeerDependencies: true` fails a command on a missing
+  or invalid peer dependency, and `ignoreMissing`, `allowedVersions`, and `allowAny`
+  each admit one anyway (https://pnpm.io/settings/peer-dependencies, checked
+  2026-10-14). The template has none.

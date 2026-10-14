@@ -17,7 +17,8 @@ looks wrong and why, and a human decides.
   source file; dropping `--coverage` from `just frontend test`.
 - **Vitest:** `allowOnly: true`, or removing `allowOnly: false`; narrowing `include` so
   a test file stops running; an `it.skip`, `it.todo`, `it.only`, a deleted test, or a
-  weakened assertion (`.skip` and `.todo` pass the run, so review is their gate).
+  weakened assertion (`.skip` and `.todo` pass the run, so review is their gate;
+  `writing-tests`).
 - **Biome:** turning a rule off or down in `frontend/biome.json` or `e2e/biome.json`,
   leaving its `recommended` set, or excluding a hand-written path in `files.includes`
   (only the generated `src/routeTree.gen.ts`, `openapi.json`, and `src/api/generated`
@@ -37,9 +38,7 @@ looks wrong and why, and a human decides.
   from `just verify` or the `Contract Drift` job.
 - **The build:** removing `frontend::build` from `just verify` or the route-tree check
   from `just frontend build`.
-- **The pnpm window:** shortening `minimumReleaseAge` in `pnpm-workspace.yaml` or the
-  `npm` entry's `cooldown` in `.github/dependabot.yml` (they must stay equal, and equal
-  to the `uv` window; `tests/harness/test_dependabot_cooldown.py`).
+- **The pnpm window:** `SKILL.md`'s "The supply-chain window" bullet.
 - **The pnpm policy:** `minimumReleaseAgeStrict: false`,
   `minimumReleaseAgeIgnoreMissingTime: true`, `strictDepBuilds: false`,
   `strictPeerDependencies: false`, `trustLockfile: true`, `blockExoticSubdeps: false`,

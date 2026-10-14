@@ -88,7 +88,8 @@ Drive input with `fireEvent` from `@testing-library/react`: `fireEvent.change(in
 ## Nothing skipped or focused on `main`
 
 No `it.only` / `describe.only`, `it.skip`, `it.todo`, or a commented-out test.
-`vitest.config.ts`'s `allowOnly: false` fails a run that contains `.only`; `.skip` and
-`.todo` pass silently (a file holding only those reports `skipped` and `todo` and exits
-0, observed with Vitest 5.0.3, 2026-10-14), so review is their only gate. Fix the test
+`vitest.config.ts`'s `allowOnly: false` fails a run that contains `.only`
+(`Unexpected .only modifier`); `.skip` and `.todo` pass silently (a file holding only
+those reports `skipped` and `todo` and exits 0); both observed with Vitest 5.0.3,
+2026-10-14. Review is the only gate for `.skip` and `.todo`. Fix the test
 or delete it: skipping one weakens a gate (AGENTS.md's "Security and human approval").
