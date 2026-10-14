@@ -55,6 +55,10 @@ just backend test
 # Run only the frontend's tests, with its coverage floor (`just --list frontend` lists the rest)
 just frontend test
 
+# Run the browser test: the built screen against the real API on a throwaway SQLite
+# file, on free ports (download Chromium once: pnpm --dir e2e exec playwright install chromium)
+just e2e
+
 # Mutating development check (format → lint → test)
 just check
 

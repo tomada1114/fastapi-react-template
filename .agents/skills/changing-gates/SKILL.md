@@ -90,6 +90,8 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
 | `uv lock --check` | — | `lock-check` | `--locked` on every `uv sync` |
 | Tests, and the 80% floor over `backend/src` | — | `test` (`backend::test` for the floor) | `Coverage` |
 | Harness drift (`tests/harness`) and the Product section | — | `check-harness` | `Coverage` |
+| Biome and `tsc` over `e2e/` | — | `lint` (`e2e-lint`) | `E2E` |
+| The browser test, screen to database (`just e2e`) | — | — (run it on its own) | `E2E` |
 | typos | `typos` | — | `Spell Check` |
 | zizmor | `zizmor` | — | `Workflow Security Lint` |
 | shellcheck (skill `.sh` scripts) | `shellcheck` | — | `Lint & Type Check` |
@@ -145,7 +147,9 @@ AGENTS.md's "Enforcement layers" names the layers. Keeping them in step is this 
   the contexts other workflows report. A gating CI job joins `ci-result`'s `needs:` and
   its failing step's `if:` (one `needs.<id>.result != 'success'` term each), with no
   ruleset edit; a job that does not gate goes in `tests/harness/test_ci_aggregate.py`'s
-  `EXEMPT_JOBS` with its reason. That test fails on a `ci.yml` job in neither.
+  `EXEMPT_JOBS` with its reason. That test fails on a `ci.yml` job in neither. Its
+  `needs:` today: `Lint & Type Check`, `Coverage`, `Frontend`, `PostgreSQL`,
+  `Spell Check`, `Workflow Security Lint`, `Contract Drift`, and `E2E`.
 - Renaming `CI result` is the one CI change that edits `.github/rulesets/main.json`;
   so do adding or renaming a required context from another workflow. Each also edits
   `tests/test_apply_ruleset.py::test_required_contexts_match_settled_defaults` in the

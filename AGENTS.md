@@ -9,6 +9,7 @@ by area. The sample domain is a to-do list — replace it with your own.
 |---|---|
 | `backend/` | The FastAPI app, a uv workspace member: its `pyproject.toml`, `src/my_app/`, `tests/`, a `justfile` module (`just backend <recipe>`), and its own `AGENTS.md` |
 | `frontend/` | The React app (Vite, TypeScript), a pnpm workspace member: its `package.json`, `src/`, `tests/`, Biome, `tsc`, and Vitest config, a `justfile` module (`just frontend <recipe>`), and its own `AGENTS.md` |
+| `e2e/` | The browser test (Playwright, Chromium only), a pnpm workspace member: its `package.json`, `playwright.config.ts`, `tests/`, Biome and `tsc` config, and `verify_persistence.py`, the backend process that checks the database; run by the root `just e2e` and `just e2e-lint` |
 | The root | The workspaces (`pyproject.toml`, `uv.lock`; `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.node-version`) and the repository's tooling: the `justfile` with the aggregate gates, `scripts/`, the harness and script tests under `tests/`, `.agents/skills/`, `.github/` |
 
 Where to work:
@@ -64,7 +65,7 @@ Grouped by who runs them; the `justfile` is the source of truth, this its index.
 just install         # Install dependencies (uv, then pnpm) and git hooks when .git/ is present
 just setup           # Alias for just install (first-time setup)
 just fmt             # Format code: just frontend fmt, then the Python tree (ruff check --fix + ruff format)
-just lint            # Lint + type check: just backend lint, just frontend lint, then the root (ruff, mypy)
+just lint            # Lint + type check: just backend lint, just frontend lint, just e2e-lint, then the root (ruff, mypy)
 just test            # Run tests: just backend test, just frontend test, then the root suite
 just backend lint    # Lint and type-check the backend (ruff, ruff format --check, mypy strict)
 just backend fmt     # Format the backend
@@ -77,6 +78,8 @@ just frontend lint   # Lint the frontend (biome ci) and type-check it (tsc --noE
 just frontend fmt    # Format the frontend (biome check --write)
 just frontend test   # Run the frontend tests (Vitest) with an 80% floor on lines, functions, statements, branches
 just frontend build  # Build the frontend for production into frontend/dist (vite build)
+just e2e-lint        # Lint and type-check e2e/ (biome ci, tsc --noEmit) without starting a browser
+just e2e             # Browser test (Chromium): the built screen and the API on own free ports and a throwaway SQLite file
 just check           # Mutating dev check: fmt → lint → test
 just lock            # Update uv.lock after dependency changes
 just lock-check      # Fail when uv.lock is out of date, without changing it
@@ -137,6 +140,7 @@ being run at all.
 |---|---|
 | Anything under `backend/` | `backend/AGENTS.md`'s "Validating a change" table |
 | Anything under `frontend/` | `just frontend lint && just frontend test` (`frontend/AGENTS.md`'s table has narrower ones) |
+| Anything under `e2e/`, or the screen's flow end to end | `just e2e-lint`, then `just e2e` (Chromium once: `pnpm --dir e2e exec playwright install chromium`) |
 | One root test (`tests/`) | `uv run --locked pytest tests/test_<module>.py::test_<name>` |
 | A root Python file's lint or types (`scripts/`, `tests/`, skill scripts) | `uv run --locked ruff check <file>`, then `uv run --locked mypy` |
 | A script under `scripts/` | `uv run --locked pytest tests/test_<script>.py` |
@@ -310,7 +314,7 @@ Each layer catches what the one before it cannot; `changing-gates` owns them.
 |---|---|---|
 | Git hooks (pre-commit, `.pre-commit-config.yaml`) | Every `git commit` by any author — a human, Claude Code, Codex CLI, any tool; `check-staged` also on merge commits | No staged secret (`check-staged`), no commit on `main` (`no-commit-to-branch`), ruff, ruff-format, mypy, typos, zizmor, the skills mirror |
 | `just verify` | Before a pull request or a completion claim | A current `uv.lock`, the skills mirror, the harness self-checks (`check-harness`), ruff, mypy, the skill script tests, the test suite and its 80% branch-coverage floor |
-| CI (`.github/workflows/`) | Every pull request and push to `main`, unless noted | The `just verify` checks, typos, zizmor, and CodeQL; the PR title and Dependency Review (pull requests only); OSV-Scanner (when `uv.lock` or `pnpm-lock.yaml` changes, and weekly); gitleaks over the whole history (weekly) |
+| CI (`.github/workflows/`) | Every pull request and push to `main`, unless noted | The `just verify` checks, the browser test (`just e2e`), typos, zizmor, and CodeQL; the PR title and Dependency Review (pull requests only); OSV-Scanner (when `uv.lock` or `pnpm-lock.yaml` changes, and weekly); gitleaks over the whole history (weekly) |
 | GitHub ruleset (`.github/rulesets/main.json`) | Every change to `main` | Every change arrives by a branch and a pull request, with the required checks green; no force-push, no deletion |
 
 - How `just install` installs the hooks, and which commits run none:
