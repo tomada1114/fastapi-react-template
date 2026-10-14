@@ -44,6 +44,10 @@ repository and fails on a fixture built under ``tmp_path``:
   aggregate's ``needs:`` (``CI result``, the one CI context the ruleset
   requires) or exempt with its reason, and that ``needs:`` names only jobs
   ``ci.yml`` defines;
+- (k) ``test_template_only_needs.py``: with every template-only block removed,
+  as the bootstrap removes it, no job left in a workflow needs a job that went
+  with a block (the template's bootstrap smoke job); and while that job exists,
+  its leftover scan covers every tracked file holding a template-only marker;
 - (g) the Product section check is ``tests/test_product_section.py``
   (tomada1114/uv-template#95),
   not duplicated here.

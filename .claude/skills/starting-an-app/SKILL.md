@@ -1,13 +1,14 @@
 ---
 name: starting-an-app
 description: >
-  Covers setting up an app cut from this template, from the first commit to its first
-  feature: AGENTS.md's Product section and tests/test_product_section.py, the bootstrap
-  pull request, the roadmap, just labels, GitHub security settings and secrets, just
-  ruleset and a private repository, keeping or dropping the HTTP API, removing the
-  sample to-do domain, and the first design changes (app shape, persistence). In the template it
-  also covers the rename step, .template-origin, and the template smoke check. Use when
-  starting an app, setting up the new repository, or a placeholder survived the rename.
+  Covers setting up an app cut from this full-stack template, up to its first feature:
+  the prerequisites (uv, Just, Node.js 24, pnpm), AGENTS.md's Product section, the
+  bootstrap pull request, the roadmap, just labels, GitHub security settings, just
+  ruleset and a private repository, the app's shape (full-stack, or API-only without
+  frontend/ and e2e/), removing the sample to-do domain and screen, and the first design
+  changes. In the template it also covers the rename step, .template-origin, and the
+  smoke check. Use when starting an app, dropping the frontend, or a placeholder
+  survived the rename.
 ---
 
 # Starting an App
@@ -27,9 +28,13 @@ example an agent skill that cuts repositories from templates) follows the same o
 
 ## The order
 
-1. **Create and clone.** "Use this template" on GitHub, clone the new repository, run
-   `just install`, then `git switch -c chore/bootstrap`. The `no-commit-to-branch` hook
-   that `just install` installs refuses a commit on `main`, and bypassing a hook is
+1. **Create and clone.** "Use this template" on GitHub and clone the new repository.
+   It needs uv, Just 1.42.3 or later, Node.js 24 (`.node-version`), and pnpm 11
+   (`corepack enable`, or any pnpm 11: it fetches the `pnpm@11.18.0` that
+   `package.json` pins), but no Docker; CONTRIBUTING.md's "Prerequisites" has the links. Run
+   `just install`, which installs both workspaces (uv's, then pnpm's) and the git
+   hooks, then `git switch -c chore/bootstrap`. The `no-commit-to-branch` hook that
+   `just install` installs refuses a commit on `main`, and bypassing a hook is
    forbidden (`AGENTS.md`'s "Security and human approval"), so the first commit is made
    on a branch like every later one.
 2. **Rename.** `scripts/bootstrap.py` renames the template into the app, writes
@@ -85,18 +90,26 @@ example an agent skill that cuts repositories from templates) follows the same o
 
 ## Choose the app's shape
 
-The template ships one entry point over a framework-free core: the FastAPI HTTP API.
-Decide what the app needs before its first feature, and write the answer into the
-Product section's core interaction:
+The template ships a full-stack app: the FastAPI HTTP API over a framework-free core,
+and a React screen in `frontend/` that calls it through a generated client, proven end
+to end by the browser test in `e2e/`. Decide what the app needs before its first
+feature, and write the answer into the Product section's core interaction:
 
-- **API**, for a service other programs call over HTTP — the shape the template ships.
-- **Core only**, for a library with no entry point of its own.
+- **Full-stack**, the default, for an app people use through its screen — the shape the
+  template ships.
+- **API-only**, for a service other programs call over HTTP: drop the screen, the
+  browser test, and the Node.js toolchain. **REQUIRED:**
+  [references/without-frontend.md](references/without-frontend.md), which lists every
+  path each frontend change added and how it goes. An API-only service may instead
+  start from `tomada1114/uv-template`, the Python-only template, which has no frontend
+  to remove.
+- **Core only**, for a library with no entry point of its own: go API-only first, then
+  follow the "A project without the API" section of `building-api-routes`, which names
+  every file, dependency, recipe, ruff entry, and skill that goes with the API.
 
-Dropping the API is a list of deletions, never a core change: the "A project without
-the API" section of `building-api-routes` names every file, dependency, recipe, ruff
-entry, and skill that goes with it. Run `uv lock` after removing a dependency, then
-`just verify`. An app that needs admin commands adds a command-line entry point beside
-the API, over the same core.
+Each is a list of deletions, never a core change. Run `uv lock` after removing a
+dependency, then `just verify`. An app that needs admin commands adds a command-line
+entry point beside the API, over the same core.
 
 ## Describe the first design changes
 
@@ -104,10 +117,13 @@ Write each as present state — what the app does and why — in `AGENTS.md` and
 `backend/AGENTS.md`'s "Architecture" section, per `AGENTS.md`'s "Before changing the
 architecture"; the owner reviews it with the pull request:
 
-- **App shape**: whether the app keeps the API, and why.
-- **Persistence**: where and in what format the app keeps state — the in-memory
-  repository, the SQL adapter (SQLAlchemy with Alembic migrations, on SQLite or
-  PostgreSQL), or another store — with how a schema change reaches existing data. Write it as soon as the app keeps state of its own.
+- **App shape**: full-stack, API-only, or core only, and why.
+- **Persistence**: where and in what format the app keeps state, with how a schema
+  change reaches existing data. The template's default is SQLAlchemy Core with Alembic
+  migrations on a SQLite file, and the same contract suite runs against PostgreSQL in
+  CI; the in-memory repository serves when no database URL is set. Write it as soon as
+  the app keeps state of its own, whether it keeps that default, moves to PostgreSQL,
+  or adopts another store.
 
 Each new runtime dependency or external service the first features need is a design
 change too, described the same way, and a new dependency waits for the owner's sign-off.
@@ -128,17 +144,35 @@ code:
 - their tests under `backend/tests/core/`, `backend/tests/adapters/`, and
   `backend/tests/api/`, and the contract suite's parameters in
   `backend/tests/adapters/test_repository_contract.py`;
+- the `todos` table in `backend/src/my_app/adapters/sql/tables.py` and its migration,
+  `backend/migrations/versions/f58f944d0d8e_create_todos.py`: with no deployed
+  database yet, replace that first revision with the app's own; once one is deployed,
+  add a revision that drops the table instead (**REQUIRED:** `persisting-data`);
+- the screen: `frontend/src/features/todos/`, and the to-do screen in the index route
+  that renders it, `frontend/src/routes/index.tsx`, replaced by the app's own; their
+  tests under `frontend/tests/features/todos/` and `frontend/tests/routes/`; and the
+  to-do handler and `todo(...)` builder in `frontend/tests/msw/` (**REQUIRED:**
+  `building-screens`);
+- the browser test's flow: `e2e/tests/todos.spec.ts`, and `e2e/verify_persistence.py`
+  with `backend/tests/test_e2e_persistence.py`, which read a stored to-do;
+- then rerun the `contract` recipe, so `frontend/openapi.json` and the generated
+  client in `frontend/src/api/generated/` lose the to-do operations;
 - README's Quickstart, the HTTP table, and the Configuration section;
-- the examples the code-writing skills quote from the sample (`writing-python`,
-  `designing-errors`, `designing-core-logic`, `building-api-routes`,
-  `running-the-app`): rewrite each with the app's own code, keeping the rule around it,
-  then `just agents-sync`.
+- the examples the skills quote from the sample: `writing-python`, `designing-errors`,
+  `designing-core-logic`, `building-api-routes`, `persisting-data`, `running-the-app`
+  (and its `references/e2e.md` and `references/own-dev-pair.md`), `building-screens`
+  (and its `references/accessibility.md` and `references/testing-screens.md`),
+  `writing-tests` (and its `references/frontend-tests.md`), `placing-tests`, and `tdd`.
+  Rewrite each with the app's own code, keeping the rule around it, then
+  `just agents-sync`.
 
 Keep what is general: `core.errors.AppError` and the one place the API maps it (its
 handler in `api/app.py`), the composition root, `settings.py` and its environment
 prefix, the health route, the banned-api lint rule that keeps the core framework-free,
-and `backend/tests/conftest.py`'s fixed clock. Then search the tree for `Todo`, `todo`,
-and `to-do`, and judge each hit: an app whose own name holds one of them keeps those.
+`backend/tests/conftest.py`'s fixed clock, and on the screen the root route,
+`frontend/src/lib/` (the query client and the Problem Details error display), and the
+MSW server in `frontend/tests/msw/`. Then search the tree for `Todo`, `todo`, and
+`to-do`, and judge each hit: an app whose own name holds one of them keeps those.
 
 ## What the new app keeps
 

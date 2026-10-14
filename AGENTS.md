@@ -210,7 +210,7 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `running-the-app` | running a server of your own to observe a change, and stopping that server afterwards |
 | `shipping-issues` | Claude Code only: shipping the next issue or the whole backlog: rank, implement, PR, the PR's own review and its findings, CI, merge |
 | `smart-commit` | grouping working-tree changes into commits, or a pre-commit hook refuses a commit |
-| `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the API or the sample domain, the first design changes; the template rename step |
+| `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the frontend, the API, or the sample domain, the first design changes; the template rename step |
 | `steering-the-roadmap` | asked what to work on next, or the Now / Next / Later roadmap moves |
 | `tdd` | changing behavior under `backend/src/`, `scripts/`, or `frontend/src/`, or fixing a bug: the failing test comes first |
 | `triaging-issues` | filing, labelling, or prioritizing an issue, or recording a problem found outside the task |

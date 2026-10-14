@@ -143,13 +143,18 @@ ignored files alone, so if `backend/src/<module>/` survives holding only caches 
   ordering, root cwd and stopping on failure. A real renamed copy also checks a
   Unicode title, lock-only/no-diff, frozen install and regenerated contract/client
   drift before publication.
-- CI's `Template Bootstrap Smoke` job clones the commit under test, bootstraps it with
-  the sample values above, fails on any placeholder left in the tracked or new files
+- CI's `Template Bootstrap Smoke` job sets up uv, pnpm, and Node.js 24 first (the
+  finishing steps need them), clones the commit under test, bootstraps it with the
+  sample values above, fails on any placeholder left in the tracked or new files
   (`git grep` over everything but `.template-origin`, which names the template on
-  purpose: the tokens in any case, and `My App` and `Your Name` as whole words), checks
-  that `tests/test_product_section.py` fails on the unfilled Product section for that
-  reason, fills that section, and runs `just verify` there. It is not a required
-  check, because an app no longer has it.
+  purpose: the tokens in any case, and `My App` and `Your Name` as whole words) and on
+  template-only text left in the files that carry such blocks, checks that
+  `tests/test_product_section.py` fails on the unfilled Product section for that
+  reason, fills that section, and then runs `pnpm install --frozen-lockfile`,
+  `just verify`, Chromium's install, and `just e2e` there, with no service container.
+  It is not a required check, because an app no longer has it, and no other job may
+  need it: `tests/harness/test_template_only_needs.py` fails on a job outside a
+  template-only block that needs one inside.
 
 A change to the script, to a placeholder, or to a file it edits is proven by
 `uv run --locked pytest tests/test_bootstrap.py` locally and that job on the pull
