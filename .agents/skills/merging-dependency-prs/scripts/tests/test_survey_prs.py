@@ -172,6 +172,27 @@ class EcosystemTest(unittest.TestCase):
     def test_anything_else_is_other(self):
         self.assertEqual(sp.ecosystem_of("dependabot/pip/requests-2.33.0"), "other")
 
+    def test_unconfigured_ecosystem_is_other(self):
+        self.assertEqual(sp.ecosystem_of("dependabot/docker/python-3.14"), "other")
+
+    def test_npm_and_yarn_branch(self):
+        self.assertEqual(
+            sp.ecosystem_of("dependabot/npm_and_yarn/vitest-5.0.4"), "npm_and_yarn"
+        )
+
+    def test_grouped_npm_and_yarn_branch(self):
+        self.assertEqual(
+            sp.ecosystem_of("dependabot/npm_and_yarn/npm-minor-and-patch-3f2a"),
+            "npm_and_yarn",
+        )
+
+    def test_npm_config_name_as_a_branch_segment_is_other(self):
+        # dependabot.yml says "npm"; Dependabot's branch says "npm_and_yarn".
+        self.assertEqual(sp.ecosystem_of("dependabot/npm/vitest-5.0.4"), "other")
+
+    def test_uv_branch_naming_npm_and_yarn_is_uv(self):
+        self.assertEqual(sp.ecosystem_of("dependabot/uv/npm_and_yarn-shim"), "uv")
+
 
 class SelectRowsTest(unittest.TestCase):
     def test_keeps_only_dependabot_sorted_by_number(self):
@@ -280,6 +301,100 @@ class MainTest(unittest.TestCase):
         self.assertNotIn("favor a combined branch", out)
         self.assertIn("land one at a time", out)
         self.assertIn("backend/pyproject.toml: #1, #2", out)
+
+    def test_text_report_lands_pnpm_overlap_one_at_a_time(self):
+        rc, out, _, _ = self._run(
+            [],
+            [
+                pr(
+                    41,
+                    "bump vitest from 5.0.3 to 5.0.4",
+                    branch="dependabot/npm_and_yarn/vitest-5.0.4",
+                    files=["frontend/package.json", "pnpm-lock.yaml"],
+                ),
+                pr(
+                    42,
+                    "bump the npm-minor-patch group with 3 updates",
+                    branch="dependabot/npm_and_yarn/npm-minor-patch-3f2a",
+                    files=[
+                        "e2e/package.json",
+                        "frontend/package.json",
+                        "pnpm-lock.yaml",
+                    ],
+                ),
+            ],
+        )
+        self.assertEqual(rc, 0)
+        self.assertNotIn("favor a combined branch", out)
+        self.assertIn("land one at a time", out)
+        self.assertIn("pnpm-lock.yaml: #41, #42", out)
+        self.assertIn("frontend/package.json: #41, #42", out)
+
+    def test_text_report_favors_combined_branch_when_ecosystems_mix(self):
+        rc, out, _, _ = self._run(
+            [],
+            [
+                pr(
+                    41,
+                    "bump vitest from 5.0.3 to 5.0.4",
+                    branch="dependabot/npm_and_yarn/vitest-5.0.4",
+                    files=["package.json", "pnpm-lock.yaml"],
+                ),
+                pr(
+                    43,
+                    "bump the actions group with 2 updates",
+                    branch="dependabot/github_actions/actions-abc",
+                    files=["package.json"],
+                ),
+            ],
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("favor a combined branch", out)
+        self.assertNotIn("land one at a time", out)
+
+    def test_text_report_favors_combined_branch_for_npm_overlap_outside_the_set(self):
+        rc, out, _, _ = self._run(
+            [],
+            [
+                pr(
+                    41,
+                    "bump a from 1.0.0 to 1.0.1",
+                    branch="dependabot/npm_and_yarn/a-1.0.1",
+                    files=["pnpm-workspace.yaml"],
+                ),
+                pr(
+                    42,
+                    "bump b from 1.0.0 to 1.0.1",
+                    branch="dependabot/npm_and_yarn/b-1.0.1",
+                    files=["pnpm-workspace.yaml"],
+                ),
+            ],
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("favor a combined branch", out)
+        self.assertNotIn("land one at a time", out)
+
+    def test_text_report_does_not_land_uv_files_one_at_a_time_for_npm_prs(self):
+        rc, out, _, _ = self._run(
+            [],
+            [
+                pr(
+                    41,
+                    "bump a from 1.0.0 to 1.0.1",
+                    branch="dependabot/npm_and_yarn/a-1.0.1",
+                    files=["uv.lock"],
+                ),
+                pr(
+                    42,
+                    "bump b from 1.0.0 to 1.0.1",
+                    branch="dependabot/npm_and_yarn/b-1.0.1",
+                    files=["uv.lock"],
+                ),
+            ],
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("favor a combined branch", out)
+        self.assertNotIn("land one at a time", out)
 
     def test_text_report_favors_combined_branch_for_workflow_overlap(self):
         rc, out, _, _ = self._run(
