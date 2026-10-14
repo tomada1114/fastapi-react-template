@@ -4,8 +4,11 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import make_url
+from sqlalchemy.dialects.sqlite.aiosqlite import SQLiteDialect_aiosqlite
 
 import my_app
+from my_app import composition
 from my_app import settings as settings_module
 from my_app.settings import Settings
 from tests.settings_env import settings_from_env_file
@@ -58,6 +61,121 @@ def test_settings_supported_database_url_from_env_is_kept_as_given(monkeypatch, 
     assert Settings().database_url == url
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        pytest.param("sqlite+aiosqlite:///:memory:?timeout=5", id="memory-options"),
+        pytest.param("sqlite+aiosqlite:///%3Amemory%3A?timeout=5", id="encoded-memory"),
+        pytest.param(
+            "sqlite+aiosqlite:///file:review-memory?mode=memory&cache=shared&uri=true",
+            id="uri-memory-mode",
+        ),
+        pytest.param(
+            "sqlite+aiosqlite:///file::memory:?cache=shared&uri=true",
+            id="uri-memory-name",
+        ),
+        pytest.param(
+            "sqlite+aiosqlite:///file:review%3Fmode=memory?uri=true",
+            id="embedded-uri-query",
+        ),
+        pytest.param(
+            "sqlite+aiosqlite:///file:%253Amemory%253A?uri=true", id="uri-double-escape"
+        ),
+        pytest.param(
+            "sqlite+aiosqlite:///file:review?%6Dode=memory&uri=true",
+            id="encoded-option-name",
+        ),
+        pytest.param(
+            "sqlite+aiosqlite:///file:review?mode=memory%26cache%3Dshared&uri=true",
+            id="decoded-uri-options",
+        ),
+        pytest.param(
+            "sqlite+aiosqlite:///file:review?uri=false&uri=false&mode=memory",
+            id="repeated-uri-flag",
+        ),
+        pytest.param("sqlite+aiosqlite:///?timeout=5", id="empty-options"),
+        pytest.param(
+            "sqlite+aiosqlite:////tmp/review-dir/?timeout=5", id="directory-options"
+        ),
+        pytest.param(
+            "sqlite+aiosqlite:///relative%2F?timeout=5", id="encoded-directory"
+        ),
+        pytest.param("sqlite+aiosqlite:///file:?uri=true", id="empty-uri"),
+        pytest.param(
+            "sqlite+aiosqlite:///file:/tmp/review-dir/?uri=true&mode=rw",
+            id="directory-uri",
+        ),
+    ],
+)
+def test_settings_effective_nonfile_sqlite_target_fails_before_engine_build(
+    monkeypatch, url
+):
+    reached = []
+
+    def forbid_engine(value):
+        reached.append(value)
+        message = "invalid Settings reached the engine builder"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(composition, "make_engine", forbid_engine)
+    with pytest.raises(ValidationError, match="database_url"):
+        composition.build_container(Settings(database_url=url))
+    assert reached == []
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "relative",
+        "absolute",
+        "uri-relative",
+        "uri-absolute",
+        "literal-question",
+        "uri-escape",
+    ],
+)
+def test_settings_file_options_preserve_actual_driver_target(tmp_path, kind):
+    absolute = str(tmp_path / "todos.db")
+    cases = {
+        "relative": (
+            "relative.db?timeout=5",
+            str(Path("relative.db").absolute()),
+            False,
+        ),
+        "absolute": (f"{absolute}?timeout=5", absolute, False),
+        "uri-relative": (
+            "file:relative.db?mode=rwc&uri=true&timeout=5",
+            "file:relative.db?mode=rwc",
+            True,
+        ),
+        "uri-absolute": (
+            f"file:{absolute}?mode=rwc&uri=1&timeout=5",
+            f"file:{absolute}?mode=rwc",
+            True,
+        ),
+        "literal-question": (
+            "data%3Fname.db?timeout=5",
+            str(Path("data?name.db").absolute()),
+            False,
+        ),
+        "uri-escape": (
+            "file:dir%2520name.db?uri=true&mode=rwc",
+            "file:dir%20name.db?mode=rwc",
+            True,
+        ),
+    }
+    target, expected, uri = cases[kind]
+    url = f"sqlite+aiosqlite:///{target}"
+
+    settings = Settings(database_url=url)
+    args, options = SQLiteDialect_aiosqlite().create_connect_args(make_url(url))
+
+    assert settings.database_url == url
+    assert args == [expected]
+    assert options.get("uri", False) is uri
+    assert not (tmp_path / "todos.db").exists()
+
+
 def test_settings_unprefixed_env_var_is_ignored(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///other.db")
 
@@ -100,7 +218,7 @@ def test_settings_database_url_empty_counts_as_unset(monkeypatch):
         ),
         pytest.param(
             "sqlite+aiosqlite:///:memory:",
-            r"each pooled connection would open its own empty database",
+            r"migrations and the application use separate engine/process lifetimes",
             id="sqlite-memory",
         ),
         pytest.param(
