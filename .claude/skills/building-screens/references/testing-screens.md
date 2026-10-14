@@ -15,8 +15,9 @@ test here is named by the behavior sentence passed to `it`.
   `createMemoryHistory({ initialEntries: [path] })` inside a `QueryClientProvider`, as
   `frontend/tests/routes/index.test.tsx` does.
 - `frontend/tests/setup.ts` registers the `jest-dom` matchers and runs Testing Library's
-  `cleanup` after each test, because Vitest runs without `globals`. Import `describe`,
-  `it`, `test`, and `expect` from `vitest` in every file.
+  `cleanup` after each test, because Vitest runs without `globals`. Import from `vitest`
+  the APIs the file uses (`describe`, `it`, `test`, `expect`, ...) and no others: Biome
+  rejects an unused import.
 
 ## Querying
 
@@ -49,9 +50,11 @@ Drive input with `fireEvent` from `@testing-library/react`: `fireEvent.change(in
   `HttpResponse.json<TodoPageResponse>({ items, next_cursor: null })`,
   `HttpResponse.json<ProblemDetails>(problem, { status: 500 })`.
 - The server listens with `onUnhandledFrame: "error"`. The default, `"warn"`, logs and
-  lets the request through; `"error"` stops it, so a request no handler covers fails the
-  test instead of reaching the network
-  (https://mswjs.io/docs/api/setup-server/listen, checked 2026-10-13).
+  lets the request through; `"error"` stops it, so a request no handler covers never
+  reaches the network. Stopping it does not by itself fail the test: the screen receives
+  a network error (TanStack Query turns it into error state), and a test asserting the
+  generic error message could still pass. So add a handler for every request the screen
+  makes (https://mswjs.io/docs/api/setup-server/listen, checked 2026-10-13).
 - The module points the generated client's `baseUrl` at `window.location.origin`
   (`http://localhost:5173`, from `vitest.config.ts`'s `environmentOptions`): under jsdom,
   `fetch` and `Request` are Node's and cannot resolve a relative URL (observed

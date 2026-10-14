@@ -141,7 +141,9 @@ mocks.
   `fireEvent` for input, the `jest-dom` matchers, and an MSW handler typed from the
   generated types for every request.
 - The MSW server listens with `onUnhandledFrame: "error"`, which stops a request no
-  handler covers, so the test fails instead of reaching the network
+  handler covers before it reaches the network; the screen then sees a network error,
+  which does not by itself fail the test, so give every request the screen makes a
+  handler
   (https://mswjs.io/docs/api/setup-server/listen, checked 2026-10-13).
 - The helpers, the full order of queries, and the traps are in
   [references/testing-screens.md](references/testing-screens.md).
