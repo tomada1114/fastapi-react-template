@@ -175,7 +175,7 @@ ruleset *ARGS:
 
 # Remove build artifacts
 clean:
-    rm -rf dist/ build/ .mypy_cache/ .ruff_cache/ .pytest_cache/ htmlcov/ .coverage .coverage.* coverage.xml
+    rm -rf dist/ build/ frontend/dist/ frontend/coverage/ .mypy_cache/ .ruff_cache/ .pytest_cache/ htmlcov/ .coverage .coverage.* coverage.xml
     rm -rf backend/.coverage backend/.coverage.* backend/htmlcov/ backend/.pytest_cache/ backend/.mypy_cache/ backend/.ruff_cache/
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
     find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
