@@ -26,12 +26,12 @@ uv run --locked python scripts/bootstrap.py todo-api \
 
 | Flag | Required | Replaces | Rules |
 |---|---|---|---|
-| `name` (positional) | yes | `my-app` (distribution, README text), `my_app` (the package, renamed `backend/src/my_app` → `backend/src/todo_api`), `MY_APP_` (the settings' environment prefix, `TODO_API_`) | lower-case letters and digits in words joined by single hyphens, starting with a letter, at most 40 characters |
+| `name` (positional) | yes | `my-app` (distribution, README text, root/frontend/optional e2e workspace package names), `my_app` (the package, renamed `backend/src/my_app` → `backend/src/todo_api`), `MY_APP_` (the settings' environment prefix, `TODO_API_`) | lower-case letters and digits in words joined by single hyphens, starting with a letter, at most 40 characters |
 | `--author` | yes | `Your Name` in `backend/pyproject.toml` (TOML-quoted) and `LICENSE` | one line, at most 100 characters |
 | `--description` | yes | the two "A short description …" sentences (`backend/pyproject.toml`, README) | one line, at most 200 characters |
 | `--github-user` | yes | the owner in `your-username/fastapi-react-template` | a GitHub user or organization name |
 | `--github-repository` | no | the repository in `your-username/fastapi-react-template` | `NAME` or `OWNER/NAME`; the owner must equal `--github-user`; defaults to the slug |
-| `--display-name` | no | `My App` (README's title, the API's OpenAPI title, the devcontainer) | one line, at most 60 characters; defaults to the slug |
+| `--display-name` | no | `My App` (README's title, the API's OpenAPI title, the devcontainer, frontend/index.html's title) | one line, at most 60 characters, no `&`; defaults to the slug |
 | `--contact-url` | no | the contact sentences in `SECURITY.md` and `CODE_OF_CONDUCT.md` | a public `https://` URL without credentials, such as a profile page |
 | `--keep-bootstrap` | no | — | keeps `TEMPLATE.md`, the script, its test, and this page, untouched, for debugging; the kept test exercises the template, so `just verify` fails until they are deleted |
 
@@ -62,8 +62,13 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
   `my_app`; `cli` and `typer`, kept reserved for an app that adds a command-line
   entry point back; a package the app or its tooling imports (`fastapi`, `pydantic`,
   `pydantic_settings`, `uvicorn`, `httpx`, `httpx2`, `starlette`, `pytest`, `ruff`, `mypy`),
-  which the app's own module would shadow; every `scripts/*.py` stem; any Python
+  which the app's own module would shadow; the workspace/layout names `backend`,
+  `frontend`, `e2e`, `migrations`; `sqlalchemy`, `alembic`, `aiosqlite`, `asyncpg`,
+  `anyio`, `react`, `react-dom`, `vite`, `typescript`, `vitest`, `jsdom`, `tailwindcss`,
+  `msw`; every `scripts/*.py` stem; any Python
   keyword; and any standard-library module (`sys.stdlib_module_names`);
+- a display name containing `&`, which can start an HTML character reference in
+  the frontend title (author and description text may still contain it);
 - a value containing a placeholder token (`my-app`, `my_app`, `fastapi-react-template`,
   `your-username`, `you@example.com`, any case), or equal to a placeholder phrase
   (`My App`, `Your Name`, any case), which the leftover scan would report. A value that
@@ -80,8 +85,10 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
    line holding only `<!-- template-only -->`, through the line holding only
    `<!-- /template-only -->`; in YAML, TOML, or a shell file the marker sits behind
    `#`), edits the known sites, and replaces the placeholders in one pass, so a new
-   value is never rewritten again. `uv.lock`, the files it is about to delete, and
-   secret-shaped paths are left alone.
+   value is never rewritten again. `uv.lock`, `frontend/openapi.json`, every file
+   under `frontend/src/api/generated/`, the files it is about to delete, and
+   secret-shaped paths are left alone. Derived JSON/client output is regenerated
+   rather than edited; this keeps Unicode display names consistent with the exporter.
 3. Writes, the step most likely to fail first and itself last: renames
    `backend/src/my_app`, writes the edited files, writes `.template-origin`, then
    deletes `TEMPLATE.md`, `tests/test_bootstrap.py`, this page in both skill trees, and
@@ -91,10 +98,18 @@ the script's own exits 1 with one `error:` line. Neither writes anything:
    CI's `Template Bootstrap Smoke` job sits in a template-only block, so it goes too.
    If a write fails part-way, it exits 1 with an `error:` line naming the steps already
    done; see "A failed write" below.
-4. Runs `uv lock` (the lock still names the template's package), then
-   `ruff check --fix` and `ruff format` (a longer module name can push imports past the
-   line length). A failure here exits 1 after the write: run the failed command and
-   the ones after it by hand.
+4. Runs `uv lock`, `ruff check --fix`, and `ruff format`, then
+   `pnpm install --frozen-lockfile` to refresh the renamed workspace before executing
+   tools. From the app root, exports the renamed `<module>.api.contract` to
+   `frontend/openapi.json`, generates the client with
+   `pnpm --dir frontend exec node generate-api.ts`, and formats with
+   `pnpm --dir frontend exec biome check --write .`. An existing e2e area with its own
+   Biome config is formatted the same way. Every argv is fixed, without a shell or
+   Just. The pnpm lock carries directory-based importer keys and no package name:
+   renaming workspace names produces no lock-only diff, so it is not a generated-file
+   exclusion and no lock-only command is needed. A failure or missing tool stops all
+   later commands and exits 1 after the write; run that command and the remaining
+   commands by hand. `.template-origin` remains written.
 
 `.template-origin` records the template's repository, the template commit, and the
 tree. Keep it committed: the bootstrap's second-run refusal and
@@ -123,7 +138,11 @@ ignored files alone, so if `backend/src/<module>/` survives holding only caches 
 
 - `tests/test_bootstrap.py` runs the script on a git clone of the working tree in a
   temporary directory, so an edit is tested before it is committed: every requirement
-  above has a test, including that each refusal leaves the tree byte-identical.
+  above has a test, including byte-identical refusals and generated-file write
+  exclusions, workspace package/title changes, and fake uv/pnpm command logs proving
+  ordering, root cwd and stopping on failure. A real renamed copy also checks a
+  Unicode title, lock-only/no-diff, frozen install and regenerated contract/client
+  drift before publication.
 - CI's `Template Bootstrap Smoke` job clones the commit under test, bootstraps it with
   the sample values above, fails on any placeholder left in the tracked or new files
   (`git grep` over everything but `.template-origin`, which names the template on
