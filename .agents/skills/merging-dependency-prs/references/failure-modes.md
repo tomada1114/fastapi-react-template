@@ -15,10 +15,15 @@ Which _job_ failed is the fastest way to tell these apart. `ci.yml`'s gating job
 `Spell Check`, and `Workflow Security Lint` (zizmor). `CI result` is the aggregate, the
 one required CI context (`.github/rulesets/main.json`): it needs every gating job and
 fails unless each one succeeded — a failed, cancelled, or skipped job all turn it red.
-Its "Report each needed job's result" step prints every needed job's result: for a
-`failure`, read that job's log, never `CI result`'s own; for a `cancelled` or `skipped`
-one with no failure (a run superseded by a newer push, or cancelled by hand), there is
-no failure log — read the newer run's results, or re-run the cancelled one.
+`--log-failed` above shows only failed steps, so list every job's conclusion first:
+
+```bash
+gh run view <run-id> --json jobs -q '.jobs[] | "\(.conclusion)\t\(.name)"'
+```
+
+For a `failure`, read that job's log, never `CI result`'s own; for a `cancelled` or
+`skipped` one with no failure (a run superseded by a newer push, or cancelled by hand),
+there is no failure log — read the newer run's results, or re-run the cancelled one.
 `Skill Scripts (Python 3.9)` also runs but is not in its `needs`. The ruleset's other
 required contexts come from their own workflows: `Validate PR title`,
 `Analyze (<language>)` (CodeQL), and `Dependency Review`.
