@@ -114,14 +114,16 @@ def template_only_needs_findings(root: Path) -> list[str]:
 def unscanned_marker_files(root: Path, tracked: Iterable[str]) -> list[str]:
     """Return tracked files with a marker line that the smoke's leftover scan misses.
 
-    Without the smoke job's scan (an app), there is nothing to cover.
+    Without the smoke job (an app), there is nothing to cover. With it, a scan line
+    this check cannot read is a finding, so a reworded scan never passes unread.
     """
     ci = root / CI_WORKFLOW
-    scan = (
-        _LEFTOVER_SCAN.search(ci.read_text(encoding="utf-8")) if ci.is_file() else None
-    )
-    if scan is None:
+    text = ci.read_text(encoding="utf-8") if ci.is_file() else ""
+    if "name: Template Bootstrap Smoke" not in text:
         return []
+    scan = _LEFTOVER_SCAN.search(text)
+    if scan is None:
+        return [f"{CI_WORKFLOW}: the smoke job's leftover scan line cannot be read"]
     scanned = scan["paths"].split()
     found = []
     for relative in tracked:
@@ -271,6 +273,7 @@ SMOKE = f"""\
 jobs:
   # {OPEN}
   bootstrap-smoke:
+    name: Template Bootstrap Smoke
     steps:
       - name: Assert no placeholder survived
         run: |
@@ -311,3 +314,11 @@ def test_template_only_scan_without_the_smoke_job_passes(tmp_path: Path) -> None
     (root / "AGENTS.md").write_text(MARKED, encoding="utf-8")
 
     assert unscanned_marker_files(root, [CI_WORKFLOW, "AGENTS.md"]) == []
+
+
+def test_template_only_scan_unreadable_scan_line_fails(tmp_path: Path) -> None:
+    root = _root(tmp_path, SMOKE.replace("grep -rn -e", "grep -rnI -e"))
+
+    assert unscanned_marker_files(root, [CI_WORKFLOW]) == [
+        f"{CI_WORKFLOW}: the smoke job's leftover scan line cannot be read"
+    ]
