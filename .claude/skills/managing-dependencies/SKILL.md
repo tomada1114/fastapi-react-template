@@ -15,8 +15,8 @@ description: >
 **Owns:** whether a package may exist in this repository, which group it joins, how its
 version is declared and locked, and the supply-chain window (`exclude-newer`, and
 pnpm's `minimumReleaseAge`). **Does not own:** landing a Dependabot pull request, a
-`uv` one included (`merging-dependency-prs`); whether a dependency owes an ADR
-(`recording-architecture-decisions`); editing a security workflow (`changing-gates`).
+`uv` one included (`merging-dependency-prs`); the design description a runtime
+dependency rewrites (`AGENTS.md`'s "Before changing the architecture"); editing a security workflow (`changing-gates`).
 
 ## A new package is a sign-off change
 
@@ -43,8 +43,9 @@ has not happened yet.
 - **Python 3.14 support** (`requires-python`) and wheels for the platforms CI and
   contributors use, rather than a source build.
 - **Open advisories** against the version that will resolve.
-- **Its group, and why.** A runtime package also owes an ADR. **REQUIRED:**
-  `recording-architecture-decisions`.
+- **Its group, and why.** A runtime package is also a design change: the same pull
+  request rewrites the present-state description, per `AGENTS.md`'s "Before changing
+  the architecture".
 
 ## Groups and ranges
 

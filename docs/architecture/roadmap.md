@@ -19,9 +19,10 @@ homes and repeats neither:
   copies their bodies.
 
 It records direction and authorizes nothing. An issue is implemented because it is
-filed, tiered, and picked, never because a line here names it. It is not an ADR either:
-it takes no status and no number, and a decision a line depends on is recorded as an
-ADR ([the index](README.md)) and linked from here. Merged pull requests and closed
+filed, tiered, and picked, never because a line here names it. It is not a design document
+either: a design a line depends on is described in its present state in `AGENTS.md`,
+`backend/AGENTS.md`'s "Architecture" section, or the skill that owns it, and linked
+from here. Merged pull requests and closed
 issues record what has shipped; `git log` shows the local history.
 
 The owner decides what the page says; an agent proposes a change to it in a pull
@@ -43,7 +44,7 @@ The outcomes being worked on, one to three of them. Each has its issues filed.
 The outcomes that follow once Now's are done. An issue may already exist for one, often
 parked as `on hold`; none is required.
 
-- TODO: **[an outcome]** — why it follows Now. Before it moves up: [an ADR to write, an
+- TODO: **[an outcome]** — why it follows Now. Before it moves up: [a design change to describe, an
   outcome in Now to land, an open question for the owner]. Issues, if any: #N.
 
 ## Later

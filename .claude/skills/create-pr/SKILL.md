@@ -98,7 +98,7 @@ Each row feeds a checklist item or the Summary:
 | A new public function without type annotations or a docstring that says why | Add them. **BACKGROUND:** `writing-python`. |
 | A route, status, or `MY_APP_*` setting a user observes changed | The relevant README text changes on this branch. **REQUIRED:** `updating-docs` decides what is owed. |
 | A removed or changed public behavior | A breaking change: call it out in the Summary, in one line a user can act on, and mark the title with `!`. |
-| A decision that owes an ADR | The ADR is on this branch. **REQUIRED:** `recording-architecture-decisions` decides whether one is owed. |
+| A design change (`AGENTS.md`'s "Before changing the architecture") | The present-state description — `AGENTS.md`, `backend/AGENTS.md`'s "Architecture", or the skill that owns the subject — is rewritten on this branch. |
 
 A row that does not apply holds trivially; say so in the body rather than leaving the
 reader to guess ("No new dependency").
@@ -127,7 +127,7 @@ write it to a file outside the checkout — the scratch or temp directory your h
 provides — so it never shows up as an untracked file in the tree the gate judged.
 
 - **Summary.** One to three lines: what the change does and why, then any breaking
-  change, dependency, or ADR line step 3 called for. Then `Closes #N` on its own line
+  change, dependency, or design-change line step 3 called for. Then `Closes #N` on its own line
   when the branch resolves an issue; a bare `#N` closes nothing. Ask rather than guess
   when it is unclear which issue the branch closes.
 - **Test Plan.** The commands actually run, each with its verdict line —

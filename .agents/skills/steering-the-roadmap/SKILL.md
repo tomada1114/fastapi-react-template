@@ -6,7 +6,7 @@ description: >
   next or for the project's plan or status, before choosing an issue for
   shipping-issues, when every issue behind a Now outcome has closed, when the owner
   reorders, adds, defers, or drops an outcome, when reviewing parked `on hold` issues or
-  requests from daily use for a pattern, when a Product or ADR change moves the
+  requests from daily use for a pattern, when a Product or design change moves the
   direction, or when filling in the roadmap skeleton after the bootstrap rename.
 ---
 
@@ -16,8 +16,9 @@ description: >
 horizons), who changes it and when, and how the open backlog and the parked `on hold`
 issues feed it. **Does not own:** what the project is, for whom, and its non-goals
 (`AGENTS.md`'s "Product"); a label's meaning, a priority tier, filing, parking, or promoting an issue
-(`triaging-issues`, including its "Requests from daily use"); whether a change owes an
-ADR and how one is written (`recording-architecture-decisions`); implementing and
+(`triaging-issues`, including its "Requests from daily use"); whether a change is a
+design change and how it is described (`AGENTS.md`'s "Before changing the
+architecture"); implementing and
 merging an issue (`shipping-issues`).
 
 ## What the roadmap is for
@@ -59,7 +60,7 @@ everything a horizon needs — issues, tiers, and `on hold`.
 Write each entry as an outcome — what a user can do, or what is true of the project —
 not as a task. "Done when" names something observable: a command's output, a `just`
 recipe that passes, a behavior a user sees. An entry stays short and links issues by
-number; it never copies an issue body, an ADR, or a "Product" line.
+number; it never copies an issue body, a design description, or a "Product" line.
 
 ## Where each fact lives
 
@@ -68,7 +69,7 @@ number; it never copies an issue body, an ADR, or a "Product" line.
 | What the project is, for whom, and its non-goals | `AGENTS.md`'s "Product" |
 | Which outcomes come now, next, later | `docs/architecture/roadmap.md` |
 | A unit of work, its tier, its `blocked:` or `on hold` label | the issue tracker (`triaging-issues`) |
-| Why the architecture is the way it is | an ADR (`recording-architecture-decisions`) |
+| Why the architecture is the way it is | `AGENTS.md`, `backend/AGENTS.md`'s "Architecture", and the skill that owns the subject, in the present tense |
 | What has shipped | merged pull requests and closed issues (`git log` for local history) |
 
 A fact in two homes drifts. When a roadmap edit is tempted to hold one of the others,
@@ -115,14 +116,14 @@ are parked.
 
 The owner decides what the roadmap says. An agent proposes: it edits the page in a pull
 request that says what moved and why, and the owner's approval of that change is the
-acceptance, as the owner's confirmation is what accepts a Proposed ADR. Never merge a
+acceptance. Never merge a
 roadmap change the owner has not approved. Review the page when:
 
 - a Now outcome's issues have all closed, or Now has no ready issue left;
 - the owner asks what is next, or changes their mind about an outcome;
 - a parked issue is promoted or closed, or parked issues start to cluster;
-- "Product" changes, or an ADR is accepted, rejected, or superseded — a line that
-  depended on it moves with it.
+- "Product" changes, or a design change lands — a line that depended on it moves with
+  it.
 
 Update "Last reviewed" whenever the page is checked against the backlog, even if nothing
 else moves.
@@ -132,9 +133,9 @@ Never, without the owner saying so:
 - put an outcome in Now, reorder Now, or drop an outcome;
 - add a line that contradicts a non-goal "Product" states — that is a change to
   "Product" first, and a human's call;
-- treat a line as the go-ahead for an architecture change: a line that hits a trigger in
-  `recording-architecture-decisions` says "Before it moves up: an ADR", and that skill
-  writes it.
+- treat a line as the go-ahead for an architecture change: a line that is a design change
+  (`AGENTS.md`'s "Before changing the architecture") says "Before it moves up: the
+  design description rewritten", and that pull request rewrites it.
 
 ## Answering "what is next?"
 
