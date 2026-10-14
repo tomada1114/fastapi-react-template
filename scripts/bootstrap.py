@@ -91,6 +91,23 @@ RESERVED_NAMES = frozenset(
         "pytest",
         "ruff",
         "mypy",
+        "backend",
+        "frontend",
+        "e2e",
+        "migrations",
+        "sqlalchemy",
+        "alembic",
+        "aiosqlite",
+        "asyncpg",
+        "anyio",
+        "react",
+        "react-dom",
+        "vite",
+        "typescript",
+        "vitest",
+        "jsdom",
+        "tailwindcss",
+        "msw",
         *(path.stem for path in Path(__file__).resolve().parent.glob("*.py")),
     }
 )
@@ -112,8 +129,10 @@ KEEPABLE_FILES = (
     ".claude/skills/starting-an-app/references/bootstrap.md",
     SELF,
 )
-# Rewritten by `uv lock` after the rename rather than edited here.
-REGENERATED_FILES = frozenset({"uv.lock"})
+# Derived files are regenerated after the rename, never replaced as text.
+# Workspace names do not occur in pnpm-lock.yaml: its importer keys are paths.
+REGENERATED_FILES = frozenset({"uv.lock", "frontend/openapi.json"})
+REGENERATED_PREFIXES = ("frontend/src/api/generated/",)
 ENV_EXAMPLE_SUFFIXES = (".example", ".sample", ".template")
 
 FINISHING_COMMANDS = (
@@ -323,12 +342,17 @@ def resolve_names(identity: Identity) -> Names:
             or contains a placeholder.
     """
     module = _check_slug(identity.slug)
-    display_name = identity.display_name or identity.slug
+    display_name = _check_text(
+        identity.display_name or identity.slug, "display name", MAX_DISPLAY_NAME_LENGTH
+    )
+    if "&" in display_name:
+        msg = f"invalid display name {display_name!r}: ampersands can start an HTML character reference"
+        raise BootstrapError(msg)
     names = Names(
         slug=identity.slug,
         module=module,
         env_prefix=f"{module.upper()}_",
-        display_name=_check_text(display_name, "display name", MAX_DISPLAY_NAME_LENGTH),
+        display_name=display_name,
         repository=_check_repository(identity),
         author=_check_text(identity.author, "author", MAX_AUTHOR_LENGTH),
         description=_check_text(
@@ -547,6 +571,7 @@ def _candidate_files(root: Path) -> list[str]:
         if (
             relative
             and relative not in untouched
+            and not relative.startswith(REGENERATED_PREFIXES)
             and path.is_file()
             and not path.is_symlink()
             and not _is_protected(relative)
@@ -680,18 +705,42 @@ def bootstrap(root: Path, identity: Identity, *, keep_bootstrap: bool = False) -
     return names
 
 
-def finish(root: Path) -> bool:
-    """Regenerate uv.lock and format the renamed tree.
+def finish(root: Path, module: str) -> bool:
+    """Refresh locked environments and regenerate/format the renamed tree.
 
-    The lock still names the template's package until `uv lock` runs, and a
-    longer module name can push imports past the line length, so both steps
-    belong to the rename. They run after the write, so a failure here cannot be
-    rolled back; it is reported with the command to run by hand.
+    uv.lock still names the old package, and longer names can exceed either
+    formatter's width. A frozen pnpm install refreshes manifest metadata before
+    executing tools. Export the renamed API, generate its client and format
+    handwritten frontend files; derived files are never renamed as raw text.
+    These commands run after the write, so a failure is reported with the
+    command and remaining steps to run by hand.
 
     Returns:
         Whether every command succeeded.
     """
-    for command in FINISHING_COMMANDS:
+    commands: tuple[tuple[str, ...], ...] = (
+        *FINISHING_COMMANDS,
+        ("pnpm", "install", "--frozen-lockfile"),
+        (
+            "uv",
+            "run",
+            "--locked",
+            "--directory",
+            "backend",
+            "python",
+            "-m",
+            f"{module}.api.contract",
+            "--output",
+            "../frontend/openapi.json",
+        ),
+        ("pnpm", "--dir", "frontend", "exec", "node", "generate-api.ts"),
+        ("pnpm", "--dir", "frontend", "exec", "biome", "check", "--write", "."),
+    )
+    if any((root / "e2e" / name).is_file() for name in ("biome.json", "biome.jsonc")):
+        commands += (
+            ("pnpm", "--dir", "e2e", "exec", "biome", "check", "--write", "."),
+        )
+    for command in commands:
         shown = " ".join(command)
         try:
             result = subprocess.run(command, cwd=root, check=False)  # noqa: S603 -- fixed argv, no shell
@@ -754,7 +803,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Bootstrap the template this script belongs to, then finish it with uv."""
+    """Bootstrap the template this script belongs to, then finish it with uv and pnpm."""
     args = _parse_args(argv)
     identity = Identity(
         slug=args.name,
@@ -772,7 +821,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"Renamed the template to {names.slug} (package backend/src/{names.module}).")
-    if not finish(REPO_ROOT):
+    if not finish(REPO_ROOT, names.module):
         return 1
     print(
         "Next: write AGENTS.md's Product section, then commit it with the rewrite "

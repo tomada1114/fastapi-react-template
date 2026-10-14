@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -160,20 +161,42 @@ def sample_app(
     return root
 
 
-@pytest.fixture
-def fake_uv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Put a `uv` on PATH that logs its arguments; returns the log file."""
+def _fake_finishing_program(tmp_path, monkeypatch, program):
+    """Log an isolated finishing tool's argv/cwd and allow exact failure injection."""
     bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    log = tmp_path / "uv.log"
-    script = bin_dir / "uv"
+    bin_dir.mkdir(exist_ok=True)
+    log = tmp_path / f"{program}.log"
+    script = bin_dir / program
+    prefix = f"FAKE_{program.upper()}"
     script.write_text(
-        f'#!/bin/sh\necho "$(pwd -P) $*" >> "{log}"\nexit "${{FAKE_UV_EXIT:-0}}"\n',
+        f'#!/bin/sh\necho "$(pwd -P) $*" >> "{log}"\n'
+        'if [ -n "${BOOTSTRAP_TEST_FINISHING_LOG:-}" ]; then\n'
+        f'  echo "{program} $(pwd -P) $*" >> "$BOOTSTRAP_TEST_FINISHING_LOG"\n'
+        "fi\n"
+        f'if [ "$*" = "${{{prefix}_FAIL_ARGS:-}}" ]; then exit 1; fi\n'
+        f'exit "${{{prefix}_EXIT:-0}}"\n',
         encoding="utf-8",
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     return log
+
+
+@pytest.fixture
+def fake_uv(tmp_path, monkeypatch):
+    return _fake_finishing_program(tmp_path, monkeypatch, "uv")
+
+
+@pytest.fixture
+def fake_pnpm(tmp_path, monkeypatch):
+    return _fake_finishing_program(tmp_path, monkeypatch, "pnpm")
+
+
+@pytest.fixture
+def fake_finishing(fake_uv, fake_pnpm, tmp_path, monkeypatch):
+    log = tmp_path / "all.log"
+    monkeypatch.setenv("BOOTSTRAP_TEST_FINISHING_LOG", str(log))
+    return fake_uv, fake_pnpm, log
 
 
 def _run(root: Path, **overrides: str | None) -> None:
@@ -196,6 +219,58 @@ def _text_files(root: Path) -> dict[str, str]:
         except UnicodeDecodeError:
             continue
     return texts
+
+
+@pytest.mark.parametrize("keep", [False, True], ids=["normal", "keep-bootstrap"])
+def test_bootstrap_leaves_generated_frontend_files_untouched(clone, keep):
+    extra = "frontend/src/api/generated/future/extra.ts"
+    path = clone / extra
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"// my_app My App my-app generated fixture\n")
+    _git(clone, "add", extra)
+    _git(clone, "commit", "-m", "generated fixture")
+    generated = ["frontend/openapi.json", "uv.lock"] + [
+        p.relative_to(clone).as_posix()
+        for p in (clone / "frontend/src/api/generated").rglob("*")
+        if p.is_file()
+    ]
+    before = {relative: (clone / relative).read_bytes() for relative in generated}
+
+    bootstrap.bootstrap(
+        clone,
+        bootstrap.Identity(**{**SAMPLE, "display_name": "Café Board"}),
+        keep_bootstrap=keep,
+    )
+
+    assert {
+        relative: (clone / relative).read_bytes() for relative in generated
+    } == before
+
+
+def test_main_ampersand_display_name_refused_without_writing(clone, capsys):
+    before = _snapshot(clone)
+
+    assert bootstrap.main([*SAMPLE_ARGV, "--display-name", "R&D Board"]) == 1
+
+    assert "invalid display name" in capsys.readouterr().err
+    assert _snapshot(clone) == before
+
+
+def test_bootstrap_workspace_package_names_include_optional_e2e(clone):
+    path = clone / "e2e/package.json"
+    path.parent.mkdir()
+    path.write_text('{"name":"my-app-e2e","private":true}\n')
+    _git(clone, "add", "e2e/package.json")
+    _git(clone, "commit", "-m", "workspace fixture")
+
+    _run(clone)
+
+    for relative, expected in (
+        ("package.json", "todo-api"),
+        ("frontend/package.json", "todo-api-frontend"),
+        ("e2e/package.json", "todo-api-e2e"),
+    ):
+        assert json.loads((clone / relative).read_text())["name"] == expected
 
 
 # --- REQ-001: every placeholder is replaced --------------------------------
@@ -256,7 +331,8 @@ def test_bootstrap_sample_values_leave_no_placeholder_anywhere(sample_app):
     hits = [
         f"{relative}: {match.group(0)}"
         for relative, text in _text_files(sample_app).items()
-        if relative not in {"uv.lock", bootstrap.ORIGIN_FILE}
+        if relative not in {*bootstrap.REGENERATED_FILES, bootstrap.ORIGIN_FILE}
+        and not relative.startswith(bootstrap.REGENERATED_PREFIXES)
         for pattern in (LEFTOVER_TOKENS, LEFTOVER_PHRASES)
         for match in pattern.finditer(text)
     ]
@@ -294,6 +370,7 @@ def test_bootstrap_display_name_reaches_its_sites(clone):
         encoding="utf-8"
     )
     assert '"name": "Todo Service"' in devcontainer
+    assert "<title>Todo Service</title>" in (clone / "frontend/index.html").read_text()
 
 
 def test_bootstrap_without_display_name_uses_the_slug(sample_app):
@@ -579,6 +656,23 @@ def test_main_dirty_tree_exits_one_with_an_error_line(clone, capsys):
         "mypy",
         "sync-labels",  # a scripts/*.py stem
         "bootstrap",
+        "backend",
+        "frontend",
+        "e2e",
+        "migrations",
+        "sqlalchemy",
+        "alembic",
+        "aiosqlite",
+        "asyncpg",
+        "anyio",
+        "react",
+        "react-dom",
+        "vite",
+        "typescript",
+        "vitest",
+        "jsdom",
+        "tailwindcss",
+        "msw",
     ],
 )
 def test_resolve_names_refuses_a_reserved_name(slug):
@@ -696,17 +790,95 @@ def test_bootstrap_template_history_records_the_commit(clone, monkeypatch):
     assert f"commit: {head}\n" in origin
 
 
-def test_main_runs_uv_lock_then_formats_in_the_app(clone, fake_uv, capsys):
+FINISHING_EXPECTED = [
+    ("uv", "lock"),
+    ("uv", "run --locked ruff check --fix --quiet ."),
+    ("uv", "run --locked ruff format --quiet ."),
+    ("pnpm", "install --frozen-lockfile"),
+    (
+        "uv",
+        "run --locked --directory backend python -m todo_api.api.contract --output ../frontend/openapi.json",
+    ),
+    ("pnpm", "--dir frontend exec node generate-api.ts"),
+    ("pnpm", "--dir frontend exec biome check --write ."),
+]
+
+
+def test_main_runs_uv_lock_then_formats_in_the_app(clone, fake_finishing, capsys):
+    fake_uv, fake_pnpm, log = fake_finishing
+
     assert bootstrap.main(SAMPLE_ARGV) == 0
 
     root = clone.resolve()
-    calls = fake_uv.read_text(encoding="utf-8").splitlines()
-    assert calls == [
-        f"{root} lock",
-        f"{root} run --locked ruff check --fix --quiet .",
-        f"{root} run --locked ruff format --quiet .",
+    assert log.read_text().splitlines() == [
+        f"{tool} {root} {args}" for tool, args in FINISHING_EXPECTED
     ]
+    assert len(fake_uv.read_text().splitlines()) == 4
+    assert len(fake_pnpm.read_text().splitlines()) == 3
     assert "Next: write AGENTS.md's Product section" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("index", range(len(FINISHING_EXPECTED)))
+def test_main_failed_finishing_command_stops_after_written_rename(
+    clone, fake_finishing, monkeypatch, capsys, index
+):
+    _, _, log = fake_finishing
+    tool, args = FINISHING_EXPECTED[index]
+    monkeypatch.setenv(f"FAKE_{tool.upper()}_FAIL_ARGS", args)
+
+    assert bootstrap.main(SAMPLE_ARGV) == 1
+
+    root = clone.resolve()
+    assert log.read_text().splitlines() == [
+        f"{program} {root} {argv}" for program, argv in FINISHING_EXPECTED[: index + 1]
+    ]
+    assert f"`{tool} {args}` failed (exit 1)" in capsys.readouterr().err
+    assert (clone / bootstrap.ORIGIN_FILE).is_file()
+
+
+def test_main_missing_pnpm_stops_after_written_rename(
+    clone, fake_uv, monkeypatch, capsys
+):
+    original = bootstrap.subprocess.run
+
+    def run(argv, **kwargs):
+        if argv[0] == "pnpm":
+            message = "pnpm unavailable"
+            raise FileNotFoundError(message)
+        return original(argv, **kwargs)
+
+    monkeypatch.setattr(bootstrap.subprocess, "run", run)
+
+    assert bootstrap.main(SAMPLE_ARGV) == 1
+
+    assert "could not run `pnpm install --frozen-lockfile`" in capsys.readouterr().err
+    assert len(fake_uv.read_text().splitlines()) == 3
+    assert (clone / bootstrap.ORIGIN_FILE).is_file()
+
+
+def test_main_formats_optional_e2e_with_its_own_biome_config(clone, fake_finishing):
+    _, _, log = fake_finishing
+    (clone / "e2e").mkdir()
+    (clone / "e2e/biome.json").write_text("{}\n")
+    _git(clone, "add", "e2e/biome.json")
+    _git(clone, "commit", "-m", "formatter fixture")
+
+    assert bootstrap.main(SAMPLE_ARGV) == 0
+
+    assert (
+        log.read_text().splitlines()[-1]
+        == f"pnpm {clone.resolve()} --dir e2e exec biome check --write ."
+    )
+
+
+def test_ampersand_remains_valid_in_author_and_description():
+    names = bootstrap.resolve_names(
+        bootstrap.Identity(
+            **{**SAMPLE, "author": "R&D Team", "description": "R&D tools"}
+        )
+    )
+    assert names.author == "R&D Team"
+    assert names.description == "R&D tools"
 
 
 def test_main_failed_uv_lock_exits_one_after_writing(
@@ -724,7 +896,7 @@ def test_main_failed_uv_lock_exits_one_after_writing(
 def test_finish_missing_command_reports_and_returns_false(clone, monkeypatch, capsys):
     monkeypatch.setattr(bootstrap, "FINISHING_COMMANDS", (("uv-is-not-here",),))
 
-    assert bootstrap.finish(clone) is False
+    assert bootstrap.finish(clone, "todo_api") is False
     assert "could not run `uv-is-not-here`" in capsys.readouterr().err
 
 
