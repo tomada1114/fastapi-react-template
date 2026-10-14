@@ -122,42 +122,59 @@ test: backend::test frontend::test
 # reloader and worker, pnpm, Vite); stdin is /dev/null because a background group
 # that reads the terminal is stopped. Bash 3.2 (macOS) has no `wait -n`, so the
 # loop polls with `kill -0`. When either exits, the other is stopped and its
-# status is this recipe's; INT, TERM, and HUP stop both and exit 128 + the signal.
+# status is this recipe's; INT, TERM, HUP, and QUIT stop both and exit 128 + the
+# signal, even one that arrives between the two launches.
 # Stopping sends SIGTERM, then SIGKILL to whatever still runs 10 s later.
 # Never ends on its own; an agent runs its own pair on free ports (running-the-app).
 # Human-run: serve the screen on http://localhost:5173 and the API behind it; runs until stopped
 dev:
     #!/usr/bin/env bash
     set -uo pipefail
+    api=
+    screen=
+    # A zombie still answers `kill -0`, and where PID 1 does not reap orphans
+    # (a container without an init) it never goes away; only a member that is
+    # not a zombie keeps a group running.
+    running() {
+      ps -A -o pgid= -o stat= | awk -v a="$api" -v s="$screen" '(($1 == a && a != "") || ($1 == s && s != "")) && $2 !~ /^Z/ { found = 1 } END { exit !found }'
+    }
+    # Stops whichever groups have been started so far, including one launched
+    # whose PID the next line has not recorded yet: `$!` already holds it.
+    stop() {
+      trap - INT TERM HUP QUIT EXIT
+      last=${!:-}
+      if [ -n "$last" ] && [ "$last" != "$api" ] && [ "$last" != "$screen" ]; then
+        if [ -z "$api" ]; then api=$last; else screen=$last; fi
+      fi
+      groups=
+      [ -n "$api" ] && groups="-$api"
+      [ -n "$screen" ] && groups="$groups -$screen"
+      [ -n "$groups" ] || return 0
+      # shellcheck disable=SC2086
+      kill -TERM -- $groups 2>/dev/null
+      tries=0
+      while [ "$tries" -lt 100 ] && running; do
+        sleep 0.1
+        tries=$((tries + 1))
+      done
+      # shellcheck disable=SC2086
+      kill -KILL -- $groups 2>/dev/null
+      # Only now: a leader that outlives SIGTERM would block `wait` forever.
+      wait $api $screen 2>/dev/null
+      return 0
+    }
+    # Installed before the first launch, so a signal at any point stops what runs.
+    trap 'stop; exit 130' INT
+    trap 'stop; exit 143' TERM
+    trap 'stop; exit 129' HUP
+    trap 'stop; exit 131' QUIT
+    trap stop EXIT
     set -m
     {{ quote(just_executable()) }} backend dev </dev/null &
     api=$!
     {{ quote(just_executable()) }} frontend dev </dev/null &
     screen=$!
     set +m
-    # A zombie still answers `kill -0`, and where PID 1 does not reap orphans
-    # (a container without an init) it never goes away; only a member that is
-    # not a zombie keeps a group running.
-    running() {
-      ps -A -o pgid= -o stat= | awk -v a="$api" -v s="$screen" '($1 == a || $1 == s) && $2 !~ /^Z/ { found = 1 } END { exit !found }'
-    }
-    stop() {
-      trap - INT TERM HUP EXIT
-      kill -TERM -- "-$api" "-$screen" 2>/dev/null
-      tries=0
-      while [ "$tries" -lt 100 ] && running; do
-        sleep 0.1
-        tries=$((tries + 1))
-      done
-      kill -KILL -- "-$api" "-$screen" 2>/dev/null
-      # Only now: a leader that outlives SIGTERM would block `wait` forever.
-      wait "$api" "$screen" 2>/dev/null
-      return 0
-    }
-    trap 'stop; exit 130' INT
-    trap 'stop; exit 143' TERM
-    trap 'stop; exit 129' HUP
-    trap stop EXIT
     while kill -0 "$api" 2>/dev/null && kill -0 "$screen" 2>/dev/null; do
       sleep 0.5
     done
