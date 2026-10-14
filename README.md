@@ -17,15 +17,44 @@ A short description of what this application does.
 
 ## Quickstart
 
-```bash
-just install   # the Python and JavaScript dependencies, and the git hooks
-just dev       # migrate backend/var/dev.db, then serve the screen on http://localhost:5173 and the API on http://127.0.0.1:8000, reloading on source changes (Ctrl-C stops both)
-# without Just, from backend/:
-#   mkdir -p var
-#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked alembic upgrade head
-#   MY_APP_DATABASE_URL=sqlite+aiosqlite:///./var/dev.db uv run --locked uvicorn my_app.api.app:create_app --factory --reload --no-access-log
-# and, in a second terminal, from frontend/:
-#   pnpm exec vite
+Prerequisites (CONTRIBUTING.md's "Prerequisites" has the links and the details):
+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.11.8 or later; it
+  installs Python 3.14 when none is found
+- [Just](https://just.systems/man/en/installation.html) 1.42.3 or later
+- [Node.js 24](https://nodejs.org/en/download) (`.node-version`)
+- [pnpm](https://pnpm.io/installation), through `corepack enable` (Corepack ships
+  with Node.js 24); `package.json` pins the version
+- no Docker
+
+Then:
+
+1. Copy the template ("Use this template" on GitHub) and bootstrap the copy with
+   the `starting-an-app` skill (`.agents/skills/starting-an-app/SKILL.md`).
+2. Install the dependencies and the git hooks, then start the app:
+
+   ```bash
+   just install   # the Python and JavaScript dependencies, and the git hooks
+   just dev       # migrate backend/var/dev.db, then serve the screen and the API, reloading on source changes (Ctrl-C stops both)
+   ```
+
+3. Open <http://localhost:5173>: the to-do screen. The API answers on
+   <http://127.0.0.1:8000>, with `/healthz` and the interactive docs at `/docs`.
+
+`just dev` is the developer's own server and runs until stopped; an agent runs
+its own pair on free ports instead (the `running-the-app` skill). Without Just,
+CONTRIBUTING.md's "Without Just" note says where each recipe's commands are.
+
+The request flow under `just dev`:
+
+```text
+browser
+  -> Vite dev server, http://localhost:5173 (VITE_PORT); proxies /api and /healthz
+  -> FastAPI router, http://127.0.0.1:8000 (MY_APP_API_PORT)
+  -> service in backend/src/my_app/core/
+  -> repository port
+  -> SQL adapter (SQLAlchemy asyncio Core)
+  -> SQLite file, backend/var/dev.db
 ```
 
 With the server running, from another terminal:
@@ -41,10 +70,11 @@ The interactive API docs are at <http://127.0.0.1:8000/docs>.
 
 | HTTP | Result |
 |---|---|
+| `GET /healthz` | 200 `{"status": "ok"}` |
 | `POST /api/todos` `{"title": "..."}` | 201 with the new to-do, `{"id": "<uuid>", "title": "...", "completed": false, "created_at": "..."}` |
-| `GET /api/todos?cursor=<cursor>&limit=<n>` | one page, oldest first: `{"items": [<to-do>, ...], "next_cursor": "<cursor>" \| null}` |
-| `POST /api/todos/{id}/complete` | the completed to-do |
-| `DELETE /api/todos/{id}` | 204 |
+| `GET /api/todos?cursor=<cursor>&limit=<n>` | 200 with one page, oldest first: `{"items": [<to-do>, ...], "next_cursor": "<cursor>" \| null}` |
+| `POST /api/todos/{id}/complete` | 200 with the completed to-do; 404 `todo_not_found` when unknown |
+| `DELETE /api/todos/{id}` | 204; 404 `todo_not_found` when unknown |
 
 A to-do's `id` is a UUID (version 7) the application generates, so ids sort in
 creation order. `GET /api/todos` returns at most `limit` to-dos (default 50, at most
@@ -98,6 +128,16 @@ unprefixed keys are ignored.
 | `MY_APP_CORS_ORIGINS` | empty (CORS disabled) | Comma-separated HTTP(S) origins, e.g. `http://localhost:5173,https://app.example.com`. Spaces and empty items are removed, hosts use lowercase/punycode, default ports are removed, and duplicates kept once. Paths, queries, fragments, user info, invalid ports, trailing slashes, wildcards, and origins without an HTTP(S) scheme are rejected at startup. JSON requests from listed origins are allowed without credentials. |
 | `MY_APP_DATABASE_URL` | unset (`just dev`: `sqlite+aiosqlite:///./var/dev.db`) | Unset (or empty) keeps to-dos in memory, so they vanish when the process exits. `sqlite+aiosqlite:///<path>` stores them in a SQLite file at `<path>`, relative to the working directory (an absolute path adds a fourth slash: `sqlite+aiosqlite:////var/lib/todos.db`). `postgresql+asyncpg://<user>:<password>@<host>/<database>` names a PostgreSQL database; include the optional `postgres` extra in workspace commands (`uv run --locked --directory backend --extra postgres ...`) or install the built app with that extra. Anything else is rejected at startup, naming the fix: a URL without the async driver (`sqlite:` or `postgresql:` alone), an in-memory SQLite target (including `:memory:` with options and native URI memory mode), an empty target, and a directory target ending in `/`, even when query options follow. File options are preserved; migrations and the app use separate engine/process lifetimes, so in-memory SQL cannot retain the separately migrated schema. |
 
+The development servers read a second set of variables from the process
+environment. They are not `Settings` fields, so they never go in `backend/.env`,
+which rejects unknown `MY_APP_` keys at startup:
+
+| Variable | Default | Read by | Effect |
+|---|---|---|---|
+| `MY_APP_API_PORT` | `8000` | `just dev`, `just backend dev`, and the Vite proxy | The API's port, and the port Vite proxies `/api` and `/healthz` to. |
+| `VITE_PORT` | `5173` | `just dev`, `just frontend dev` | The screen's port; Vite fails rather than moving to another port when it is taken. |
+| `E2E_API_PORT`, `E2E_WEB_PORT` | a free port each | `just e2e` | The browser test's own API and screen ports; never 8000 or 5173. |
+
 The database recipes automatically select the `postgres` extra for PostgreSQL
 URLs and keep the default environment for SQLite.
 
@@ -133,49 +173,43 @@ A direct API factory or uvicorn run with no resolved URL uses the in-memory stor
 
 ## Architecture
 
-```
-backend/src/my_app/
-├── core/            # Domain model, ports (typing.Protocol), services, errors — no frameworks
-├── adapters/        # In-memory and SQL repositories (SQLAlchemy asyncio Core; SQLite or PostgreSQL)
-├── api/             # FastAPI app factory, routers, request/response models
-├── settings.py      # MY_APP_* environment variables and backend/.env
-└── composition.py   # The one place adapters are wired into services
+```text
+backend/    # The FastAPI app (uv workspace member): core, adapters, API, settings, Alembic migrations
+frontend/   # The React app (Vite, TypeScript; pnpm workspace member) and its typed API client
+e2e/        # The Playwright test from the screen to the database (just e2e)
 ```
 
-The schema lives in `backend/src/my_app/adapters/sql/tables.py` and its history in
-Alembic revisions under `backend/migrations/`; the `persisting-data` skill covers
-changing it.
-
-The API is thin: it gets its services from `composition.build_container`
-and only translates between HTTP and the core. The core imports neither the
-API nor any framework or driver; lint (`ruff` `TID251`) and a test enforce
-that, so a new entry point is added beside the API without touching the core.
-The `building-api-routes` skill covers the API's routes and their tests.
+`backend/AGENTS.md` holds the backend's architecture: the core imports neither
+the API nor any framework or driver, the API only translates between HTTP and
+the core, and `composition.py` is the one place adapters are wired in.
+`frontend/AGENTS.md` holds the frontend's toolchain. The schema lives in
+`backend/src/my_app/adapters/sql/tables.py` and its history in Alembic revisions
+under `backend/migrations/` (the `persisting-data` skill).
 
 ## Development
 
 See [CONTRIBUTING.md](https://github.com/your-username/fastapi-react-template/blob/main/CONTRIBUTING.md)
-for full setup instructions. Prerequisites: Python 3.14+ with
-[uv](https://docs.astral.sh/uv/), [Node.js 24](https://nodejs.org/)
-(`.node-version`), [pnpm](https://pnpm.io/) 11 through `corepack enable`, and
-optionally [Just](https://just.systems/).
+for the prerequisites, the workflow, and the pull request process; AGENTS.md's
+Quick Reference indexes every recipe.
 
 ```bash
 just install   # dependencies + git hooks, then checks the hooks are in place
-just check
 just dev       # migrate backend/var/dev.db, then the screen on http://localhost:5173 and the API on http://127.0.0.1:8000
+just verify    # the non-mutating gate a pull request must pass
 ```
+
+Each area has its own recipes: `just backend <recipe>` (for example
+`just backend test`, `just backend db-upgrade`) and `just frontend <recipe>`
+(for example `just frontend test`); `just contract` regenerates the typed API
+client from the backend's OpenAPI contract, and `just e2e` runs the browser test.
 
 `just dev` runs `just backend dev` (uvicorn with auto-reload on
 http://127.0.0.1:8000) and `just frontend dev` (Vite on http://localhost:5173)
 together in one terminal. Open http://localhost:5173: Vite proxies `/api` and
 `/healthz` to the API, so the browser sees one origin and needs no CORS.
 Ctrl-C stops both; when either one exits, `just dev` stops the other and exits
-with that one's status. Two process variables move the ports when the
-defaults are taken: `MY_APP_API_PORT` (default 8000) moves the API and the
-port Vite proxies to, and `VITE_PORT` (default 5173) moves the screen, which
-fails rather than moving to another port when its own is taken. Neither is a
-`Settings` field, so neither belongs in `backend/.env`.
+with that one's status. `MY_APP_API_PORT` and `VITE_PORT` (the development-server
+table under "Configuration") move the ports when the defaults are taken:
 
 ```bash
 MY_APP_API_PORT=8001 VITE_PORT=5174 just dev
