@@ -85,8 +85,11 @@ without needing Docker for its first run or passing database objects into its co
 The ports preserve six rules: application-generated UUIDv7 ids; one method per
 access pattern; opaque cursor pages rather than offsets; domain values rather than
 ORM/row/query types across the boundary; one method for an atomic multi-item write;
-and timezone-aware UTC timestamps. These keep a later key-value adapter possible.
-The DynamoDB recipe is deferred in #38; it is not shipped here.
+and timezone-aware timestamps. D4 specifies UTC: the default clock returns UTC and
+SQL storage normalizes to it. The current Clock/domain contract accepts any aware
+offset, however, and the in-memory adapter preserves it; UTC is not an enforced
+invariant across every port implementation. These rules keep a later key-value
+adapter possible. The DynamoDB recipe is deferred in #38; it is not shipped here.
 
 Migrations run explicitly through `just backend db-upgrade` (also before the dev
 server), rather than at app startup or through `create_all`: missing revisions
