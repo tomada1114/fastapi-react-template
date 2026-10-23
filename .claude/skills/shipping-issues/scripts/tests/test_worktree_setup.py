@@ -25,6 +25,7 @@ import time
 import unittest
 from contextlib import suppress
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -1328,23 +1329,45 @@ class WorktreeSetupTest(unittest.TestCase):
                         exited[index], name + " is still running or never ready"
                     )
             finally:
-                # This ID is published before fork by our exec'ed fixture only.
-                # The provisioner reaps its direct child; the test cannot reap
-                # the orphaned descendant, so FIFO EOF supplies its exit proof.
-                pid_file = folder / "wrapper.pid"
-                if pid_file.is_file():
-                    with suppress(ProcessLookupError):
-                        os.killpg(int(pid_file.read_text()), signal.SIGKILL)
-                try:
-                    for index, fd in enumerate(readers):
-                        if not exited[index]:
-                            self.assertTrue(
-                                self._ready_writer_has_exited(fd, require_ready=False),
-                                "fixture cleanup left a writer running",
-                            )
-                finally:
-                    for fd in readers:
-                        os.close(fd)
+                self._cleanup_timeout_fixture(folder, readers, exited)
+
+    def _cleanup_timeout_fixture(self, folder, readers, exited):
+        # This ID is published before fork by our exec'ed fixture only.
+        # The provisioner reaps its direct child; the test cannot reap
+        # the orphaned descendant, so FIFO EOF supplies its exit proof.
+        try:
+            pid_file = folder / "wrapper.pid"
+            if pid_file.is_file() and not all(exited):
+                with suppress(ProcessLookupError):
+                    os.killpg(int(pid_file.read_text()), signal.SIGKILL)
+            for index, fd in enumerate(readers):
+                if not exited[index]:
+                    self.assertTrue(
+                        self._ready_writer_has_exited(fd, require_ready=False),
+                        "fixture cleanup left a writer running",
+                    )
+        finally:
+            for fd in readers:
+                os.close(fd)
+
+    def test_cleanup_does_not_signal_after_exit_proofs(self):
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td)
+            (folder / "wrapper.pid").write_text("31415926", encoding="utf-8")
+            readers = []
+            for _ in range(2):
+                reader, writer = os.pipe()
+                readers.append(reader)
+                os.close(writer)
+            signals = []
+            # Intercept signalling entirely: no real process group is used.
+            with patch.object(os, "killpg", lambda *args: signals.append(args)):
+                self._cleanup_timeout_fixture(folder, readers, [True, True])
+
+            self.assertEqual(signals, [])
+            for fd in readers:
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
 
     def test_the_timeout_kills_the_whole_process_tree(self):
         self._check_timeout_process_group(resistant=False)
