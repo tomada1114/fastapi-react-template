@@ -225,10 +225,10 @@ is_registered_worktree() {
 # own lockfile; another JavaScript lockfile selects nothing. A lockfile is
 # looked for in the tree the worktree holds — never the main checkout, which
 # may sit on another commit than --base (an un-pulled main, a feature branch).
-# A real run reads the created worktree; a dry run, which creates nothing, reads
-# the ref `git worktree add` would check out (checkout_ref, set per spec).
-has_lockfile() { # $1=file name at the tree's root
-  if [[ $DRY -eq 1 ]]; then
+# A new dry run reads the ref it would check out. A resumed dry run reads the
+# existing checkout, including dirty lockfiles, just as the real resumed run does.
+has_lockfile() { # $1=file name at the tree's root; $2=reused checkout (0|1)
+  if [[ $DRY -eq 1 && $2 -eq 0 ]]; then
     git -C "$repo_root" cat-file -e "$checkout_ref:$1" 2>/dev/null
   else
     [[ -f "$worktree_path/$1" ]]
@@ -239,14 +239,6 @@ has_lockfile() { # $1=file name at the tree's root
 # themselves live in the shared hooks directory, so they are checked, not
 # installed. pre-commit is always expected; pre-merge-commit too when the
 # config's default_install_hook_types asks for it (merge commits run only that).
-hooks_expected=0
-expected_hooks=(pre-commit)
-if [[ -f "$repo_root/.pre-commit-config.yaml" ]]; then
-  hooks_expected=1
-  if grep -Eq '^default_install_hook_types:.*pre-merge-commit' "$repo_root/.pre-commit-config.yaml"; then
-    expected_hooks+=(pre-merge-commit)
-  fi
-fi
 hooks_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-path hooks)"
 
 # Runs "$@" with cwd = the worktree. On a non-zero exit (including "command
@@ -287,7 +279,7 @@ do_install() {
 # PROVISION_BASELINE (PASS|FAIL|NONE) for the caller to read.
 provision_one() {
   local p_issue="$1" p_branch="$2" p_base="$3" p_root="$4" p_verify="$5" p_log="$6"
-  local warn=0
+  local warn=0 reused=0 checked_out_branch
   worktree_path="$p_root/$p_issue"
   PROVISION_VERDICT=""
   # Exported so a caller that sources this file can read it; shellcheck otherwise
@@ -297,14 +289,37 @@ provision_one() {
   emit repo_root "$repo_root"
   emit worktree "$worktree_path"
 
-  # --- 2. idempotent re-entry ---------------------------------------------
+  # The primary checkout is registered too, but must never be provisioned.
+  if [[ "$(resolve_path "$worktree_path")" == "$(resolve_path "$repo_root")" ]]; then
+    emit result "BLOCKED"
+    emit path "primary checkout cannot be provisioned: $worktree_path"
+    PROVISION_VERDICT="BLOCKED"
+    echo "verdict: BLOCKED"
+    return 1
+  fi
+
+  # The validated ref also drives lockfile detection in a resumed dry run.
+  if branch_exists "$p_branch"; then
+    checkout_ref="$p_branch"
+  else
+    checkout_ref="$p_base"
+  fi
+
+  # --- 2. validate an existing checkout before common provisioning --------
   if [[ -e "$worktree_path" ]]; then
     if is_registered_worktree "$worktree_path"; then
+      if ! checked_out_branch=$(git -C "$worktree_path" symbolic-ref --quiet HEAD) ||
+          [[ "$checked_out_branch" != "refs/heads/$p_branch" ]]; then
+        emit result "BLOCKED"
+        emit path "$worktree_path"
+        emit branch "expected refs/heads/$p_branch; found ${checked_out_branch:-detached or unreadable}"
+        PROVISION_VERDICT="BLOCKED"
+        echo "verdict: BLOCKED"
+        return 1
+      fi
+      reused=1
       emit result "EXISTS"
       emit path "$worktree_path"
-      PROVISION_VERDICT="READY"
-      echo "verdict: READY"
-      return 0
     else
       emit result "BLOCKED"
       emit path "$worktree_path"
@@ -314,49 +329,44 @@ provision_one() {
     fi
   fi
 
-  # --- 3. create the worktree ---------------------------------------------
-  # The ref the worktree checks out: an existing branch as it stands, else a
-  # new branch at the base.
-  if branch_exists "$p_branch"; then
-    checkout_ref="$p_branch"
-  else
-    checkout_ref="$p_base"
-  fi
-  if [[ $DRY -eq 1 ]]; then
-    echo "DRY: mkdir -p $p_root"
-    if branch_exists "$p_branch"; then
-      echo "DRY: git -C $repo_root worktree add $worktree_path $p_branch"
+  # --- 3. create only when there is no eligible checkout to reuse ---------
+  if [[ $reused -eq 0 ]]; then
+    if [[ $DRY -eq 1 ]]; then
+      echo "DRY: mkdir -p $p_root"
+      if branch_exists "$p_branch"; then
+        echo "DRY: git -C $repo_root worktree add $worktree_path $p_branch"
+      else
+        echo "DRY: git -C $repo_root worktree add $worktree_path -b $p_branch $p_base"
+      fi
     else
-      echo "DRY: git -C $repo_root worktree add $worktree_path -b $p_branch $p_base"
-    fi
-  else
-    mkdir -p "$p_root"
-    local wt_log wt_rc
-    wt_log="$(mktemp)"
-    if branch_exists "$p_branch"; then
-      git -C "$repo_root" worktree add "$worktree_path" "$p_branch" >"$wt_log" 2>&1
-    else
-      git -C "$repo_root" worktree add "$worktree_path" -b "$p_branch" "$p_base" >"$wt_log" 2>&1
-    fi
-    wt_rc=$?
-    if [[ $wt_rc -ne 0 ]]; then
-      emit result "BLOCKED"
-      sed 's/^/  /' "$wt_log"
+      mkdir -p "$p_root"
+      local wt_log wt_rc
+      wt_log="$(mktemp)"
+      if branch_exists "$p_branch"; then
+        git -C "$repo_root" worktree add "$worktree_path" "$p_branch" >"$wt_log" 2>&1
+      else
+        git -C "$repo_root" worktree add "$worktree_path" -b "$p_branch" "$p_base" >"$wt_log" 2>&1
+      fi
+      wt_rc=$?
+      if [[ $wt_rc -ne 0 ]]; then
+        emit result "BLOCKED"
+        sed 's/^/  /' "$wt_log"
+        rm -f "$wt_log"
+        PROVISION_VERDICT="BLOCKED"
+        echo "verdict: BLOCKED"
+        return 1
+      fi
       rm -f "$wt_log"
-      PROVISION_VERDICT="BLOCKED"
-      echo "verdict: BLOCKED"
-      return 1
+      emit result "CREATED"
     fi
-    rm -f "$wt_log"
-    emit result "CREATED"
   fi
 
   # --- 4. install dependencies --------------------------------------------
   # In order, uv then pnpm; the first failure blocks, so a failed uv sync
   # never goes on to the pnpm install.
   local deps_failed=0 has_uv=0 has_pnpm=0
-  has_lockfile uv.lock && has_uv=1
-  has_lockfile pnpm-lock.yaml && has_pnpm=1
+  has_lockfile uv.lock "$reused" && has_uv=1
+  has_lockfile pnpm-lock.yaml "$reused" && has_pnpm=1
   if [[ $has_uv -eq 1 ]]; then
     do_install uv sync --all-groups --locked || deps_failed=1
   fi
@@ -377,7 +387,27 @@ provision_one() {
   fi
 
   # --- 5. shared pre-commit hook (checked, never installed here) ----------
+  local hooks_expected=0 hook_text=""
+  local hook_config="$worktree_path/.pre-commit-config.yaml"
+  local expected_hooks=(pre-commit)
+  if [[ $DRY -eq 1 && $reused -eq 0 ]]; then
+    # There is no checkout yet; inspect the configuration it would contain.
+    if hook_text=$(git -C "$repo_root" show "$checkout_ref:.pre-commit-config.yaml" 2>/dev/null); then
+      hooks_expected=1
+    fi
+  elif [[ -f "$hook_config" ]]; then
+    if ! hook_text=$(<"$hook_config"); then
+      emit hooks "FAILED to read checkout configuration: $hook_config"
+      PROVISION_VERDICT="BLOCKED"
+      echo "verdict: BLOCKED"
+      return 1
+    fi
+    hooks_expected=1
+  fi
   if [[ $hooks_expected -eq 1 ]]; then
+    if grep -Eq '^default_install_hook_types:.*pre-merge-commit' <<< "$hook_text"; then
+      expected_hooks+=(pre-merge-commit)
+    fi
     local hook missing_hooks=()
     for hook in "${expected_hooks[@]}"; do
       if ! { [[ -f "$hooks_dir/$hook" ]] && grep -q "pre-commit" "$hooks_dir/$hook" 2>/dev/null; }; then
