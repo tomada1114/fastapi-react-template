@@ -258,10 +258,17 @@ def test_main_ampersand_display_name_refused_without_writing(clone, capsys):
     assert _snapshot(clone) == before
 
 
-def test_bootstrap_long_package_keeps_all_skill_descriptions_within_limit(clone):
-    identity = bootstrap.Identity(**{**SAMPLE, "slug": "a" * 30})
+@pytest.mark.parametrize(
+    "package_length",
+    [30, bootstrap.MAX_SLUG_LENGTH],
+    ids=["30-characters", "maximum-length"],
+)
+def test_bootstrap_long_package_keeps_all_skill_descriptions_within_limit(
+    clone, package_length
+):
+    identity = bootstrap.Identity(**{**SAMPLE, "slug": "a" * package_length})
     names = bootstrap.resolve_names(identity)
-    assert len(names.module) == 30
+    assert len(names.module) == package_length
 
     bootstrap.bootstrap(clone, identity)
 
