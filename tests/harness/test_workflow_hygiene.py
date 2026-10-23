@@ -53,7 +53,9 @@ from tests.harness._yaml import (
     UnreadableYamlError,
     as_mapping,
     as_str,
+    load_yaml,
     scalar,
+    scalar_list,
     source_comment,
 )
 
@@ -270,6 +272,35 @@ def hygiene_findings(root: Path) -> list[str]:
 def test_workflows_on_repository_are_hygienic() -> None:
     assert workflow_files(REPO_ROOT)
     assert hygiene_findings(REPO_ROOT) == []
+
+
+def test_codeql_paths_cover_authored_code_roots() -> None:
+    path = REPO_ROOT / WORKFLOWS_DIR / "codeql.yml"
+    analyze = jobs(read_workflow(path), path)["analyze"]
+    initializers = [
+        step
+        for step in steps(analyze, path)
+        if (entry_value(step.get("uses")) or "").startswith(
+            "github/codeql-action/init@"
+        )
+    ]
+    assert len(initializers) == 1
+    options = as_mapping(initializers[0].get("with"), f"{path}: CodeQL init.with")
+    text = as_str(options.get("config"), f"{path}: CodeQL init.config")
+    config = as_mapping(load_yaml(path, text=text), f"{path}: CodeQL config")
+    paths = set(scalar_list(config.get("paths"), path, where="CodeQL config.paths"))
+
+    # Explicit authored roots include e2e Python/TypeScript and omit mirrors.
+    assert paths == {
+        "backend",
+        "frontend",
+        "e2e",
+        "scripts",
+        "tests",
+        ".agents/skills",
+        ".github",
+    }
+    assert not config.get("paths-ignore")
 
 
 # --- fixtures ---

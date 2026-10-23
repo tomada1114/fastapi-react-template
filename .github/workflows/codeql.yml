@@ -50,6 +50,7 @@ jobs:
             paths:
               - backend
               - frontend
+              - e2e
               - scripts
               - tests
               - .agents/skills
