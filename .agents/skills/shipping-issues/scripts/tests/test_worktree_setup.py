@@ -1293,11 +1293,21 @@ class WorktreeSetupTest(unittest.TestCase):
 
 
 class ResumedProvisioningTest(unittest.TestCase):
-    def _fixture(self, td, issue, *, create=True, uv_exit=0, hook=None):
+    def _fixture(
+        self,
+        td,
+        issue,
+        *,
+        create=True,
+        uv_exit=0,
+        hook=None,
+        lockfiles=("uv.lock", "pnpm-lock.yaml"),
+    ):
         repo = td / "repo"
         repo.mkdir()
         make_repo(repo)
-        commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+        if lockfiles:
+            commit_files(repo, *lockfiles)
         if hook is not None:
             (repo / ".pre-commit-config.yaml").write_text(
                 "repos: []\n", encoding="utf-8"
@@ -1319,6 +1329,58 @@ class ResumedProvisioningTest(unittest.TestCase):
         write_stub(bin_dir, "uv", record, exit_code=uv_exit, append=True)
         write_stub(bin_dir, "pnpm", record, append=True)
         return repo, root, wt, bin_dir, record, td / "baseline.log"
+
+    def test_reentry_dry_run_uses_uncommitted_lockfile_additions(self):
+        cases = (
+            ("uv.lock", "uv sync --all-groups --locked"),
+            ("pnpm-lock.yaml", "pnpm install --frozen-lockfile"),
+        )
+        for filename, command in cases:
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as td:
+                repo, root, wt, bin_dir, record, _log = self._fixture(
+                    Path(td).resolve(), "56", lockfiles=()
+                )
+                (wt / filename).write_text("uncommitted lockfile\n", encoding="utf-8")
+                args = issue_args("56", root)
+
+                preview = run_script(
+                    [*args, "--dry-run"], repo, extra_path=str(bin_dir)
+                )
+
+                self.assertEqual(preview.returncode, 0, preview.stderr)
+                self.assertIn(command, preview.stdout)
+                self.assertFalse(record.exists())
+                actual = run_script(args, repo, extra_path=str(bin_dir))
+                self.assertEqual(actual.returncode, 0, actual.stderr)
+                self.assertEqual(record.read_text().splitlines()[::2], [command])
+                self.assertEqual((wt / filename).read_text(), "uncommitted lockfile\n")
+
+    def test_reentry_dry_run_uses_uncommitted_lockfile_deletions(self):
+        cases = (
+            ("uv.lock", "uv sync --all-groups --locked"),
+            ("pnpm-lock.yaml", "pnpm install --frozen-lockfile"),
+        )
+        for filename, command in cases:
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as td:
+                fixture_root = Path(td).resolve()
+                repo, root, wt, bin_dir, record, _log = self._fixture(
+                    fixture_root, "57", lockfiles=(filename,)
+                )
+                saved = fixture_root / "saved-lockfile"
+                (wt / filename).rename(saved)
+                args = issue_args("57", root)
+
+                preview = run_script(
+                    [*args, "--dry-run"], repo, extra_path=str(bin_dir)
+                )
+
+                self.assertEqual(preview.returncode, 0, preview.stderr)
+                self.assertNotIn(command, preview.stdout)
+                actual = run_script(args, repo, extra_path=str(bin_dir))
+                self.assertEqual(actual.returncode, 0, actual.stderr)
+                self.assertFalse(record.exists())
+                self.assertTrue(saved.is_file())
+                self.assertFalse((wt / filename).exists())
 
     def test_reentry_after_failed_install_retries_dependencies(self):
         with tempfile.TemporaryDirectory() as td:
