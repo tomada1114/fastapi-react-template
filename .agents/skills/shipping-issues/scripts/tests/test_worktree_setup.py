@@ -1292,5 +1292,194 @@ class WorktreeSetupTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
 
 
+class ResumedProvisioningTest(unittest.TestCase):
+    def _fixture(self, td, issue, *, create=True, uv_exit=0, hook=None):
+        repo = td / "repo"
+        repo.mkdir()
+        make_repo(repo)
+        commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+        if hook is not None:
+            (repo / ".pre-commit-config.yaml").write_text(
+                "repos: []\n", encoding="utf-8"
+            )
+            git(repo, "add", ".pre-commit-config.yaml")
+            git(repo, "commit", "-qm", "expect hooks")
+        if hook:
+            path = repo / ".git" / "hooks" / "pre-commit"
+            path.write_text("#!/bin/sh\n# pre-commit\nexit 0\n", encoding="utf-8")
+            path.chmod(0o755)
+        root = td / "worktrees"
+        wt = root / issue
+        if create:
+            root.mkdir()
+            git(repo, "worktree", "add", "-q", "-b", "feat/" + issue, str(wt))
+        bin_dir = td / "bin"
+        bin_dir.mkdir()
+        record = td / "installs"
+        write_stub(bin_dir, "uv", record, exit_code=uv_exit, append=True)
+        write_stub(bin_dir, "pnpm", record, append=True)
+        return repo, root, wt, bin_dir, record, td / "baseline.log"
+
+    def test_reentry_after_failed_install_retries_dependencies(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td).resolve()
+            repo, root, wt, bin_dir, record, log = self._fixture(
+                td, "51", create=False, uv_exit=7
+            )
+            args = [
+                *issue_args("51", root),
+                "--verify",
+                "printf verified",
+                "--log",
+                str(log),
+            ]
+            first = run_script(args, repo, extra_path=str(bin_dir))
+            self.assertEqual(first.returncode, 1, first.stdout)
+            self.assertTrue(wt.is_dir())
+            self.assertFalse(log.exists())
+            (wt / "notes.txt").write_text("preserve me", encoding="utf-8")
+            write_stub(bin_dir, "uv", record, append=True)
+
+            resumed = run_script(args, repo, extra_path=str(bin_dir))
+
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            self.assertIn("result: EXISTS", resumed.stdout)
+            self.assertIn("baseline: PASS", resumed.stdout)
+            self.assertEqual(log.read_text(), "verified")
+            self.assertEqual((wt / "notes.txt").read_text(), "preserve me")
+            self.assertEqual(
+                record.read_text().splitlines()[::2],
+                [
+                    "uv sync --all-groups --locked",
+                    "uv sync --all-groups --locked",
+                    "pnpm install --frozen-lockfile",
+                ],
+            )
+
+    def test_reentry_wrong_branch_blocks_without_mutation(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo, root, wt, bin_dir, record, log = self._fixture(
+                Path(td).resolve(), "52"
+            )
+            (wt / "notes.txt").write_text("preserve me", encoding="utf-8")
+            before = git(repo, "branch", "--format=%(refname)").stdout
+            args = issue_args("52", root)
+            args[args.index("--branch") + 1] = "feat/wrong"
+
+            resumed = run_script(
+                [*args, "--verify", "printf verified", "--log", str(log)],
+                repo,
+                extra_path=str(bin_dir),
+            )
+
+            self.assertEqual(resumed.returncode, 1, resumed.stdout)
+            self.assertIn("verdict: BLOCKED", resumed.stdout)
+            self.assertEqual(
+                git(wt, "branch", "--show-current").stdout.strip(), "feat/52"
+            )
+            self.assertEqual(git(repo, "branch", "--format=%(refname)").stdout, before)
+            self.assertEqual((wt / "notes.txt").read_text(), "preserve me")
+            self.assertFalse(record.exists())
+            self.assertFalse(log.exists())
+
+    def test_reentry_detached_checkout_blocks(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo, root, wt, bin_dir, record, log = self._fixture(
+                Path(td).resolve(), "55"
+            )
+            git(wt, "checkout", "--quiet", "--detach")
+            head = git(wt, "rev-parse", "HEAD").stdout
+
+            resumed = run_script(issue_args("55", root), repo, extra_path=str(bin_dir))
+
+            self.assertEqual(resumed.returncode, 1, resumed.stdout)
+            self.assertIn("verdict: BLOCKED", resumed.stdout)
+            self.assertEqual(git(wt, "rev-parse", "HEAD").stdout, head)
+            self.assertEqual(git(wt, "branch", "--show-current").stdout, "")
+            self.assertFalse(record.exists())
+            self.assertFalse(log.exists())
+
+    def test_reentry_dry_run_plans_common_provisioning_without_writes(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo, root, wt, bin_dir, record, log = self._fixture(
+                Path(td).resolve(), "53"
+            )
+            (wt / "notes.txt").write_text("preserve me", encoding="utf-8")
+            before = git(repo, "worktree", "list", "--porcelain").stdout
+
+            resumed = run_script(
+                [
+                    *issue_args("53", root),
+                    "--dry-run",
+                    "--verify",
+                    "printf verified",
+                    "--log",
+                    str(log),
+                ],
+                repo,
+                extra_path=str(bin_dir),
+            )
+
+            self.assertEqual(resumed.returncode, 0, resumed.stderr)
+            self.assertIn("result: EXISTS", resumed.stdout)
+            self.assertIn("uv sync --all-groups --locked", resumed.stdout)
+            self.assertIn("pnpm install --frozen-lockfile", resumed.stdout)
+            self.assertIn("printf verified", resumed.stdout)
+            self.assertNotIn("worktree add", resumed.stdout)
+            self.assertEqual(
+                git(repo, "worktree", "list", "--porcelain").stdout, before
+            )
+            self.assertEqual((wt / "notes.txt").read_text(), "preserve me")
+            self.assertFalse(record.exists())
+            self.assertFalse(log.exists())
+
+    def test_reentry_rechecks_install_hooks_and_baseline_verdicts(self):
+        cases = (
+            (True, 0, 0, 0, "READY", "baseline: PASS", True),
+            (False, 0, 0, 0, "READY_WITH_WARNINGS", "hooks: MISSING", True),
+            (True, 3, 0, 0, "READY_WITH_WARNINGS", "baseline: FAIL(exit=3)", True),
+            (True, 0, 7, 1, "BLOCKED", "deps: FAILED", False),
+        )
+        for (
+            hook,
+            baseline_exit,
+            install_exit,
+            status,
+            verdict,
+            detail,
+            has_log,
+        ) in cases:
+            with (
+                self.subTest(
+                    hook=hook, baseline_exit=baseline_exit, install_exit=install_exit
+                ),
+                tempfile.TemporaryDirectory() as td,
+            ):
+                repo, root, wt, bin_dir, record, log = self._fixture(
+                    Path(td).resolve(), "54", uv_exit=install_exit, hook=hook
+                )
+                (wt / "notes.txt").write_text("preserve me", encoding="utf-8")
+
+                resumed = run_script(
+                    [
+                        *issue_args("54", root),
+                        "--verify",
+                        f"printf verified; exit {baseline_exit}",
+                        "--log",
+                        str(log),
+                    ],
+                    repo,
+                    extra_path=str(bin_dir),
+                )
+
+                self.assertEqual(resumed.returncode, status, resumed.stdout)
+                self.assertIn("result: EXISTS", resumed.stdout)
+                self.assertIn("verdict: " + verdict, resumed.stdout)
+                self.assertIn(detail, resumed.stdout)
+                self.assertTrue(record.exists())
+                self.assertEqual(log.exists(), has_log)
+                self.assertEqual((wt / "notes.txt").read_text(), "preserve me")
+
+
 if __name__ == "__main__":
     unittest.main()

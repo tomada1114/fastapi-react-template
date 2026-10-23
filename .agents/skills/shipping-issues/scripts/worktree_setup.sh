@@ -287,7 +287,7 @@ do_install() {
 # PROVISION_BASELINE (PASS|FAIL|NONE) for the caller to read.
 provision_one() {
   local p_issue="$1" p_branch="$2" p_base="$3" p_root="$4" p_verify="$5" p_log="$6"
-  local warn=0
+  local warn=0 reused=0 checked_out_branch
   worktree_path="$p_root/$p_issue"
   PROVISION_VERDICT=""
   # Exported so a caller that sources this file can read it; shellcheck otherwise
@@ -297,14 +297,28 @@ provision_one() {
   emit repo_root "$repo_root"
   emit worktree "$worktree_path"
 
-  # --- 2. idempotent re-entry ---------------------------------------------
+  # The validated ref also drives lockfile detection in a resumed dry run.
+  if branch_exists "$p_branch"; then
+    checkout_ref="$p_branch"
+  else
+    checkout_ref="$p_base"
+  fi
+
+  # --- 2. validate an existing checkout before common provisioning --------
   if [[ -e "$worktree_path" ]]; then
     if is_registered_worktree "$worktree_path"; then
+      if ! checked_out_branch=$(git -C "$worktree_path" symbolic-ref --quiet HEAD) ||
+          [[ "$checked_out_branch" != "refs/heads/$p_branch" ]]; then
+        emit result "BLOCKED"
+        emit path "$worktree_path"
+        emit branch "expected refs/heads/$p_branch; found ${checked_out_branch:-detached or unreadable}"
+        PROVISION_VERDICT="BLOCKED"
+        echo "verdict: BLOCKED"
+        return 1
+      fi
+      reused=1
       emit result "EXISTS"
       emit path "$worktree_path"
-      PROVISION_VERDICT="READY"
-      echo "verdict: READY"
-      return 0
     else
       emit result "BLOCKED"
       emit path "$worktree_path"
@@ -314,41 +328,36 @@ provision_one() {
     fi
   fi
 
-  # --- 3. create the worktree ---------------------------------------------
-  # The ref the worktree checks out: an existing branch as it stands, else a
-  # new branch at the base.
-  if branch_exists "$p_branch"; then
-    checkout_ref="$p_branch"
-  else
-    checkout_ref="$p_base"
-  fi
-  if [[ $DRY -eq 1 ]]; then
-    echo "DRY: mkdir -p $p_root"
-    if branch_exists "$p_branch"; then
-      echo "DRY: git -C $repo_root worktree add $worktree_path $p_branch"
+  # --- 3. create only when there is no eligible checkout to reuse ---------
+  if [[ $reused -eq 0 ]]; then
+    if [[ $DRY -eq 1 ]]; then
+      echo "DRY: mkdir -p $p_root"
+      if branch_exists "$p_branch"; then
+        echo "DRY: git -C $repo_root worktree add $worktree_path $p_branch"
+      else
+        echo "DRY: git -C $repo_root worktree add $worktree_path -b $p_branch $p_base"
+      fi
     else
-      echo "DRY: git -C $repo_root worktree add $worktree_path -b $p_branch $p_base"
-    fi
-  else
-    mkdir -p "$p_root"
-    local wt_log wt_rc
-    wt_log="$(mktemp)"
-    if branch_exists "$p_branch"; then
-      git -C "$repo_root" worktree add "$worktree_path" "$p_branch" >"$wt_log" 2>&1
-    else
-      git -C "$repo_root" worktree add "$worktree_path" -b "$p_branch" "$p_base" >"$wt_log" 2>&1
-    fi
-    wt_rc=$?
-    if [[ $wt_rc -ne 0 ]]; then
-      emit result "BLOCKED"
-      sed 's/^/  /' "$wt_log"
+      mkdir -p "$p_root"
+      local wt_log wt_rc
+      wt_log="$(mktemp)"
+      if branch_exists "$p_branch"; then
+        git -C "$repo_root" worktree add "$worktree_path" "$p_branch" >"$wt_log" 2>&1
+      else
+        git -C "$repo_root" worktree add "$worktree_path" -b "$p_branch" "$p_base" >"$wt_log" 2>&1
+      fi
+      wt_rc=$?
+      if [[ $wt_rc -ne 0 ]]; then
+        emit result "BLOCKED"
+        sed 's/^/  /' "$wt_log"
+        rm -f "$wt_log"
+        PROVISION_VERDICT="BLOCKED"
+        echo "verdict: BLOCKED"
+        return 1
+      fi
       rm -f "$wt_log"
-      PROVISION_VERDICT="BLOCKED"
-      echo "verdict: BLOCKED"
-      return 1
+      emit result "CREATED"
     fi
-    rm -f "$wt_log"
-    emit result "CREATED"
   fi
 
   # --- 4. install dependencies --------------------------------------------
