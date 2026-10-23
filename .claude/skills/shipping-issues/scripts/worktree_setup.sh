@@ -244,6 +244,15 @@ fi
 # This is the same for every spec in a batch, so it's computed once.
 repo_root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 
+# Git creates worktrees from the primary directory, while mkdir and path
+# validation run from the caller's directory. Anchor relative roots once so
+# every step addresses the same destination, including linked-worktree callers.
+if [[ "$ROOT" != /* ]]; then
+  if ! ROOT=$(resolve_path "$ROOT"); then
+    exit 1
+  fi
+fi
+
 branch_exists() { git -C "$repo_root" show-ref --verify --quiet "refs/heads/$1"; }
 
 is_registered_worktree() {

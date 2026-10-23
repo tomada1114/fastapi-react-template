@@ -1717,6 +1717,65 @@ class DestinationValidationTest(unittest.TestCase):
         self.assertEqual((repo / "README.md").read_bytes(), before["readme"])
         self.assertNotIn("baseline: PASS", proc.stdout)
 
+    def test_relative_root_from_linked_checkout_uses_the_callers_directory(self):
+        for batch in (False, True):
+            for dry in (False, True):
+                with (
+                    self.subTest(batch=batch, dry=dry),
+                    tempfile.TemporaryDirectory() as td,
+                ):
+                    folder = Path(td).resolve()
+                    repo, _root, bin_dir, record = self._fixture(folder)
+                    linked = folder / "linked"
+                    git(repo, "worktree", "add", "-qb", "feat/caller", str(linked))
+                    destination = linked / "nested" / "61"
+                    args = [
+                        "--root",
+                        "nested",
+                        "--base",
+                        "main",
+                        "--verify",
+                        "printf baseline",
+                    ]
+                    if batch:
+                        args += ["--spec", "61:feat/61", "--log-dir", "../logs"]
+                    else:
+                        args += [
+                            "--issue",
+                            "61",
+                            "--branch",
+                            "feat/61",
+                            "--log",
+                            "../logs/61-baseline.log",
+                        ]
+                    if dry:
+                        args += ["--dry-run"]
+
+                    proc = run_script(args, linked, extra_path=str(bin_dir))
+
+                    self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                    self.assertIn(f"worktree: {destination}\n", proc.stdout)
+                    self.assertEqual(git(repo, "status", "--porcelain").stdout, "")
+                    self.assertFalse((repo / "nested").exists())
+                    if dry:
+                        self.assertFalse(destination.exists())
+                        self.assertFalse(record.exists())
+                        self.assertFalse((folder / "logs").exists())
+                    else:
+                        self.assertTrue(destination.is_dir())
+                        self.assertIn(
+                            f"worktree {destination}\n",
+                            git(repo, "worktree", "list", "--porcelain").stdout,
+                        )
+                        self.assertEqual(
+                            record.read_text().splitlines()[1::2],
+                            [str(destination)] * 2,
+                        )
+                        self.assertEqual(
+                            (folder / "logs" / "61-baseline.log").read_text(),
+                            "baseline",
+                        )
+
     def test_nested_worktree_root_blocks_before_creation(self):
         for batch in (False, True):
             for dry in (False, True):
