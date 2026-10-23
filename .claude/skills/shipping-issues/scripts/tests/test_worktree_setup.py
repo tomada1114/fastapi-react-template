@@ -1382,6 +1382,78 @@ class ResumedProvisioningTest(unittest.TestCase):
                 self.assertTrue(saved.is_file())
                 self.assertFalse((wt / filename).exists())
 
+    def _hook_fixture(self, td, scenario):
+        hook = {
+            "untracked": None,
+            "committed": None,
+            "removed": False,
+            "merge_added": True,
+            "primary_merge": True,
+        }[scenario]
+        fixture = self._fixture(td, "58", hook=hook)
+        repo, _root, wt, bin_dir, _record, _log = fixture
+        config = wt / ".pre-commit-config.yaml"
+        extended = (
+            "default_install_hook_types: [pre-commit, pre-merge-commit]\nrepos: []\n"
+        )
+        if scenario in ("untracked", "committed"):
+            config.write_text("repos: []\n", encoding="utf-8")
+        if scenario == "committed":
+            git(wt, "add", ".pre-commit-config.yaml")
+            git(wt, "commit", "-qm", "add branch hook config")
+        if scenario == "removed":
+            config.rename(td / "saved-hook-config")
+        if scenario == "merge_added":
+            config.write_text(extended, encoding="utf-8")
+        if scenario == "primary_merge":
+            (repo / ".pre-commit-config.yaml").write_text(extended, encoding="utf-8")
+        (bin_dir / "bash").symlink_to("/bin/bash")
+        return fixture
+
+    def test_reentry_reads_hooks_from_its_checkout(self):
+        cases = (
+            ("untracked", "READY_WITH_WARNINGS", True, False),
+            ("committed", "READY_WITH_WARNINGS", True, False),
+            ("removed", "READY", False, False),
+            ("merge_added", "READY_WITH_WARNINGS", True, True),
+            ("primary_merge", "READY", False, False),
+        )
+        for scenario, verdict, warning, missing_merge in cases:
+            for dry in (False, True):
+                with (
+                    self.subTest(scenario=scenario, dry=dry),
+                    tempfile.TemporaryDirectory() as td,
+                ):
+                    repo, root, wt, bin_dir, _record, _log = self._hook_fixture(
+                        Path(td).resolve(), scenario
+                    )
+                    flags = ["--dry-run"] if dry else []
+                    before = {
+                        p: p.read_bytes()
+                        for folder in (repo, wt)
+                        for p in folder.glob(".pre-commit-config.yaml")
+                    }
+
+                    resumed = run_script(
+                        [*issue_args("58", root), *flags], repo, extra_path=str(bin_dir)
+                    )
+
+                    self.assertEqual(resumed.returncode, 0, resumed.stderr)
+                    self.assertIn("result: EXISTS", resumed.stdout)
+                    self.assertIn(f"verdict: {verdict}\n", resumed.stdout)
+                    self.assertEqual("hooks: MISSING" in resumed.stdout, warning)
+                    self.assertEqual(
+                        "MISSING pre-merge-commit" in resumed.stdout, missing_merge
+                    )
+                    self.assertEqual(
+                        {
+                            p: p.read_bytes()
+                            for folder in (repo, wt)
+                            for p in folder.glob(".pre-commit-config.yaml")
+                        },
+                        before,
+                    )
+
     def test_reentry_after_failed_install_retries_dependencies(self):
         with tempfile.TemporaryDirectory() as td:
             td = Path(td).resolve()

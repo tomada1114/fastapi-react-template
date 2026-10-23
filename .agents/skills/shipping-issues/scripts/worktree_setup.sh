@@ -239,14 +239,6 @@ has_lockfile() { # $1=file name at the tree's root; $2=reused checkout (0|1)
 # themselves live in the shared hooks directory, so they are checked, not
 # installed. pre-commit is always expected; pre-merge-commit too when the
 # config's default_install_hook_types asks for it (merge commits run only that).
-hooks_expected=0
-expected_hooks=(pre-commit)
-if [[ -f "$repo_root/.pre-commit-config.yaml" ]]; then
-  hooks_expected=1
-  if grep -Eq '^default_install_hook_types:.*pre-merge-commit' "$repo_root/.pre-commit-config.yaml"; then
-    expected_hooks+=(pre-merge-commit)
-  fi
-fi
 hooks_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-path hooks)"
 
 # Runs "$@" with cwd = the worktree. On a non-zero exit (including "command
@@ -386,7 +378,27 @@ provision_one() {
   fi
 
   # --- 5. shared pre-commit hook (checked, never installed here) ----------
+  local hooks_expected=0 hook_text=""
+  local hook_config="$worktree_path/.pre-commit-config.yaml"
+  local expected_hooks=(pre-commit)
+  if [[ $DRY -eq 1 && $reused -eq 0 ]]; then
+    # There is no checkout yet; inspect the configuration it would contain.
+    if hook_text=$(git -C "$repo_root" show "$checkout_ref:.pre-commit-config.yaml" 2>/dev/null); then
+      hooks_expected=1
+    fi
+  elif [[ -f "$hook_config" ]]; then
+    if ! hook_text=$(<"$hook_config"); then
+      emit hooks "FAILED to read checkout configuration: $hook_config"
+      PROVISION_VERDICT="BLOCKED"
+      echo "verdict: BLOCKED"
+      return 1
+    fi
+    hooks_expected=1
+  fi
   if [[ $hooks_expected -eq 1 ]]; then
+    if printf '%s\n' "$hook_text" | grep -Eq '^default_install_hook_types:.*pre-merge-commit'; then
+      expected_hooks+=(pre-merge-commit)
+    fi
     local hook missing_hooks=()
     for hook in "${expected_hooks[@]}"; do
       if ! { [[ -f "$hooks_dir/$hook" ]] && grep -q "pre-commit" "$hooks_dir/$hook" 2>/dev/null; }; then
