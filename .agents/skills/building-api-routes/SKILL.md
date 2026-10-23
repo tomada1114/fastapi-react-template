@@ -1,13 +1,12 @@
 ---
 name: building-api-routes
 description: >
-  Covers the FastAPI entry point in backend/src/my_app/api/: the create_app factory and
-  app.state.container, service dependencies in dependencies.py, one APIRouter per
-  resource under routers/, Pydantic request and response models in schemas.py, success
-  status codes and the responses= declaration, and TestClient tests through the client
-  fixture. Use when adding or changing an HTTP route, a request or response body, a
-  dependency, or a router, or when removing the API. Which status a domain error
-  becomes is designing-errors'. Deleted along with backend/src/my_app/api/.
+  Covers the FastAPI entry point: create_app and app.state.container, service
+  dependencies in dependencies.py, resource APIRouters under routers/, Pydantic
+  request and response schemas, success codes, responses=, and TestClient tests
+  via client. Use when adding, changing or removing an HTTP route, request or
+  response body, API dependency, router, or backend/src/my_app/api/. Domain-error
+  status mapping belongs to designing-errors.
 ---
 
 # Building API Routes

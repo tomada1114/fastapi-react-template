@@ -1,14 +1,13 @@
 ---
 name: placing-tests
 description: >
-  Decides where a new test file goes (backend/tests/<layer>/test_<module>.py for
-  backend/src/my_app/<layer>/, the root tests/ for scripts and the harness,
-  frontend/tests/ mirroring frontend/src/ as *.test.tsx, e2e/tests/ for a Playwright
-  spec), where a fixture, helper, or MSW handler goes, which command runs one test, one
-  file, or the suite (pytest, vitest run), and the coverage floors: 80% branches over
-  backend/src, coverage.thresholds of 80 over frontend/src. Use when adding a test file
-  or a fixture, running one test, a coverage run drops below a floor, or CI test jobs
-  slow down.
+  Decides test, fixture, helper and MSW handler locations:
+  backend/tests/<layer>/test_<module>.py mirrors backend/src/my_app/<layer>/;
+  tests/ covers scripts and harness; frontend/tests/ mirrors frontend/src/ as
+  *.test.tsx; e2e/tests/ holds Playwright specs. Covers running a test, file or
+  suite with pytest or vitest run and the 80% backend branch and frontend coverage
+  floors. Use when adding tests or fixtures, choosing a test command,
+  investigating coverage below a floor, or slow CI test jobs.
 ---
 
 # Placing Tests

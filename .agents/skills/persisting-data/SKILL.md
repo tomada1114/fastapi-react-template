@@ -1,14 +1,13 @@
 ---
 name: persisting-data
 description: >
-  Covers SQL persistence in backend/: the Core Table metadata and UtcDateTime in
-  backend/src/my_app/adapters/sql/tables.py, statements as module constants in a SQL
-  repository, the AsyncEngine from make_engine and its disposal, Alembic under
-  backend/migrations/ (env.py, script.py.mako, revisions, render_as_batch), just
-  backend db-upgrade and db-revision, the drift test, and why the app never migrates
-  at start-up. Use when adding or changing a table or column, writing or reviewing a
-  revision, alembic check failing, "no such table" errors, or a SQL test leaking an
-  engine.
+  Covers SQL persistence: Core Table metadata and UtcDateTime in
+  backend/src/my_app/adapters/sql/tables.py, SQL repository statements as module
+  constants, make_engine and AsyncEngine disposal, Alembic in backend/migrations/
+  (env.py, script.py.mako, revisions, render_as_batch), just backend db-upgrade
+  and db-revision, drift checks, and why startup never migrates. Use when adding
+  or changing tables or columns, writing or reviewing revisions, alembic check
+  fails, "no such table" errors, or a SQL test leaks an engine.
 ---
 
 # Persisting Data
