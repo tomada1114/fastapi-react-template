@@ -1,13 +1,12 @@
 ---
 name: updating-docs
 description: >
-  Decides whether a change owes a documentation update and which surface it lands on:
-  README.md (quickstart, HTTP table, error statuses, configuration with MY_APP_ and VITE_
-  variables), CONTRIBUTING.md, AGENTS.md, backend/AGENTS.md, frontend/AGENTS.md, a skill,
-  docs/architecture/, a docstring, or the generated contract (frontend/openapi.json and
-  the client, via just contract) - plus what belongs in prose and examples that must
-  work. Use when deciding whether a pull request needs a document changed, when one
-  change must move two files at once, or when a route, setting, or behavior changed.
+  Decides whether a change needs docs and where: README.md (quickstart, HTTP
+  table, errors, MY_APP_ and VITE_ configuration), CONTRIBUTING.md, root and area
+  AGENTS.md, skills, docs/architecture/, docstrings, or the generated
+  frontend/openapi.json and client via just contract. Covers working examples and
+  which changes require files to move together. Use when deciding what docs a PR
+  owes, or when a route, setting or behavior changes.
 ---
 
 # Updating Docs

@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from tests.harness.test_skills import DESCRIPTION_LIMIT, parse_frontmatter
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
@@ -254,6 +256,25 @@ def test_main_ampersand_display_name_refused_without_writing(clone, capsys):
 
     assert "invalid display name" in capsys.readouterr().err
     assert _snapshot(clone) == before
+
+
+def test_bootstrap_long_package_keeps_all_skill_descriptions_within_limit(clone):
+    identity = bootstrap.Identity(**{**SAMPLE, "slug": "a" * 30})
+    names = bootstrap.resolve_names(identity)
+    assert len(names.module) == 30
+
+    bootstrap.bootstrap(clone, identity)
+
+    skills = sorted((clone / ".agents" / "skills").glob("*/SKILL.md"))
+    assert skills
+    overlong = {}
+    for path in skills:
+        fields, _forms, _end = parse_frontmatter(path.read_text(encoding="utf-8"))
+        description = fields["description"]
+        assert isinstance(description, str), path
+        if len(description) > DESCRIPTION_LIMIT:
+            overlong[path.relative_to(clone).as_posix()] = len(description)
+    assert not overlong, overlong
 
 
 def test_bootstrap_workspace_package_names_include_e2e(clone):
