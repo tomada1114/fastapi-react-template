@@ -100,6 +100,7 @@ def deps_lines(stdout: str) -> list:
 # Every external command worktree_setup.sh runs on its create-and-install path
 # (git, the coreutils its helpers call, and the shells), linked by name.
 SCRIPT_TOOLS = (
+    "python3",
     "bash",
     "sh",
     "env",
@@ -1672,6 +1673,170 @@ class ResumedProvisioningTest(unittest.TestCase):
                 self.assertTrue(record.exists())
                 self.assertEqual(log.exists(), has_log)
                 self.assertEqual((wt / "notes.txt").read_text(), "preserve me")
+
+
+class DestinationValidationTest(unittest.TestCase):
+    def _fixture(self, folder):
+        repo = folder / "repo"
+        repo.mkdir()
+        make_repo(repo)
+        commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+        bin_dir = folder / "bin"
+        bin_dir.mkdir()
+        record = folder / "installs"
+        write_stub(bin_dir, "uv", record, append=True)
+        write_stub(bin_dir, "pnpm", record, append=True)
+        return repo, folder / "worktrees", bin_dir, record
+
+    def _assert_blocked(
+        self, repo, root, bin_dir, record, *, batch, dry, log, issue="61"
+    ):
+        before = {
+            "status": git(repo, "status", "--porcelain").stdout,
+            "refs": git(repo, "show-ref").stdout,
+            "worktrees": git(repo, "worktree", "list", "--porcelain").stdout,
+            "readme": (repo / "README.md").read_bytes(),
+        }
+        args = ["--base", "main", "--root", str(root), "--verify", "printf baseline"]
+        if batch:
+            args += ["--spec", issue + ":feat/" + issue, "--log-dir", str(log)]
+        else:
+            args += ["--issue", issue, "--branch", "feat/" + issue, "--log", str(log)]
+        if dry:
+            args += ["--dry-run"]
+
+        proc = run_script(args, repo, extra_path=str(bin_dir))
+
+        self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertFalse(record.exists())
+        self.assertEqual(git(repo, "status", "--porcelain").stdout, before["status"])
+        self.assertEqual(git(repo, "show-ref").stdout, before["refs"])
+        self.assertEqual(
+            git(repo, "worktree", "list", "--porcelain").stdout, before["worktrees"]
+        )
+        self.assertEqual((repo / "README.md").read_bytes(), before["readme"])
+        self.assertNotIn("baseline: PASS", proc.stdout)
+
+    def test_nested_worktree_root_blocks_before_creation(self):
+        for batch in (False, True):
+            for dry in (False, True):
+                for alias in (False, True):
+                    with (
+                        self.subTest(batch=batch, dry=dry, alias=alias),
+                        tempfile.TemporaryDirectory() as td,
+                    ):
+                        folder = Path(td).resolve()
+                        repo, _root, bin_dir, record = self._fixture(folder)
+                        root = repo / "nested"
+                        if alias:
+                            link = folder / "alias"
+                            link.symlink_to(repo, target_is_directory=True)
+                            root = link / "nested"
+                        log = folder / "logs"
+
+                        self._assert_blocked(
+                            repo, root, bin_dir, record, batch=batch, dry=dry, log=log
+                        )
+
+                        self.assertFalse(root.exists())
+                        self.assertFalse(log.exists())
+
+    def test_invalid_logs_block_before_creation_or_resumed_install(self):
+        cases = (
+            "primary",
+            "primary_equal",
+            "worktree",
+            "worktree_equal",
+            "file_link",
+            "dangling_link",
+            "directory",
+            "resumed",
+        )
+        for batch in (False, True):
+            for scenario in cases:
+                with (
+                    self.subTest(batch=batch, scenario=scenario),
+                    tempfile.TemporaryDirectory() as td,
+                ):
+                    folder = Path(td).resolve()
+                    repo, root, bin_dir, record = self._fixture(folder)
+                    wt = root / "61"
+                    if scenario == "resumed":
+                        root.mkdir()
+                        git(repo, "worktree", "add", "-qb", "feat/61", str(wt))
+                        (wt / "dirty").write_text("preserve\n", encoding="utf-8")
+                    log = {
+                        "primary": repo / "logs",
+                        "primary_equal": repo,
+                        "worktree": wt / "logs",
+                        "worktree_equal": wt,
+                        "resumed": wt / "logs",
+                    }.get(scenario, folder / "logs")
+                    if scenario in ("file_link", "dangling_link", "directory"):
+                        target = log / "61-baseline.log" if batch else log
+                        if batch:
+                            log.mkdir()
+                        if scenario == "directory":
+                            target.mkdir()
+                        else:
+                            target.symlink_to(
+                                repo / "README.md"
+                                if scenario == "file_link"
+                                else wt / "future.log"
+                            )
+                    before_dirty = (
+                        git(wt, "status", "--porcelain").stdout
+                        if scenario == "resumed"
+                        else None
+                    )
+
+                    self._assert_blocked(
+                        repo, root, bin_dir, record, batch=batch, dry=False, log=log
+                    )
+
+                    if scenario == "resumed":
+                        self.assertEqual(
+                            git(wt, "status", "--porcelain").stdout, before_dirty
+                        )
+                        self.assertEqual((wt / "dirty").read_text(), "preserve\n")
+                    else:
+                        self.assertFalse(wt.exists())
+
+    def test_destination_cannot_escape_the_selected_root(self):
+        for scenario in ("identifier", "registered_alias", "root_file"):
+            for dry in (False, True):
+                with (
+                    self.subTest(scenario=scenario, dry=dry),
+                    tempfile.TemporaryDirectory() as td,
+                ):
+                    folder = Path(td).resolve()
+                    repo, root, bin_dir, record = self._fixture(folder)
+                    issue = "61"
+                    if scenario == "identifier":
+                        issue = "../escaped"
+                    elif scenario == "root_file":
+                        root.write_text("preserve\n", encoding="utf-8")
+                    else:
+                        outside = folder / "outside"
+                        git(repo, "worktree", "add", "-qb", "feat/61", str(outside))
+                        root.mkdir()
+                        (root / "61").symlink_to(outside, target_is_directory=True)
+
+                    self._assert_blocked(
+                        repo,
+                        root,
+                        bin_dir,
+                        record,
+                        batch=False,
+                        dry=dry,
+                        log=folder / "baseline.log",
+                        issue=issue,
+                    )
+
+                    self.assertFalse((folder / "baseline.log").exists())
+                    self.assertFalse((folder / "escaped").exists())
+                    if scenario == "root_file":
+                        self.assertEqual(root.read_text(), "preserve\n")
 
 
 if __name__ == "__main__":

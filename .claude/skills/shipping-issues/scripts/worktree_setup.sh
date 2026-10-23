@@ -77,26 +77,58 @@ shopt -s nullglob
 emit() { printf '%s: %s\n' "$1" "$2"; }
 
 # --- resolve a path to a canonical absolute form, without requiring the
-# path (or any of it) to exist yet. Walks up to the nearest existing
-# ancestor, canonicalizes that with `cd && pwd -P` (which resolves symlinks
-# and any `..`/`.` components in one shot), then reappends the missing tail.
+# path to exist yet. Path.resolve also dereferences a final file symlink.
 resolve_path() {
-  local p="$1" d b
-  if [[ -d "$p" ]]; then
-    (cd "$p" && pwd -P)
-    return
-  fi
-  if [[ -e "$p" ]]; then
-    printf '%s/%s\n' "$(cd "$(dirname "$p")" && pwd -P)" "$(basename "$p")"
-    return
-  fi
-  d="$(dirname "$p")"
-  b="$(basename "$p")"
-  if [[ "$d" == "$p" ]]; then
-    printf '%s\n' "$p"
-  else
-    printf '%s/%s\n' "$(resolve_path "$d")" "$b"
-  fi
+  python3 - "$1" <<'PYRESOLVE'
+from pathlib import Path
+import sys
+
+try:
+    print(Path(sys.argv[1]).resolve(strict=False))
+except (OSError, RuntimeError) as exc:
+    print(f"Cannot resolve path: {exc}", file=sys.stderr)
+    sys.exit(1)
+PYRESOLVE
+}
+
+# Read-only preflight: no output directory, Git mutation, install or baseline
+# may run until all physical destinations for this issue are safe.
+validate_destinations() {
+  python3 - "$repo_root" "$1" "$2" "$3" <<'PYPATHS'
+from pathlib import Path
+import sys
+
+
+def within(path, parent):
+    return path == parent or parent in path.parents
+
+
+def directory_ancestor(path):
+    for parent in (path, *path.parents):
+        if parent.exists():
+            if not parent.is_dir():
+                raise ValueError(f"Not a directory: {parent}")
+            return
+
+
+try:
+    primary, root, checkout = (Path(value).resolve(strict=False) for value in sys.argv[1:4])
+    if within(root, primary) or within(checkout, primary):
+        raise ValueError("Worktree destination must be outside the primary checkout")
+    if checkout == root or not within(checkout, root):
+        raise ValueError("Worktree destination escapes the selected root")
+    directory_ancestor(root)
+    if sys.argv[4]:
+        log = Path(sys.argv[4]).resolve(strict=False)
+        if within(log, primary) or within(log, checkout):
+            raise ValueError("Baseline log must be outside both checkouts")
+        if log.is_dir():
+            raise ValueError("Baseline log cannot be a directory")
+        directory_ancestor(log.parent)
+except (OSError, RuntimeError, ValueError) as exc:
+    print(f"Invalid provisioning destination: {exc}", file=sys.stderr)
+    sys.exit(1)
+PYPATHS
 }
 
 # Run a verify command with a hard wall-clock bound. Exits 124 on timeout, the
@@ -182,6 +214,10 @@ fi
 if [[ ${#SPECS[@]} -eq 0 ]]; then
   if [[ -z "$ISSUE" || -z "$BRANCH" || -z "$BASE" || -z "$ROOT" ]]; then
     usage
+    exit 2
+  fi
+  if [[ ! "$ISSUE" =~ ^[0-9]+$ ]]; then
+    echo "Invalid --issue number (must be digits): $ISSUE" >&2
     exit 2
   fi
 else
@@ -289,10 +325,9 @@ provision_one() {
   emit repo_root "$repo_root"
   emit worktree "$worktree_path"
 
-  # The primary checkout is registered too, but must never be provisioned.
-  if [[ "$(resolve_path "$worktree_path")" == "$(resolve_path "$repo_root")" ]]; then
+  if ! validate_destinations "$p_root" "$worktree_path" "$p_log"; then
     emit result "BLOCKED"
-    emit path "primary checkout cannot be provisioned: $worktree_path"
+    emit path "$worktree_path"
     PROVISION_VERDICT="BLOCKED"
     echo "verdict: BLOCKED"
     return 1
@@ -424,21 +459,8 @@ provision_one() {
 
   # --- 6. verification baseline (only with --verify) ----------------------
   if [[ -n "$p_verify" ]]; then
-    local log_path="$p_log" log_dir resolved_log resolved_repo_root resolved_worktree verify_rc
+    local log_path="$p_log" log_dir verify_rc
     log_dir="$(dirname "$log_path")"
-
-    resolved_log="$(resolve_path "$log_path")"
-    resolved_repo_root="$(resolve_path "$repo_root")"
-    resolved_worktree="$(resolve_path "$worktree_path")"
-
-    case "$resolved_log" in
-      "$resolved_repo_root"/*|"$resolved_worktree"/*)
-        emit baseline_log "$log_path"
-        PROVISION_VERDICT="BLOCKED"
-        echo "verdict: BLOCKED"
-        return 1
-        ;;
-    esac
 
     if [[ $DRY -eq 1 ]]; then
       echo "DRY: mkdir -p $log_dir"
