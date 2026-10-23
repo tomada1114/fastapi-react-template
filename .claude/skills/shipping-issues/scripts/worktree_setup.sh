@@ -140,25 +140,32 @@ import os
 import signal
 import subprocess
 import sys
+import time
 
 workdir, command, timeout = sys.argv[1], sys.argv[2], float(sys.argv[3])
 proc = subprocess.Popen(["bash", "-c", command], cwd=workdir,
                         start_new_session=True)
+# start_new_session makes the owned child's PID its process-group ID. Retain
+# it: looking it up through the leader fails after that leader has exited.
+process_group = proc.pid
 try:
     sys.exit(proc.wait(timeout=timeout))
 except subprocess.TimeoutExpired:
-    # The whole process group, not just the shell: a runner that forked workers
-    # would otherwise outlive the kill still holding whatever it bound.
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(os.getpgid(proc.pid), sig)
-        except (ProcessLookupError, PermissionError):
-            break
-        try:
-            proc.wait(timeout=5)
-            break
-        except subprocess.TimeoutExpired:
-            continue
+    try:
+        os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    # Preserve the full grace period for descendants even when their wrapper
+    # exits immediately. Leave the direct child unreaped until escalation so
+    # its PID (and therefore our owned group identity) cannot be reused.
+    time.sleep(5)
+    # Always attempt escalation against the retained group, even when the
+    # wrapper exited first. Descendants in a detached group are outside it.
+    try:
+        os.killpg(process_group, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proc.wait()
     sys.exit(124)
 PYTIMEOUT
 }

@@ -12,14 +12,20 @@ git repos under tempfile.TemporaryDirectory() instead.
 from __future__ import annotations
 
 import os
+import select
+import shlex
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import unittest
+from contextlib import suppress
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -1234,40 +1240,140 @@ class WorktreeSetupTest(unittest.TestCase):
         self.assertIn("baseline: TIMEOUT(1s)\n", proc.stdout)
         self.assertIn("verdict: READY_WITH_WARNINGS\n", proc.stdout)
 
-    def test_the_timeout_kills_the_whole_process_tree(self):
-        # A gate that forks workers must not leave them running: killing only
-        # the `bash -c` wrapper would strand whatever they hold open.
+    @staticmethod
+    def _ready_writer_has_exited(fd, *, require_ready=True):
+        """A readiness byte followed by FIFO EOF proves exit, including zombies."""
+        deadline = time.monotonic() + 2
+        ready = b""
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([fd], [], [], remaining)[0]:
+                return False
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                return not require_ready or ready == b"ready"
+            ready += chunk
+
+    def _check_timeout_process_group(self, *, resistant):
         with tempfile.TemporaryDirectory() as td:
-            td = Path(td)
-            repo = td / "repo"
+            folder = Path(td).resolve()
+            repo = folder / "repo"
             repo.mkdir()
             make_repo(repo)
-            marker = td / "still-alive"
+            fixture = folder / "processes.py"
+            fixture.write_text(
+                textwrap.dedent("""\
+                    import os
+                    from pathlib import Path
+                    import signal
+                    import sys
 
-            proc = run_script(
-                [
-                    "--issue",
-                    "602",
-                    "--branch",
-                    "feat/602",
-                    "--base",
-                    "main",
-                    "--root",
-                    str(td / "worktrees"),
-                    "--verify",
-                    f"( sleep 4; touch {marker} ) & wait",
-                    "--verify-timeout",
-                    "1",
-                    "--log",
-                    str(td / "verify" / "602.log"),
-                ],
-                repo,
+                    folder = Path(sys.argv[1])
+                    resistant = sys.argv[2] == "1"
+                    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+                    (folder / "wrapper.pid").write_text(str(os.getpid()))
+                    read_ready, write_ready = os.pipe()
+                    child = os.fork()
+                    if child == 0:
+                        os.close(read_ready)
+                        signal.signal(signal.SIGTERM, signal.SIG_IGN if resistant else signal.SIG_DFL)
+                        (folder / "child.pid").write_text(str(os.getpid()))
+                        child_writer = os.open(folder / "child.fifo", os.O_WRONLY)
+                        os.write(child_writer, b"ready")
+                        os.write(write_ready, b"ready")
+                        os.close(write_ready)
+                        while True:
+                            signal.pause()
+                    os.close(write_ready)
+                    with os.fdopen(read_ready, "rb") as ready:
+                        assert ready.read() == b"ready"
+                    wrapper_writer = os.open(folder / "wrapper.fifo", os.O_WRONLY)
+                    os.write(wrapper_writer, b"ready")
+                    while True:
+                        signal.pause()
+                    """),
+                encoding="utf-8",
             )
-            time.sleep(6)
-            child_survived = marker.exists()
+            readers = []
+            exited = [False, False]
+            try:
+                for name in ("wrapper", "child"):
+                    fifo = folder / (name + ".fifo")
+                    os.mkfifo(fifo)
+                    readers.append(os.open(fifo, os.O_RDONLY | os.O_NONBLOCK))
+                command = "exec " + shlex.join(
+                    [sys.executable, str(fixture), str(folder), str(int(resistant))]
+                )
 
-        self.assertIn("baseline: TIMEOUT(1s)\n", proc.stdout)
-        self.assertFalse(child_survived, "the forked child outlived the timeout")
+                proc = run_script(
+                    [
+                        *issue_args("602", folder / "worktrees"),
+                        "--verify",
+                        command,
+                        "--verify-timeout",
+                        "2",
+                        "--log",
+                        str(folder / "baseline.log"),
+                    ],
+                    repo,
+                )
+
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                self.assertIn("baseline: TIMEOUT(2s)\n", proc.stdout)
+                self.assertIn("verdict: READY_WITH_WARNINGS\n", proc.stdout)
+                self.assertTrue((folder / "wrapper.pid").is_file())
+                self.assertTrue((folder / "child.pid").is_file())
+                for index, name in enumerate(("wrapper", "descendant")):
+                    exited[index] = self._ready_writer_has_exited(readers[index])
+                    self.assertTrue(
+                        exited[index], name + " is still running or never ready"
+                    )
+            finally:
+                self._cleanup_timeout_fixture(folder, readers, exited)
+
+    def _cleanup_timeout_fixture(self, folder, readers, exited):
+        # This ID is published before fork by our exec'ed fixture only.
+        # The provisioner reaps its direct child; the test cannot reap
+        # the orphaned descendant, so FIFO EOF supplies its exit proof.
+        try:
+            pid_file = folder / "wrapper.pid"
+            if pid_file.is_file() and not all(exited):
+                with suppress(ProcessLookupError):
+                    os.killpg(int(pid_file.read_text()), signal.SIGKILL)
+            for index, fd in enumerate(readers):
+                if not exited[index]:
+                    self.assertTrue(
+                        self._ready_writer_has_exited(fd, require_ready=False),
+                        "fixture cleanup left a writer running",
+                    )
+        finally:
+            for fd in readers:
+                os.close(fd)
+
+    def test_cleanup_does_not_signal_after_exit_proofs(self):
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td)
+            (folder / "wrapper.pid").write_text("31415926", encoding="utf-8")
+            readers = []
+            for _ in range(2):
+                reader, writer = os.pipe()
+                readers.append(reader)
+                os.close(writer)
+            signals = []
+            # Intercept signalling entirely: no real process group is used.
+            with patch.object(os, "killpg", lambda *args: signals.append(args)):
+                self._cleanup_timeout_fixture(folder, readers, [True, True])
+
+            self.assertEqual(signals, [])
+            for fd in readers:
+                with self.assertRaises(OSError):
+                    os.fstat(fd)
+
+    def test_the_timeout_kills_the_whole_process_tree(self):
+        self._check_timeout_process_group(resistant=False)
+
+    def test_timeout_kills_term_resistant_descendant_after_wrapper_exits(self):
+        self._check_timeout_process_group(resistant=True)
 
     def test_bad_verify_timeout_is_a_usage_error(self):
         with tempfile.TemporaryDirectory() as td:
