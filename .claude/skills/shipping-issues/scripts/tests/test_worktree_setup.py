@@ -1330,6 +1330,59 @@ class ResumedProvisioningTest(unittest.TestCase):
         write_stub(bin_dir, "pnpm", record, append=True)
         return repo, root, wt, bin_dir, record, td / "baseline.log"
 
+    def test_reentry_rejects_the_primary_checkout(self):
+        for alias in (False, True):
+            for dry in (False, True):
+                with (
+                    self.subTest(alias=alias, dry=dry),
+                    tempfile.TemporaryDirectory() as td,
+                ):
+                    folder = Path(td).resolve()
+                    repo = folder / "59"
+                    repo.mkdir()
+                    make_repo(repo)
+                    commit_files(repo, "uv.lock", "pnpm-lock.yaml")
+                    bin_dir = folder / "bin"
+                    bin_dir.mkdir()
+                    record = folder / "installs"
+                    write_stub(bin_dir, "uv", record, append=True)
+                    write_stub(bin_dir, "pnpm", record, append=True)
+                    root = folder
+                    if alias:
+                        root = folder / "alias"
+                        root.symlink_to(folder, target_is_directory=True)
+                    before = git(repo, "worktree", "list", "--porcelain").stdout
+                    flags = ["--dry-run"] if dry else []
+
+                    proc = run_script(
+                        [
+                            "--issue",
+                            "59",
+                            "--branch",
+                            "main",
+                            "--base",
+                            "main",
+                            "--root",
+                            str(root),
+                            "--verify",
+                            "exit 0",
+                            "--log",
+                            str(folder / "baseline.log"),
+                            *flags,
+                        ],
+                        repo,
+                        extra_path=str(bin_dir),
+                    )
+
+                    self.assertNotEqual(proc.returncode, 0, proc.stdout)
+                    self.assertIn("verdict: BLOCKED", proc.stdout)
+                    self.assertFalse(record.exists())
+                    self.assertFalse((folder / "baseline.log").exists())
+                    self.assertEqual(git(repo, "status", "--porcelain").stdout, "")
+                    self.assertEqual(
+                        git(repo, "worktree", "list", "--porcelain").stdout, before
+                    )
+
     def test_reentry_dry_run_uses_uncommitted_lockfile_additions(self):
         cases = (
             ("uv.lock", "uv sync --all-groups --locked"),
@@ -1388,6 +1441,7 @@ class ResumedProvisioningTest(unittest.TestCase):
             "committed": None,
             "removed": False,
             "merge_added": True,
+            "large_merge": True,
             "primary_merge": True,
         }[scenario]
         fixture = self._fixture(td, "58", hook=hook)
@@ -1405,6 +1459,10 @@ class ResumedProvisioningTest(unittest.TestCase):
             config.rename(td / "saved-hook-config")
         if scenario == "merge_added":
             config.write_text(extended, encoding="utf-8")
+        if scenario == "large_merge":
+            config.write_text(
+                extended + "#" * (2 * 1024 * 1024) + "\n", encoding="utf-8"
+            )
         if scenario == "primary_merge":
             (repo / ".pre-commit-config.yaml").write_text(extended, encoding="utf-8")
         (bin_dir / "bash").symlink_to("/bin/bash")
@@ -1416,6 +1474,7 @@ class ResumedProvisioningTest(unittest.TestCase):
             ("committed", "READY_WITH_WARNINGS", True, False),
             ("removed", "READY", False, False),
             ("merge_added", "READY_WITH_WARNINGS", True, True),
+            ("large_merge", "READY_WITH_WARNINGS", True, True),
             ("primary_merge", "READY", False, False),
         )
         for scenario, verdict, warning, missing_merge in cases:

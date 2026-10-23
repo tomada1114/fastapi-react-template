@@ -289,6 +289,15 @@ provision_one() {
   emit repo_root "$repo_root"
   emit worktree "$worktree_path"
 
+  # The primary checkout is registered too, but must never be provisioned.
+  if [[ "$(resolve_path "$worktree_path")" == "$(resolve_path "$repo_root")" ]]; then
+    emit result "BLOCKED"
+    emit path "primary checkout cannot be provisioned: $worktree_path"
+    PROVISION_VERDICT="BLOCKED"
+    echo "verdict: BLOCKED"
+    return 1
+  fi
+
   # The validated ref also drives lockfile detection in a resumed dry run.
   if branch_exists "$p_branch"; then
     checkout_ref="$p_branch"
@@ -396,7 +405,7 @@ provision_one() {
     hooks_expected=1
   fi
   if [[ $hooks_expected -eq 1 ]]; then
-    if printf '%s\n' "$hook_text" | grep -Eq '^default_install_hook_types:.*pre-merge-commit'; then
+    if grep -Eq '^default_install_hook_types:.*pre-merge-commit' <<< "$hook_text"; then
       expected_hooks+=(pre-merge-commit)
     fi
     local hook missing_hooks=()
