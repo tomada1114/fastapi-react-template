@@ -815,6 +815,84 @@ class CleanupRunTest(unittest.TestCase):
 
 
 class CleanupFailureTest(unittest.TestCase):
+    def test_merged_branch_checked_out_outside_cleanup_scope_is_preserved(self):
+        for has_root in (False, True):
+            with self.subTest(has_root=has_root), tempfile.TemporaryDirectory() as td:
+                root = Path(td).resolve()
+                repo = root / "repo"
+                repo.mkdir()
+                make_repo(repo)
+                add_local_origin(repo, root)
+                wt = root / "outside"
+                git(repo, "worktree", "add", "-q", "-b", "feat/1", str(wt))
+                selected = root / "selected"
+                selected.mkdir()
+                args = ["--worktree-root", str(selected)] if has_root else []
+
+                proc, _ = run_script(args, repo, {MERGED_LIST: "feat/1", OPEN_LIST: ""})
+
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertTrue(wt.is_dir())
+                self.assertIn("feat/1", git(repo, "branch").stdout)
+                self.assertIn(str(wt), git(repo, "worktree", "list").stdout)
+                self.assertNotIn("FAILED", proc.stderr)
+
+    def test_unreadable_moved_worktree_is_not_pruned_or_unregistered(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            repo = root / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            add_local_origin(repo, root)
+            git(repo, "config", "gc.worktreePruneExpire", "now")
+            wtroot = root / "worktrees"
+            wtroot.mkdir()
+            wt = wtroot / "1"
+            git(repo, "worktree", "add", "-q", "-b", "feat/1", str(wt))
+            metadata = repo / ".git" / "worktrees" / "1" / "gitdir"
+            os.utime(metadata, (0, 0))
+            moved = root / "moved"
+            wt.rename(moved)
+
+            proc, _ = run_script(
+                ["--worktree-root", str(wtroot), "--merged-only"],
+                repo,
+                {MERGED_LIST: "feat/1", OPEN_LIST: ""},
+            )
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertTrue((moved / "README.md").is_file())
+            self.assertIn(str(wt), git(repo, "worktree", "list", "--porcelain").stdout)
+            self.assertIn("feat/1", git(repo, "branch").stdout)
+            self.assertTrue(metadata.is_file())
+            self.assertNotIn("removed worktree:", proc.stdout)
+
+    def test_dirty_worktree_path_with_spaces_is_preserved_without_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            repo = root / "repo"
+            repo.mkdir()
+            make_repo(repo)
+            add_local_origin(repo, root)
+            wtroot = root / "worktrees"
+            wtroot.mkdir()
+            wt = wtroot / "one with space"
+            git(repo, "worktree", "add", "-q", "-b", "feat/1", str(wt))
+            (wt / "README.md").write_text("unfinished work\n", encoding="utf-8")
+
+            proc, _ = run_script(
+                ["--worktree-root", str(wtroot), "--merged-only"],
+                repo,
+                {MERGED_LIST: "feat/1", OPEN_LIST: ""},
+            )
+
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertTrue(wt.is_dir())
+            self.assertEqual((wt / "README.md").read_text(), "unfinished work\n")
+            self.assertIn("feat/1", git(repo, "branch").stdout)
+            self.assertIn("SKIPPED (dirty", proc.stdout)
+            self.assertNotIn("FAILED", proc.stderr)
+
     def test_status_failure_preserves_worktree_and_fails(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td).resolve()

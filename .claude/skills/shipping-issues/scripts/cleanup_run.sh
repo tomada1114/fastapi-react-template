@@ -126,7 +126,10 @@ local_tip() {  # local_tip <branch>: the local branch's commit, or nothing
 # --- worktrees (must run BEFORE the branch pass) -----------------------------
 # A branch checked out in a worktree cannot be `git branch -D`'d, so removing
 # worktrees first is what lets the branch pass below actually delete them.
-surviving_worktrees=""
+surviving_worktrees=()
+preserve_worktree() {
+  surviving_worktrees+=("$wt_path")
+}
 if [ -z "$worktree_root" ]; then
   echo "worktree pass: skipped (no --worktree-root given — single-issue mode does not use worktrees)"
 else
@@ -142,7 +145,7 @@ else
     case "$wt_path" in
       "$repo_root") return 0 ;;  # never touch the main checkout
       "$worktree_root"/*) ;;
-      *) return 0 ;;  # outside the given root — never touch it
+      *) preserve_worktree; return 0 ;;  # outside the given root — never touch it
     esac
     if [ ${#wanted_branches[@]} -gt 0 ]; then
       local selected=0 wanted
@@ -151,31 +154,31 @@ else
       done
       if [ "$selected" -ne 1 ]; then
         echo "SKIPPED (branch not selected with --branch): $wt_path [${wt_branch:-detached HEAD}]"
-        surviving_worktrees="$surviving_worktrees $wt_path"
+        preserve_worktree
         return 0
       fi
     fi
     if [ "$merged_only" -eq 1 ]; then
       if [ "$wt_detached" -eq 1 ]; then
         echo "SKIPPED (detached HEAD): $wt_path"
-        surviving_worktrees="$surviving_worktrees $wt_path"
+        preserve_worktree
         return 0
       fi
       if ! deletable "$wt_branch" "$(local_tip "$wt_branch")"; then
         echo "SKIPPED (no merged PR / open PR on $wt_branch): $wt_path"
-        surviving_worktrees="$surviving_worktrees $wt_path"
+        preserve_worktree
         return 0
       fi
     fi
     local status_output remaining
     if ! status_output=$(git -C "$wt_path" status --porcelain); then
       failure "worktree status inspection: $wt_path"
-      surviving_worktrees="$surviving_worktrees $wt_path"
+      preserve_worktree
       return 0
     fi
     if [ "$force" -ne 1 ] && [ -n "$status_output" ]; then
       echo "SKIPPED (dirty — salvage, then rerun with --force): $wt_path"
-      surviving_worktrees="$surviving_worktrees $wt_path"
+      preserve_worktree
       return 0
     fi
     # The script's own --force (above) governs the dirty check; the --force on
@@ -185,7 +188,7 @@ else
     # Do not "simplify" this to one flag.
     if ! run git -C "$repo_root" worktree remove --force "$wt_path"; then
       failure "worktree remove: $wt_path"
-      surviving_worktrees="$surviving_worktrees $wt_path"
+      preserve_worktree
       return 0
     fi
     if [ "$dry" -eq 1 ]; then
@@ -193,12 +196,12 @@ else
     fi
     if ! remaining=$(git -C "$repo_root" worktree list --porcelain); then
       failure "worktree removal verification: $wt_path"
-      surviving_worktrees="$surviving_worktrees $wt_path"
+      preserve_worktree
       return 0
     fi
     if printf '%s\n' "$remaining" | grep -qxF "worktree $wt_path"; then
       failure "worktree remains registered after removal: $wt_path"
-      surviving_worktrees="$surviving_worktrees $wt_path"
+      preserve_worktree
       return 0
     fi
     echo "removed worktree: $wt_path"
@@ -216,7 +219,11 @@ else
     esac
   done <<< "$worktree_listing"
   process_worktree  # flush the last entry
-  run git -C "$repo_root" worktree prune || failure "worktree prune"
+  if [ "$failures" -eq 0 ] && [ ${#surviving_worktrees[@]} -eq 0 ]; then
+    run git -C "$repo_root" worktree prune || failure "worktree prune"
+  else
+    echo "SKIPPED (worktree prune would risk preserved registrations)"
+  fi
 fi
 
 # --- branches ----------------------------------------------------------------
@@ -225,6 +232,11 @@ if [ ${#wanted_branches[@]} -gt 0 ]; then
   branch_list=$(printf '%s\n' "${wanted_branches[@]}")
 else
   branch_list=$(git -C "$repo_root" branch --format='%(refname:short)')
+fi
+if ! branch_worktrees=$(git -C "$repo_root" worktree list --porcelain); then
+  failure "worktree registration inspection before branch deletion"
+  echo "cleanup: partial failure ($failures failed operations)" >&2
+  exit 1
 fi
 while IFS= read -r br; do
   [ -n "$br" ] || continue
@@ -236,14 +248,8 @@ while IFS= read -r br; do
     echo "SKIPPED (checked out in the main checkout — switch to $default_branch and rerun): $br"
     continue
   fi
-  checked_out_in=""
-  for wt in $surviving_worktrees; do
-    wt_br=$(git -C "$wt" symbolic-ref --short HEAD 2>/dev/null || true)
-    if [ "$wt_br" = "$br" ]; then
-      checked_out_in="$wt"
-      break
-    fi
-  done
+  checked_out_in=$(printf '%s\n' "$branch_worktrees" |
+    awk -v ref="branch refs/heads/$br" '/^worktree / { path=substr($0, 10) } $0 == ref { print path; exit }')
   if [ -n "$checked_out_in" ]; then
     echo "SKIPPED (checked out in worktree $checked_out_in): $br"
     continue
@@ -267,6 +273,8 @@ while IFS= read -r br; do
   fi
 done <<< "$branch_list"
 
+# Fetch must not run automatic maintenance: its implicit worktree pruning could
+# unregister a worktree whose failed inspection required us to preserve it.
 # --- remote branches (opt-in) --------------------------------------------
 if [ "$remote" -eq 1 ]; then
   # Prune first: with delete_branch_on_merge, origin refs vanish at merge time
@@ -275,7 +283,7 @@ if [ "$remote" -eq 1 ]; then
   # Under --dry-run this is only echoed, never actually run — which is exactly
   # why the enumeration below reads origin directly rather than trusting the
   # (possibly stale) local remote-tracking refs this prune would have cleaned.
-  run git -C "$repo_root" fetch --prune --quiet || failure "remote fetch before deletion"
+  run git -C "$repo_root" fetch --no-auto-maintenance --prune --quiet || failure "remote fetch before deletion"
   # What actually exists on origin right now, not local remote-tracking refs:
   # a ref already deleted on origin (delete-on-merge, or someone else's
   # cleanup) can still linger locally between fetches, and listing from the
@@ -306,7 +314,7 @@ if [ "$remote" -eq 1 ]; then
   done <<< "$remote_source"
 fi
 
-run git -C "$repo_root" fetch --prune --quiet || failure "final fetch"
+run git -C "$repo_root" fetch --no-auto-maintenance --prune --quiet || failure "final fetch"
 if [ "$failures" -ne 0 ]; then
   echo "cleanup: partial failure ($failures failed operations)" >&2
   exit 1
