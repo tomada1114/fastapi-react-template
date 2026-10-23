@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -310,3 +312,30 @@ def test_apply_failing_gh_fails_without_removing_anything(
     assert result.returncode != 0
     assert path.is_dir()
     assert repo.has_branch("feat/offline")
+
+
+def test_apply_status_failure_preserves_worktree_and_propagates_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _Repo(tmp_path, monkeypatch)
+    path = repo.add_worktree("feat/status-failure")
+    head = _git(path, "rev-parse", "HEAD")
+    repo.set_gh(merged=f"feat/status-failure\t{head}\n", open_="", exit_code=0)
+    real_git = shutil.which("git")
+    assert real_git is not None
+    stub = repo.gh_dir / "git"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'case "$*" in *" status --porcelain") exit 17 ;; esac\n'
+        f'exec {shlex.quote(real_git)} "$@"\n',
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+
+    result = repo.clean("feat/status-failure")
+
+    assert result.returncode != 0
+    assert path.is_dir()
+    assert repo.has_branch("feat/status-failure")
+    assert str(path) in _git(repo.clone, "worktree", "list", "--porcelain")
+    assert "cleanup: done" not in result.stdout
