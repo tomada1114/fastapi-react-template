@@ -15,8 +15,9 @@ document (`updating-docs`).
 | `e2e/` | The browser test (Playwright, Chromium only), a pnpm workspace member: its `package.json`, `playwright.config.ts`, `tests/`, Biome and `tsc` config, and `verify_persistence.py`, the backend process that checks the database; run by the root `just e2e` and `just e2e-lint` |
 | The root | The workspaces (`pyproject.toml`, `uv.lock`; `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.node-version`) and the repository's tooling: the `justfile` with the aggregate gates, `scripts/`, the harness and script tests under `tests/`, `.agents/skills/`, `.github/` |
 
-Each area is a workspace member with its own manifest, guide, and narrowest checks, so
-a later member (infrastructure code, say) joins without moving the app.
+`backend/`, `frontend/`, and `e2e/` are workspace members, each with its own manifest and
+narrowest checks, so a later member (infrastructure code, say) joins without moving the
+app.
 
 Where to work:
 

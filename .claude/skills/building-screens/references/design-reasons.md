@@ -23,8 +23,6 @@ these:
   ([Vite](https://vite.dev/guide/), [Vitest](https://vitest.dev/guide/),
   [Playwright](https://playwright.dev/docs/intro),
   [Hey API](https://heyapi.dev/docs/openapi/typescript/get-started), checked 2026-10-14).
-- On macOS arm64, MSW 3 did not intercept `fetch` under bun 1.4.2 (observed
-  2026-10-08). That is one probe's result, not a claim about every later Bun release.
 - `bun test`'s documented coverage thresholds cover lines and functions, so it cannot
   enforce the frontend's branch floor
   ([Bun coverage](https://bun.sh/docs/test/code-coverage), checked 2026-10-14).

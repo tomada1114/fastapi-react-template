@@ -998,6 +998,7 @@ def test_bootstrap_leaves_secret_binary_and_symlinked_files_alone(clone, tmp_pat
     for relative, data in untouched.items():
         (clone / relative).parent.mkdir(parents=True, exist_ok=True)
         (clone / relative).write_bytes(data)
+    (clone / "docs").mkdir(exist_ok=True)
     (clone / "docs" / "outside.md").symlink_to(outside)
     _git(clone, "add", "--all", "--force", *untouched, "docs/outside.md")
     _git(clone, "commit", "--quiet", "--message", "edge cases")

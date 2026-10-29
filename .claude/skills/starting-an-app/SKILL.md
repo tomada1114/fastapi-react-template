@@ -162,7 +162,7 @@ code:
   client in `frontend/src/api/generated/` lose the to-do operations;
 - README's Quickstart, the HTTP table, and the Configuration section;
 - the examples the skills quote from the sample: `writing-python`, `designing-errors`,
-  `designing-core-logic`, `building-api-routes`, `persisting-data`, `running-the-app`
+  `designing-core-logic` (and its `references/design-reasons.md`), `building-api-routes`, `persisting-data`, `running-the-app`
   (and its `references/e2e.md` and `references/own-dev-pair.md`), `building-screens`
   (and its `references/accessibility.md` and `references/testing-screens.md`),
   `writing-tests` (and its `references/frontend-tests.md`), `placing-tests`, and `tdd`.
