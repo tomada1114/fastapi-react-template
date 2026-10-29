@@ -2,8 +2,8 @@
 name: shipping-issues
 description: >-
   Claude Code only, outside a cloud session. Rank open GitHub Issues by their `priority: P0`-`P3` labels, backfilling missing ones,
-  then implement the top issue, open a PR that closes it, wait for the PR's automatic Codex
-  reviews (up to 3) and fix their accepted findings, watch CI to green, merge, and return to the
+  then implement the top issue, review the branch locally with `/code-review` and fix its
+  accepted findings, open a PR that closes it, watch CI to green, merge, and return to the
   default branch. Pass "all" to work through every issue in dependency order, independent
   ones in parallel git worktrees. Use when asked to ship the remaining issues, take on the
   next issue, or clear the ticket backlog.
@@ -13,42 +13,41 @@ description: >-
 
 Claude Code only. In Codex, use `codex-shipping-issues`; do not run this workflow. In a
 Claude Code cloud session (`CLAUDE_CODE_REMOTE=true`), use `cloud-claude-shipping-issues`.
-**Done:** review settled, PR merged, issue CLOSED, no gate deleted or weakened.
+**Done:** branch reviewed, PR merged, issue CLOSED, no gate deleted or weakened.
 
 **Invoking this skill is the sign-off for exactly the remote writes it lists, for this
 invocation, up to and including the merge** — priority and status labels, syncing label
 definitions from `.github/labels.yml` with `just labels`, pushing its own branches,
 creating the PR, merging it, filing and labelling follow-up issues, step 8b's design
 comments, and deleting its own branches at cleanup. Anything outside that list stops and
-asks: a force-push, a hook bypass, a weakened gate, a new dependency (proposed, then the
-run waits for sign-off), an `@codex review` comment, or a reply to or resolution of a
-review thread. The go-ahead is a settled [step 5](#5-wait-for-the-pr-review) plus
-[step 6](#6-ci-to-green)'s `PASS` for the current head: the merge happens in that same
-turn, with no "shall I merge?" and no summary-then-wait. Re-confirming per issue defeats
-`all` mode entirely. The only pauses are the [Stop conditions](#stop-conditions) and two
-narrow asks named inline: a genuinely tied top two at step 2, and `NO_CHECKS` at step 6.
+asks: a force-push, a hook bypass, a weakened gate, or a new dependency (proposed, then
+the run waits for sign-off). The go-ahead is the [step 4](#4-review-the-branch) review
+plus [step 6](#6-ci-to-green)'s `PASS` for the current head: the merge happens in that
+same turn, with no "shall I merge?" and no summary-then-wait. The only pauses are the
+[Stop conditions](#stop-conditions) and two narrow asks: a tied top two at step 2, and
+`NO_CHECKS` at step 6.
 
 ## Modes
 
 | Argument            | Behavior                                                                                                                                                         |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | _(none)_            | Ship the highest-priority shippable issue, then only **its own output** ([step 8c](#8c-take-the-runs-own-output-back-into-the-queue)) — never the wider backlog. |
-| `all`               | Ship every shippable issue in dependency-then-priority order; independent ones implemented in parallel worktrees, PR → review → CI → merge serialized.          |
+| `all`               | Ship every shippable issue in dependency-then-priority order; independent ones implemented in parallel worktrees, review → PR → CI → merge serialized for the PRs.          |
 | a number, e.g. `42` | Ship that issue, after checking nothing it depends on is still open.                                                                                             |
 
 A count in the argument ("10個ぐらい", "3 at a time") is `--max-parallel` (default 3,
 raised only on request); other hints are `plan.py` filters. A `blocked: design` issue
 (or `design=open` in its [ship contract](references/ship-contract.md)) ships only by
-number or `--include-design` ([step 2b](#2b-decide-a-design-that-gates-the-pick)).
+number or `--include-design` ([2b](#2b-decide-a-design-that-gates-the-pick)).
 
 ## Working rules
 
 - **One checkout, one writer.** Step 1 decides once per batch — never re-decide it
-  mid-batch: **serial** works in the main checkout, one issue start to finish;
-  **parallel** gives each issue a worktree under `<runstate>/worktrees/<n>` and leaves
-  the main checkout clean. All GitHub traffic stays in this session, one PR at a time.
-- **Nothing waits on the user mid-run.** A command your host's permission settings gate
-  behind an approval prompt (typically `rm -rf`) stalls the run: take a prompt-free
+  mid-batch: **serial** works in the main checkout, one issue at a time; **parallel**
+  gives each issue a worktree under `<runstate>/worktrees/<n>`, main checkout clean.
+  All GitHub traffic stays in this session, one PR at a time.
+- **Nothing waits on the user mid-run.** A command your host gates behind an approval
+  prompt (typically `rm -rf`) stalls the run: take a prompt-free
   equivalent (`mv` into the holding area, not `rm`), else defer it to the one end-of-run
   confirmation, else run it mid-run only when the issue cannot move without it
   ([closing-out.md](references/closing-out.md#approval-gated-commands)).
@@ -56,8 +55,8 @@ number or `--include-design` ([step 2b](#2b-decide-a-design-that-gates-the-pick)
   "Sub-agents"), a brief (`references/agent-*.md`) may go to the `executor`,
   `architect`, or `scout` tier [cost-discipline.md](references/cost-discipline.md#tier-assignment)
   names — by tier name, never a bare model name; `worker` for tool-free drafting from a
-  complete brief, such as follow-up issue bodies or a PR body from verified findings. A patch round or repeat CI repair on
-  the same tier continues the same agent where the host allows.
+  complete brief (follow-up issue bodies, a PR body). A patch round or repeat CI repair
+  on the same tier continues the same agent where the host allows.
 - **State lives in `<runstate>`** ([run-record.md](references/run-record.md)), never
   inside a checkout — an untracked path there is a hard stop. Record each event as it
   happens with `scripts/run_record.py`; **re-read `<runstate>/run.md` after a context
@@ -94,16 +93,15 @@ are tied on every axis or the pick needs a product decision.
 
 ### 2b. Decide a design that gates the pick
 
-Only for a design-blocked issue taken on deliberately: settle, record and clear it before
-step 3 ([dependency-triage.md](references/dependency-triage.md#deciding-a-held-design)).
+A design-blocked issue taken on deliberately: settle, record and clear it before step 3
+([dependency-triage.md](references/dependency-triage.md#deciding-a-held-design)).
 
 ### 2c. Confirm the proposed batch
 
 The plan proposes, this step decides: check each issue's real reach against `touches=`
 ([dependency-triage.md](references/dependency-triage.md#parallel-vs-sequential-all-mode)).
 Where step 2's research groups and `plan.py`'s grouping disagree, take the narrower (a
-second opinion, not a tie-break). Shrinking never needs asking; no named tiers → serial
-(`--max-parallel 1`).
+second opinion, not a tie-break). Shrinking never needs asking; no named tiers → serial.
 
 ### 3. Implement
 
@@ -113,19 +111,24 @@ Run [agent-implementation.md](references/agent-implementation.md) per issue —
 `executor`, or `architect` when foundational — and **judge
 each result here**, `ACCEPTANCE` first. At most 2 patch rounds on the same tier; a third miss is `NEEDS-CLARIFICATION`.
 
-### 4. Open the PR
+### 4. Review the branch
 
-Serial from here to step 7 in both modes. Open a regular, non-draft PR against the
-default branch, `Closes #N` in the body; record it; `link_check.sh <pr> --issue <n> --fix`
-([pr-ci-merge.md](references/pr-ci-merge.md#opening-the-pr)).
+Before any PR exists; in parallel mode review, triage, then fix every branch. One pass,
+no re-review. `/code-review medium <branch> --fix` — **effort first, branch second**;
+`medium` always, `high` only for a change that can lose or corrode existing data or when
+the user asked, never `low`, `xhigh`, `max` or `ultra`
+([why](references/cost-discipline.md#code-review-effort)). **`--fix` is serial-mode
+only** ([why](references/recovery.md#--fix-and-why-it-is-serial-mode-only)): in parallel
+mode review without it, one `executor` per branch with accepted findings (`F1`, `F2`, …)
+from [agent-review-fix.md](references/agent-review-fix.md). No `/code-review` →
+[agent-review-fallback.md](references/agent-review-fallback.md). Triage, fix pass, record:
+[implement-and-review.md](references/implement-and-review.md#running-the-review).
 
-### 5. Wait for the PR review
+### 5. Open the PR
 
-Each Codex review, on opening and maybe after a fix push, is a round, at most 3 per PR;
-never ask for one. `review_watch.py <pr>` into `<runstate>/review/<pr>.log` alongside step
-6 ([how](references/pr-ci-merge.md#waiting-for-the-pr-review)). `FINDINGS`: triage the
-round's `F<n>`, fix the accepted (round 1 all, 2–3 `P0`–`P2`), verify, push, then CI and
-`--after-push <sha>`. `NO_REVIEW`/`ERROR`/past 1800 s → held for step 10, no local review.
+Serial from here to step 7. A regular PR with `Closes #N` in the body; record it;
+`link_check.sh <pr> --issue <n> --fix` ([how](references/pr-ci-merge.md#opening-the-pr));
+no PR review is awaited.
 
 ### 6. CI to green
 
@@ -139,30 +142,27 @@ s in total, `ERROR`, `NO_CHECKS` →
 
 ### 7. Merge and confirm the issue closed
 
-On `PASS` for the current head, step 5 settled, run **in that same turn**
-`land_pr.sh <pr> --issue <n> --head-sha <sha> --review-log <runstate>/review/<pr>.log`,
-`<sha>` from the CI log's `head_sha:`. Check `result:` and `issue:` against
-[landing-outcomes.md](references/landing-outcomes.md). Then
-`git switch <default_branch> && git pull --ff-only` and continue the batch
+On `PASS` for the current head, run **in that same turn**
+`land_pr.sh <pr> --issue <n> --head-sha <sha>` (`<sha>` is the CI log's `head_sha:`).
+Check `result:` and `issue:` against [landing-outcomes.md](references/landing-outcomes.md).
+Then `git switch <default_branch> && git pull --ff-only` and continue the batch
 ([pr-ci-merge.md](references/pr-ci-merge.md#after-the-merge)).
 
 ### 8. Close out the findings the run turned up
 
 **Fix it in the diff already open** · **file it and ship it this run** · **file it and
 leave it**, in that order. **Read [filing-followups.md](references/filing-followups.md)
-before filing anything**; it holds the `file_followup.py` call. File right after the PR
-that surfaced it lands.
+before filing anything**; it holds the `file_followup.py` call. File right after the PR lands.
 
 ### 8b. Unblock held designs in the background
 
 Every issue filed `--needs-design`, plus step 1's `needs-design:`, gets one
 [agent-design-decision.md](references/agent-design-decision.md)
-([queue and recording](references/delegation-templates.md#design-decision-step-8b)). On
-a host that reports background completion, hand each to `architect` in the background
-and keep shipping — cap 3 in flight, start the next as each returns. Otherwise decide
-inline, one at a time, between issues: this run's own filings plus **at most 3** backlog
-designs; the rest are step 10 lines ("not decided this run"). `DEFERRED` keeps the
-label; its question goes to step 10.
+([queue and recording](references/delegation-templates.md#design-decision-step-8b)). Where
+the host reports background completion, hand each to `architect` in the background and
+keep shipping — cap 3 in flight, start the next as each returns. Otherwise decide inline,
+between issues: this run's own filings plus **at most 3** backlog designs; the rest are
+step 10 lines ("not decided this run"). `DEFERRED` keeps the label; its question → step 10.
 
 ### 8c. Take the run's own output back into the queue
 
@@ -191,8 +191,8 @@ every `DEFERRED` design's open question.
 
 Stop the whole run and report when: the plan is `BLOCKED`, a dependency cycle needs a
 human to break it, a merge conflict needs a product decision, the repository requires
-linear history (`--event blocked --field reason=linear-history`), the same CI failure
-survives the retry ceiling on two different issues, or two PRs end `NO_REVIEW`.
+linear history (`--event blocked --field reason=linear-history`), or the same CI failure
+survives the retry ceiling on two different issues.
 
 Also stop on **a change in the repository that this run did not make** — the main
 checkout dirty with files no step here touched, a branch moved underneath you, the

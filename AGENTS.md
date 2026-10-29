@@ -198,8 +198,8 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `building-api-routes` | adding or changing an HTTP route, request or response model, or API dependency, and the TestClient tests for it |
 | `building-screens` | adding or changing a screen, route, or feature under `frontend/src/`: server data through the generated client, API errors, styling, accessibility, and its component tests |
 | `changing-gates` | editing a hook, a CI workflow, the ruleset, or a ruff, mypy, pytest, coverage, Vitest, Biome, `tsconfig.json`, or `pnpm-workspace.yaml` setting, or asking whether a change weakens a gate |
-| `cloud-claude-shipping-issues` | Claude Code cloud sessions only (`CLAUDE_CODE_REMOTE=true`): shipping the next issue or the backlog over REST `gh api` calls, serially — rank, implement, PR, the PR's review, CI, merge, follow-ups |
-| `codex-shipping-issues` | shipping one GitHub issue from a Codex-managed checkout through a regular PR, up to three Codex review rounds with their findings addressed, current-head CI, and an explicitly authorized merge |
+| `cloud-claude-shipping-issues` | Claude Code cloud sessions only (`CLAUDE_CODE_REMOTE=true`): shipping the next issue or the backlog over REST `gh api` calls, serially — rank, implement, review the branch, PR, CI, merge, follow-ups |
+| `codex-shipping-issues` | shipping one GitHub issue from a Codex-managed checkout through a regular PR after a read-only fresh-context review of the branch with its findings addressed, current-head CI, and an explicitly authorized merge |
 | `create-pr` | opening or updating a pull request by hand |
 | `designing-core-logic` | adding a use case, domain rule, port, adapter, or `MY_APP_*` setting, or wiring the composition root |
 | `designing-errors` | adding a failure mode, or choosing the HTTP status a domain error becomes |
@@ -208,7 +208,7 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `persisting-data` | changing a table in `backend/src/my_app/adapters/sql/`, writing or reviewing an Alembic revision under `backend/migrations/`, running `just backend db-upgrade` or `db-revision`, a SQL repository's statements, or the `AsyncEngine`'s lifecycle |
 | `placing-tests` | adding a test file or a fixture (pytest, Vitest, or the browser test), running one test, or a coverage run below a floor |
 | `running-the-app` | running a server of your own to observe a change, and stopping that server afterwards |
-| `shipping-issues` | Claude Code only: shipping the next issue or the whole backlog: rank, implement, PR, the PR's own review and its findings, CI, merge |
+| `shipping-issues` | Claude Code only: shipping the next issue or the whole backlog: rank, implement, review the branch locally with `/code-review`, PR, CI, merge |
 | `smart-commit` | grouping working-tree changes into commits, or a pre-commit hook refuses a commit |
 | `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the frontend, the API, or the sample domain, the first design changes; the template rename step |
 | `steering-the-roadmap` | asked what to work on next, or the Now / Next / Later roadmap moves |
@@ -292,7 +292,7 @@ sign-off for exactly those, for that invocation only:
   (the design-block label and the ship contract's `design=open`); filing and labelling
   follow-up issues; and removing `blocked: dependency` from the issues its merge
   unblocked — never a force-push, a branch deletion, a reply to or resolution of a
-  review thread, `@codex review`, `just labels`, or Auto-fix.
+  review thread, `just labels`, or Auto-fix.
 - `create-pr`: pushing the current branch, `gh pr create` for it, and
   `gh pr edit` on its own open pull request — never a force-push or a merge.
 - `smart-commit`: the commits it makes on the current branch, and pushing that
