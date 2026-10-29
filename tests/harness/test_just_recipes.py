@@ -4,7 +4,7 @@ A renamed or removed recipe must not leave a document pointing a reader at
 nothing. Read: every top-level ``*.md`` (AGENTS.md, CLAUDE.md,
 README.md, CONTRIBUTING.md, SECURITY.md, ...), each area's ``AGENTS.md`` and
 ``CLAUDE.md`` one directory down (``backend/AGENTS.md``), ``docs/**/*.md``
-but the roadmap, the skills, the agent definitions
+but ``docs/product/``, the skills, the agent definitions
 (``.claude/agents/*.md``, ``.codex/agents/*.toml``), everything under
 ``.github/`` (composite actions included), ``.pre-commit-config.yaml``, and the
 repository and skill scripts (``scripts/*.py``,
@@ -13,9 +13,8 @@ file or directory names nothing, and a present file that is not UTF-8 fails the
 check.
 
 Not read, because they record intent or history rather than instruct:
-the roadmap (``docs/architecture/roadmap.md``) and the product and
-planning documents (``docs/product/**``), whose "done when" names a recipe that
-does not exist yet. ``.devcontainer/devcontainer.json`` is not read either: it
+the product and planning documents (``docs/product/**``), which may name a
+recipe that does not exist yet. ``.devcontainer/devcontainer.json`` is not read either: it
 is JSON with comments, which no stdlib parser reads.
 
 Only code is read, so English prose ("just to be safe") never counts:
@@ -101,10 +100,7 @@ DOCUMENT_GLOBS = (
     ".agents/skills/*/scripts/*.py",
 )
 # Intent or history, not instructions: see the module docstring.
-UNREAD_GLOBS = (
-    "docs/architecture/roadmap.md",
-    "docs/product/**/*",
-)
+UNREAD_GLOBS = ("docs/product/**/*",)
 WORKFLOW_PARENT = ".github/workflows"
 ACTIONS_DIR = ".github/actions"
 ACTION_FILES = frozenset({"action.yml", "action.yaml"})
@@ -854,11 +850,6 @@ def test_recipe_findings_other_justfile_is_reported(
 @pytest.mark.parametrize(
     ("relative", "text"),
     [
-        pytest.param(
-            "docs/architecture/roadmap.md",
-            "- Done when: `just docs` passes\n",
-            id="roadmap",
-        ),
         pytest.param(
             "docs/product/requirements.md", "Later: `just docs`.\n", id="product-docs"
         ),

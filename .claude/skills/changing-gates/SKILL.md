@@ -22,7 +22,8 @@ scripts bundled in a skill (`authoring-skills`); writing a script a gate runs
 (`writing-repo-scripts`); `.github/labels.yml` (`triaging-issues`).
 
 A gate defines what "done" means for every later change, so a loosened rule silently
-lowers the bar for every pull request after it, not only the one that touched it.
+lowers the bar for every pull request after it, not only the one that touched it. Why
+the gates are shaped as they are: [references/design-reasons.md](references/design-reasons.md).
 
 ## What weakening a gate means here
 
@@ -198,8 +199,8 @@ cost time:
 - Anything only a running server shows (`running-the-app`).
 - Whether a path named in Markdown still exists. A skill's frontmatter, AGENTS.md's
   Skills table, and a `just <recipe>` in command position are `just check-harness`'s,
-  but the recipe scan leaves out the roadmap, `docs/product/`
-  (intent or history, not instructions), and `.devcontainer/` (JSON with comments).
+  but the recipe scan leaves out `docs/product/` (intent or history, not
+  instructions) and `.devcontainer/` (JSON with comments).
 - A staged deletion: `check-staged` never inspects one, by design.
 - Commits that run no hook at all ([references/pre-commit-layer.md](references/pre-commit-layer.md)
   › "When the hooks run, and when they do not").

@@ -21,7 +21,8 @@ the route or schema on the API side (`building-api-routes`); the API's error sha
 codes (`designing-errors`); adding a package (`managing-dependencies`); seeing the
 screen against a running API (`running-the-app`); a lint, type, or coverage setting
 (`changing-gates`). The toolchain, the generated files' mechanics, and the narrowest
-checks are `frontend/AGENTS.md`'s.
+checks are `frontend/AGENTS.md`'s; why it is this toolchain and a generated client is
+[references/design-reasons.md](references/design-reasons.md).
 
 ## Where a screen lives
 

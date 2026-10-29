@@ -8,6 +8,11 @@ the served screen, or `just dev` itself. `just dev` runs `just backend dev` and
 `VITE_PORT` (Vite's port, with `strictPort`: a taken port fails instead of moving).
 Neither is a setting: `Settings` never reads them.
 
+Why one command runs both: started separately, the API and the screen drift onto
+mismatched origins, or the API starts on a database nobody migrated. `just dev` migrates
+first, then runs both reload servers as one process lifecycle, and Vite's proxy gives
+the browser one origin, so development needs no CORS.
+
 ## The rules
 
 Everything in `SKILL.md`'s "The developer's server is not yours" holds, plus:

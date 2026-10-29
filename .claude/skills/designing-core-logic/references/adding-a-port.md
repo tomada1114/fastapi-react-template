@@ -37,6 +37,12 @@ The registry exposes no context-manager entry or exception-suppression API, and
 `Container` rejects a generic `AsyncExitStack` at construction. Registration is sealed
 when the Container takes ownership.
 
+Why callbacks only: an entered context manager can carry ownership of its caller's
+task, cancellation scope, or context-variable token, and moving its exit to the cleanup
+task breaks that ownership. Accepting arbitrary manager entry and exception suppression
+would make the cancellation guarantee below depend on hidden adapter behavior, so the
+registry takes disposal callbacks, which can run safely in a separate Task/Context.
+
 The builder stays a plain `def` (a bad setting must fail in `create_app`), so a build
 that raises runs no callback: register only an object that opens nothing when
 constructed, as its docstring says. The registry moves to the frozen `Container`:

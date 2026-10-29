@@ -88,7 +88,9 @@ The frontend's suite is `frontend/tests/`, run by Vitest with
   needs goes in that test with `server.use(...)`; one every test needs goes in
   `msw/server.ts`; a helper moves to `msw/helpers.tsx` only when a second file needs it.
 - The browser test is one flow, not a second component suite: add a spec only for a
-  flow that crosses the screen, the API, and the database.
+  flow that crosses the screen, the API, and the database. It runs on every pull
+  request because API and component tests cannot show that the built screen talks to
+  the real server and persists data; a release is too late to find that out.
 
 ## Running tests
 
@@ -143,6 +145,8 @@ then the app's suite with the coverage floor in `backend/`. The recipe parity ch
   (`src/api/generated/**`, `src/routeTree.gen.ts`). `just frontend test` (run by
   `just test` and CI's `Frontend` job) is `vitest run --coverage`, which fails below
   any of the four. Neither `frontend/tests/` nor `e2e/` is measured.
+- **Why 80, and not 100 or none:** it catches untested decisions while leaving room for
+  code whose exhaustive testing adds little value.
 - **A floor, not a ceiling.** It is never lowered (AGENTS.md's "Security and human
   approval"), and no line leaves the measurement to move the number — a
   `# pragma: no cover`, an `omit`, an `exclude_lines` entry, a lowered

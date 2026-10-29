@@ -3,7 +3,7 @@ name: updating-docs
 description: >
   Decides whether a change needs docs and where: README.md (quickstart, HTTP
   table, errors, MY_APP_ and VITE_ configuration), CONTRIBUTING.md, root and area
-  AGENTS.md, skills, docs/architecture/, docstrings, or the generated
+  AGENTS.md, a skill (where the design lives), docstrings, or the generated
   frontend/openapi.json and client via just contract. Covers working examples and
   which changes require files to move together. Use when deciding what docs a PR
   owes, or when a route, setting or behavior changes.
@@ -14,8 +14,8 @@ description: >
 **Owns:** whether a change owes a documentation update, which surface it lands on, and
 how documentation prose is written. **Does not own:** how a skill is authored and
 mirrored (`authoring-skills`); a design change's description (`AGENTS.md`'s "Before
-changing the architecture"); the roadmap (`steering-the-roadmap`); what a docstring says (`writing-python`); the error status
-table's content (`designing-errors`).
+changing the architecture"); the project's direction (`triaging-issues`); what a
+docstring says (`writing-python`); the error status table's content (`designing-errors`).
 
 ## Decide on what a reader can observe
 
@@ -28,24 +28,32 @@ than leaving the reader to guess. Deciding that nothing is owed is a legitimate 
 A documentation file nobody asked for is never created (AGENTS.md's "Overview"); extend
 the surface that already owns the topic.
 
+## Design lives in the skills
+
+How the app is built and why — its layers, flows, data, ports, screens, toolchain, and
+gates — is written once, in the skill that owns the subject, so a code change owes at
+most that skill (and `backend/AGENTS.md`'s "Architecture" for a layer rule). There is no
+architecture overview, decision record, design-philosophy page, or roadmap to keep in
+step: never create one, and never copy a skill's design into another surface. Direction
+is `AGENTS.md`'s "Product" and the open issues (`triaging-issues`).
+
 ## Purpose per file
 
 Each surface has one job; do not let one grow a second copy of another's content.
 
 | File | Holds | Changes when |
 |---|---|---|
-| `README.md` | What the application does, the quickstart, the HTTP table, error statuses, the configuration table, the architecture | A route, status, or setting it documents changes |
+| `README.md` | What the application does, the quickstart, the HTTP table, error statuses, the configuration table, the repository layout | A route, status, or setting it documents changes |
 | `CONTRIBUTING.md` | Prerequisites, setup, the development commands, the pull request process, commit messages | Setup, the toolchain, or the pull request process changes |
 | `AGENTS.md` | What every agent task needs: the quick reference, the "Validating a change" table, the Skills table, the approval rules, the enforcement layers | One of those facts changes |
 | `backend/AGENTS.md` | What every task in `backend/` needs: its "Validating a change" table, its architecture, its skills | The backend's layout or narrowest checks change |
 | `frontend/AGENTS.md` | What every task in `frontend/` needs: the Node.js and pnpm toolchain, its "Validating a change" table, its layout, the generated files' rules, its tests and coverage floor | The frontend's toolchain, layout, generated files, or narrowest checks change |
-| `.agents/skills/<name>/` | One kind of change's conventions, loaded on demand | Those conventions change (`authoring-skills`) |
-| `docs/architecture/roadmap.md` | The roadmap | The direction moves |
+| `.agents/skills/<name>/` | One kind of change's conventions and the design of its subject, with the reasons, loaded on demand | Those conventions or that design change (`authoring-skills`) |
 | Docstrings | A function's contract and its why | The function changes (`writing-python`) |
 
 <!-- template-only -->
-In the template, `TEMPLATE.md` holds why the template is built this way; it changes with
-the template's design or its bootstrap, and `scripts/bootstrap.py` deletes it from an app.
+In the template, `TEMPLATE.md` holds only how to use the template, never its design;
+it changes with the bootstrap, and `scripts/bootstrap.py` deletes it from an app.
 <!-- /template-only -->
 
 `README.md` links to `CONTRIBUTING.md` and `AGENTS.md` instead of repeating them, so it
@@ -61,7 +69,7 @@ reader of the diff catches it.
 | When you change | Also change | Caught by |
 |---|---|---|
 | A skill added, renamed, or deleted | Its row in AGENTS.md's Skills table | `tests/harness/test_skills.py` (`just check-harness`) |
-| A `just` recipe added, renamed, or removed | Its line in AGENTS.md's "Quick Reference", in the block for who runs it; `CONTRIBUTING.md` if it lists the recipe | `tests/harness/test_just_recipes.py` when a document it reads still names a renamed or removed one (its docstring lists them; not the roadmap, `docs/product/`, or `.devcontainer/`); review for an added one |
+| A `just` recipe added, renamed, or removed | Its line in AGENTS.md's "Quick Reference", in the block for who runs it; `CONTRIBUTING.md` if it lists the recipe | `tests/harness/test_just_recipes.py` when a document it reads still names a renamed or removed one (its docstring lists them; not `docs/product/` or `.devcontainer/`); review for an added one |
 | A gate, or the narrowest check for one kind of change | Its row in the "Validating a change" table of AGENTS.md, or of `backend/AGENTS.md` or `frontend/AGENTS.md` for that area | review |
 | An HTTP route, or a request or response schema | `frontend/openapi.json` and `frontend/src/api/generated/`, regenerated by `just contract` and never hand-edited; `README.md`'s HTTP table for a route | `just contract-check` (`just verify`, CI's `Contract Drift`) for the contract; review for the table |
 | A `MY_APP_*` setting, or a `VITE_` variable a recipe or Vite reads | `README.md`'s configuration table | review |
@@ -89,7 +97,7 @@ request. Adding a script reaches more files; **REQUIRED:** `writing-repo-scripts
 A code example in a document must be valid Python or TypeScript that works with the
 current code, and a command must run as written. No gate compiles or runs a fenced block
 or checks that a named path still exists. `just check-harness` checks a `just <recipe>`
-in command position, but not in the roadmap, `docs/product/`, or `.devcontainer/`. Check
+in command position, but not in `docs/product/` or `.devcontainer/`. Check
 by hand before committing:
 
 - every `just <recipe>` you name appears in `just --list`;

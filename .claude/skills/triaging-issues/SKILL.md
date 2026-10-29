@@ -1,21 +1,26 @@
 ---
 name: triaging-issues
 description: >
-  Covers this repository's issue vocabulary: the labels in .github/labels.yml, what
+  Covers the issue vocabulary: the labels in .github/labels.yml, what
   `blocked: design`, `blocked: dependency`, `blocked: external`, `on hold`, and
   `tracking` mean, and what an issue body must contain (a `path:line`, an observable
   close condition, a `Depends on: #N` line). Use when filing an issue, triaging or
   re-prioritizing the backlog, picking a `priority: P0`-`P3` label, choosing between
   `bug`/`enhancement`/`documentation`/`chore`/`security`, marking a tracking issue,
-  running `just labels`, recording a problem found outside the task, or routing a
-  daily-use request.
+  running `just labels`, recording a problem found outside the task, routing a
+  daily-use request, or asked what to do next.
 ---
 
 # Triaging Issues
 
 **Owns:** this repository's issue vocabulary — the label taxonomy, what a priority
-means, and what an issue body must contain. **Does not own:** implementing an issue; any
-workflow beyond the tracker.
+means, and what an issue body must contain — and answering what to work on next.
+**Does not own:** what the project is and its non-goals (`AGENTS.md`'s "Product");
+implementing an issue (`shipping-issues`); any workflow beyond the tracker.
+
+The project's direction is `AGENTS.md`'s "Product" plus the open issues — their priority
+tiers, `on hold` parking, and `tracking` parents. There is no roadmap document or issue
+beside them; never create one.
 
 Labels carry the triage decision, so it is made once and read back rather than
 re-derived every time the backlog is looked at. An issue is filed with a type label and
@@ -158,3 +163,22 @@ A parked issue leaves the lane by a decision, never by age:
 
 Moving the product's scope to admit a request is the owner's call, not the triager's:
 parking or dropping it records that line rather than crossing it.
+
+## Answering "what is next?"
+
+Read the state first; it changes between sessions:
+
+```bash
+gh issue list --state open --limit 200 --json number,title,labels
+```
+
+Lead with anything only the owner can clear — a `blocked: design` choice, a
+`blocked: external` step — since nothing behind it moves until they act. Then recommend
+one to three ready issues (tiered, not `on hold`, not `tracking`, no open blocker), the
+highest tier first, each with its number and a one-line reason tied to "Product", and
+ask the owner to pick. Several `on hold` issues pointing the same way are evidence for
+promoting them; say so, and promote only by the rule above.
+
+`shipping-issues` takes the pick from there, and invoking it authorizes every write it
+makes, merge included. Invoke it only on the owner's confirmed pick, never on this
+skill's own recommendation.

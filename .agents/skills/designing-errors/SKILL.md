@@ -101,7 +101,9 @@ table is `_status_for` in `api/app.py`, and nowhere else:
 Every error is `application/problem+json`, serialized with `exclude_none=True`:
 `{"type": "about:blank", "title": <HTTPStatus phrase>, "status": <number>,
 "detail": str(error), "code": <class code>}`. Domain errors have no `errors`.
-Clients branch on `code`, and ignore unknown extensions.
+Clients branch on `code`, and ignore unknown extensions. One standard shape for every
+failure ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html), checked 2026-10-14)
+means the screen parses errors once, with no client-specific error parsing per route.
 
 The factory also handles non-domain failures:
 
@@ -164,7 +166,11 @@ the first request (`designing-core-logic`).
 
 ## Logging
 
-An `AppError` is expected, so it is mapped at the API boundary to an HTTP status, and
+Logging is the standard library's, with no logging or telemetry dependency:
+`MY_APP_LOG_LEVEL` and `MY_APP_LOG_FORMAT` (text or JSON lines) are the only knobs, and
+one access record per request carries method, path, status, and duration — never a
+body, a query string, or a secret — so a failure is correlated by its request ID
+without collecting user input. An `AppError` is expected, so it is mapped at the API boundary to an HTTP status, and
 not logged with `logging.exception()`. An
 unexpected error keeps its stack and exception type. The API handler logs on
 `my_app.api.errors` with a sanitized exception that omits the original message

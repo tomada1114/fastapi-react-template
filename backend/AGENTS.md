@@ -44,6 +44,10 @@ backend/
 └── tests/           # The app's suite, mirroring src/my_app/ (`placing-tests`)
 ```
 
+- The package sits under `src/`, so it imports only once installed: a missing module
+  or a broken packaging setting fails the tests instead of being satisfied from the
+  working directory, as a package at the root could be. The repository root holds
+  the harness; `backend/` holds the application.
 - Dependencies point inward: `api/` calls `core/` services and gets
   them only from `composition.build_container`; `adapters/` implement
   `core/ports.py`; `core/` imports nothing outside the stdlib and itself.

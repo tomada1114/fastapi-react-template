@@ -192,6 +192,6 @@ with".
    still calls them.
 4. **The ruleset, for the owner** (**human**, an admin): this pull request removed
    `Analyze (javascript-typescript)` from `.github/rulesets/main.json`. If the ruleset is
-   not applied yet, step 9 of the order applies it as it is. If it is already live, the
+   not applied yet, step 8 of the order applies it as it is. If it is already live, the
    pull request can never report that context, so the owner applies the edited file with
    `just ruleset` from this branch before merging it; an agent never runs it.
