@@ -19,9 +19,12 @@ The ruleset requires `CI result` (`ci.yml`'s `ci-result` job), which fails unles
 gating job succeeded, instead of naming each job. Adding, renaming, or splitting a job
 then never needs the live ruleset edited, which only an admin can do. The PR title,
 Dependency Review, and CodeQL are separate required contexts because they come from
-other workflows. In the template, the fresh-copy `Template Bootstrap Smoke` job runs
-beside them and is never required, and the bootstrap removes it, so the template's own
-check never changes an app's gates.
+other workflows.
+<!-- template-only -->
+In the template, the fresh-copy `Template Bootstrap Smoke` job runs beside them and is
+never required, and the bootstrap removes it, so the template's own check never changes
+an app's gates.
+<!-- /template-only -->
 
 ## Just rather than Make
 
