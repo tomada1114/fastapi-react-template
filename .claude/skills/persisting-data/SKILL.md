@@ -35,6 +35,13 @@ SQLAlchemy, Alembic, and aiosqlite are imported only there and in tests. Enforce
 `backend/pyproject.toml`'s `banned-api` entries and its `migrations/**` per-file
 ignore.
 
+Why this stack: an app keeps data from its first feature, so the template ships real
+persistence rather than none; SQLAlchemy's asyncio Core with explicit tables and
+statements keeps every database object inside this adapter, which an ORM or SQLModel
+entity would carry into the core; and SQLite through aiosqlite needs no server, so the
+first run needs no Docker, while the same contract and migrations run on PostgreSQL in
+CI. Alembic revisions carry each schema change to data that already exists.
+
 ## Tables are Core metadata
 
 A table is a `Table` on the one `metadata` in `tables.py` — never an ORM class and
@@ -155,7 +162,7 @@ migrations" without it) unless a caller passes a connection in
 
 ## PostgreSQL
 
-The optional `postgres` extra installs asyncpg, approved in tracker #3. It supplies
+The optional `postgres` extra installs asyncpg. It supplies
 the async PostgreSQL driver without making a server part of the first run; its
 Apache-2.0 license fits the dependency gate, unlike psycopg's LGPL license
 (https://pypi.org/project/asyncpg/0.31.0/ and https://pypi.org/project/psycopg/,

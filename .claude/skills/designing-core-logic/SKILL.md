@@ -14,9 +14,10 @@ description: >
 **Owns:** the layers beneath the entry points — what belongs in `core/`, how a port and
 its adapters are shaped and tested, how configuration is read, and how
 `composition.py` wires adapters into services. **Does not own:** the layer map
-(`backend/AGENTS.md`'s "Architecture"); removing the API (`building-api-routes`); the
-`AppError` hierarchy and its mapping (`designing-errors`); exposing a service over
-HTTP (`building-api-routes`); module-level Python style (`writing-python`).
+(`backend/AGENTS.md`'s "Architecture"); removing the API and exposing a service over
+HTTP (`building-api-routes`); the `AppError` hierarchy and its mapping
+(`designing-errors`); module-level Python style (`writing-python`). Why the core is
+shaped this way: [references/design-reasons.md](references/design-reasons.md).
 
 ## The direction dependencies point
 
@@ -110,7 +111,7 @@ alike, so every one follows six rules:
    query; the core sees only its own values.
 5. **A write that must be atomic across items is one port method,** implementable as a
    SQL transaction or a DynamoDB `TransactWriteItems`.
-6. **Timestamps are timezone-aware UTC**; `Todo` rejects a naive `created_at`.
+6. **Timestamps are timezone-aware**; `Todo` rejects a naive one. Production uses UTC.
 
 ## Time and other outside inputs are injected
 
@@ -147,9 +148,8 @@ port of the same kind rather than a direct call.
 
 ## Settings are read once, at the boundary
 
-`settings.py`'s `Settings` is the only place configuration enters, from
-`MY_APP_`-prefixed environment variables (`ENV_PREFIX`). A new setting is a field on
-`Settings`:
+`settings.py`'s `Settings` is the only place configuration enters: `MY_APP_` variables
+(`ENV_PREFIX`), then optional `backend/.env`. A new setting is a field on `Settings`:
 
 - validated in a `field_validator`, so a bad value fails at startup with a message that
   says what to set, rather than on the first request;

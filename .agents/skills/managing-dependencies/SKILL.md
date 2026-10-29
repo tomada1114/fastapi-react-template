@@ -174,7 +174,9 @@ exceptions. Read it before any `pnpm add` or `pnpm-workspace.yaml` edit.
   license script of its own. Its `fail-on-scopes: runtime` means only a runtime package
   fails it, so `devDependencies` are meant to pass like the Python dev group; the action
   documents that option for vulnerabilities only, so whether it also scopes the license
-  check of a pnpm entry is unchecked until a run on a frontend change shows it.
+  check of a pnpm entry is unchecked until a run on a frontend change shows it
+  ([references/pnpm.md](references/pnpm.md) has the one run so far, and the graph's
+  pnpm 11 gap).
 - **Dependabot alerts** read the same dependency graph, `pnpm-lock.yaml` included, once
   the owner turns them on (`starting-an-app`).
 - **The windows** (`exclude-newer`, `minimumReleaseAge`) catch the opposite case: a

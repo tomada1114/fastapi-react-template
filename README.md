@@ -7,8 +7,8 @@
 > [!NOTE]
 > This is the fastapi-react-template repository itself: a FastAPI + React
 > full-stack template. To start an application from it, follow the
-> `starting-an-app` skill (`.agents/skills/starting-an-app/SKILL.md`);
-> `TEMPLATE.md` explains its design. The Python-only sibling,
+> `starting-an-app` skill (`.agents/skills/starting-an-app/SKILL.md`). The
+> Python-only sibling,
 > [`tomada1114/uv-template`](https://github.com/tomada1114/uv-template), is for
 > command-line tools and API-only services.
 <!-- /template-only -->
@@ -186,7 +186,9 @@ e2e/        # The Playwright test from the screen to the database (just e2e)
 `backend/AGENTS.md` holds the backend's architecture: the core imports neither
 the API nor any framework or driver, the API only translates between HTTP and
 the core, and `composition.py` is the one place adapters are wired in.
-`frontend/AGENTS.md` holds the frontend's toolchain. The schema lives in
+`frontend/AGENTS.md` holds the frontend's toolchain. Why each part is built the way it
+is lives in the skill that owns the subject, under `.agents/skills/`, indexed by
+AGENTS.md's Skills table. The schema lives in
 `backend/src/my_app/adapters/sql/tables.py` and its history in Alembic revisions
 under `backend/migrations/` (the `persisting-data` skill).
 

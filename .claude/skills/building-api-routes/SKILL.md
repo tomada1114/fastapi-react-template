@@ -79,8 +79,8 @@ middleware stack with CORS, including server-error responses; the stack is built
 lazily so callers can register middleware; handled errors also wrap user middleware.
 
 - A new router is a module under `api/routers/`, added to the imports and included with `app.include_router(router, prefix=API_PREFIX)`.
-- Each route function name is its public generated-client operation id; keep names
-  unique across routers. `route_operation_id` and the operation-id tests enforce it.
+- Each route function name is its operation id, so the generated client's names stay
+  stable; keep them unique. `route_operation_id` and the operation-id tests enforce it.
 - The API never constructs an adapter or a service: they come only from
   `composition.build_container` (`designing-core-logic`).
 - `just dev` serves it through `uvicorn my_app.api.app:create_app --factory`; an

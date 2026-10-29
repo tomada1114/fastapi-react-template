@@ -3,7 +3,10 @@
 ## Overview
 
 A FastAPI application in a [uv](https://docs.astral.sh/uv/) workspace, laid out
-by area. The sample domain is a to-do list — replace it with your own.
+by area. The sample domain is a to-do list — replace it with your own. How the app is
+built and why lives in the skills that own each subject (the Skills table below) and
+`backend/AGENTS.md`'s "Architecture"; there is no separate architecture or roadmap
+document (`updating-docs`).
 
 | Area | Holds |
 |---|---|
@@ -11,6 +14,9 @@ by area. The sample domain is a to-do list — replace it with your own.
 | `frontend/` | The React app (Vite, TypeScript), a pnpm workspace member: its `package.json`, `src/`, `tests/`, Biome, `tsc`, and Vitest config, a `justfile` module (`just frontend <recipe>`), and its own `AGENTS.md` |
 | `e2e/` | The browser test (Playwright, Chromium only), a pnpm workspace member: its `package.json`, `playwright.config.ts`, `tests/`, Biome and `tsc` config, and `verify_persistence.py`, the backend process that checks the database; run by the root `just e2e` and `just e2e-lint` |
 | The root | The workspaces (`pyproject.toml`, `uv.lock`; `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `.node-version`) and the repository's tooling: the `justfile` with the aggregate gates, `scripts/`, the harness and script tests under `tests/`, `.agents/skills/`, `.github/` |
+
+Each area is a workspace member with its own manifest, guide, and narrowest checks, so
+a later member (infrastructure code, say) joins without moving the app.
 
 Where to work:
 
@@ -154,14 +160,16 @@ prose or a test count in a prompt.
 
 ## Before changing the architecture
 
-The design is recorded as it stands now, never as a log of decisions: this file's
-Product section, `backend/AGENTS.md`'s "Architecture" section, and the skill that owns
-the subject say together how the app is built and why, and git history holds what it
-used to be. The changes below, which the skills call design changes, are hard to
-reverse, so the pull request that makes one also rewrites that description: the current
-design and the reasoning behind it (what it protects and, where it matters, the
-alternative it rules out and why), in the present tense, in place of the sentences it
-replaces, never as a dated entry beside them:
+The design is recorded in one place per subject, as it stands now, never as a log of
+decisions: the skill that owns the subject (the Skills table), with `backend/AGENTS.md`'s
+"Architecture" for the layer rules and this file's Product section for scope. Git history
+holds what it used to be. Keeping those current is the whole obligation: no other
+document repeats the design, so no other document needs rewriting with it. The changes
+below, which the skills call design changes, are hard to reverse, so the pull request
+that makes one also rewrites the owning skill (or that section): the current design and
+the reasoning behind it (what it protects and, where it matters, the alternative it rules
+out and why), in the present tense, in place of the sentences it replaces, never as a
+dated entry beside them:
 
 - a runtime dependency — a package under `[project] dependencies` (a dev-only tool in
   `[dependency-groups]` is not one unless it changes a gate);
@@ -180,11 +188,6 @@ replaces, never as a dated entry beside them:
 Writing the reasoning down grants nothing: a new dependency or a remote write still
 needs the sign-off "Security and human approval" asks for, and the owner reviews the
 rewritten description with the change.
-<!-- template-only -->
-In the template itself, the reasoning behind the layers every app starts with lives in
-`TEMPLATE.md`'s "Design Philosophy"; a design change to the template rewrites that
-entry, rather than leaving the old reason beside the new one.
-<!-- /template-only -->
 
 ## Skills
 
@@ -211,9 +214,8 @@ Skills are authored under `.agents/skills/` (Codex CLI) and mirrored into
 | `shipping-issues` | Claude Code only: shipping the next issue or the whole backlog: rank, implement, review the branch locally with `/code-review`, PR, CI, merge |
 | `smart-commit` | grouping working-tree changes into commits, or a pre-commit hook refuses a commit |
 | `starting-an-app` | setting up an app cut from this template: the Product section, the bootstrap pull request, labels, ruleset, security settings, dropping the frontend, the API, or the sample domain, the first design changes; the template rename step |
-| `steering-the-roadmap` | asked what to work on next, or the Now / Next / Later roadmap moves |
 | `tdd` | changing behavior under `backend/src/`, `scripts/`, or `frontend/src/`, or fixing a bug: the failing test comes first |
-| `triaging-issues` | filing, labelling, or prioritizing an issue, or recording a problem found outside the task |
+| `triaging-issues` | filing, labelling, or prioritizing an issue, recording a problem found outside the task, or asked what to work on next |
 | `updating-docs` | deciding whether a change owes a README, AGENTS.md (the root's or an area's), regenerated contract, or other document update |
 | `writing-python` | writing or reviewing any Python module, class, or function: typing, imports, docstrings, idioms |
 | `writing-repo-scripts` | adding or editing a script under `scripts/`, its `just` recipe, or its tests |

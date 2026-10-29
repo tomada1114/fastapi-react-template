@@ -11,7 +11,7 @@ repository and fails on a fixture built under ``tmp_path``:
 - (b) ``test_skills.py``: AGENTS.md's Skills table lists exactly those skills;
 - (c) ``test_just_recipes.py``: every ``just <recipe>`` in command position
   in the top-level Markdown, each area's ``AGENTS.md`` and ``CLAUDE.md``,
-  ``docs/**`` (bar the roadmap and ``docs/product/``), the skills,
+  ``docs/**`` (bar ``docs/product/``), the skills,
   the agent definitions, ``.github/**`` (composite actions' ``run:``
   included), ``.pre-commit-config.yaml``, and the scripts exists in the
   justfile, and every ``just <module> <recipe>`` (or ``<module>::<recipe>``)

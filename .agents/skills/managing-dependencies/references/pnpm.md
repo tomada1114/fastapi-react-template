@@ -73,10 +73,26 @@ none; shortening any of them loosens a gate, which is the owner's decision.
 
 - **Dependabot documents pnpm v7 to v10**
   (https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories,
-  checked 2026-10-14), and this repository runs pnpm 11, which works in practice. If a
+  checked 2026-10-14), and this repository runs pnpm 11. A sibling repository's pnpm 11
+  update succeeded
+  ([nextjs-app-template PR #248](https://github.com/tomada1114/nextjs-app-template/pull/248)),
+  which does not establish that this repository's next one will. If a
   Dependabot `npm` job fails because of the pnpm version, record it (an issue with the
   job log, `triaging-issues`) and leave the pnpm version, the lockfile, and the policy
   as they are; never work around it.
+- **The dependency graph may miss pnpm 11 entries.** GitHub lists pnpm lockfiles, but
+  upstream reports linked from
+  [PR #100](https://github.com/tomada1114/fastapi-react-template/pull/100)'s review
+  (checked 2026-10-14) describe pnpm 11's two-document lockfile format losing graph
+  entries. A green Dependency Review alone therefore does not prove the frontend's
+  packages were seen; OSV-Scanner reads `pnpm-lock.yaml` directly and stays the
+  independent check.
+- **Dev-scope license coverage is unproven.** PR #108's
+  [Dependency Review job](https://github.com/tomada1114/fastapi-react-template/actions/runs/38462477249/job/115520906025)
+  listed the direct dev dependency `@hey-api/openapi-ts` from `frontend/package.json`
+  but reported an empty Licenses group (checked 2026-10-14), so it showed neither
+  dev-scope nor transitive license checking. Treat a frontend dev dependency's license
+  as unchecked by the gate until a run demonstrates otherwise, and review it by hand.
 - **A security update inside the window** skips Dependabot's cooldown, which applies
   to version updates only
   (https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference,
