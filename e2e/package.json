@@ -8,9 +8,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "@playwright/test": "^1.63.0",
-    "@types/node": "~24.19.0",
+    "@biomejs/biome": "^2.6.3",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "~24.19.2",
     "typescript": "~6.0.3"
   }
 }
