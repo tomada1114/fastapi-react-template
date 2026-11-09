@@ -236,3 +236,5 @@ fails the run. Without Just, run `uv sync --all-groups --locked`,
 ## License
 
 [MIT](https://github.com/your-username/fastapi-react-template/blob/main/LICENSE)
+
+<!-- PR flow test from a cloud session, safe to close -->
